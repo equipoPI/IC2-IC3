@@ -3,6 +3,9 @@
 ## Decriptions:
 It is a project that integrates concepts and development of 3 subjects from the Computer Engineering degree.
 
+## *Docs como referencia de Programación*
+https://drive.google.com/drive/folders/1E04hpJAeRc3TZzfJkJFEUtlSdUn1ALi3?usp=sharing 
+
 ### *Doc con requerimientos*
 https://docs.google.com/document/d/1IDLadW9VSbGHwzSxpdI8EzgbaOA4BEi7/edit?usp=sharing&ouid=100700553391405918094&rtpof=true&sd=true
 
