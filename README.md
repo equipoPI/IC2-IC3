@@ -53,3 +53,6 @@ https://www.youtube.com/watch?v=T1intZyhXDU&t=103s
 Ejemplos practicos de proyectos con node.js
 Links:
 https://www.youtube.com/playlist?list=PLL0TiOXBeDairhQkzlawZNYnYEX45kDJP
+
+## *Donde ospedar o provar el proyecto*
+Hostiger(tiene una ia para verificar) o netlify
