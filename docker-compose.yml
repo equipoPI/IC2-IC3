@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_DB=ic3_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+
+  backend:
+    build:
+      context: ./mysite
+      dockerfile: Dockerfile
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./mysite:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: ./scada-ui
+      dockerfile: Dockerfile
+    command: npm run dev -- --host 0.0.0.0
+    volumes:
+      - ./scada-ui:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      - WATCHPACK_POLLING=true
+
+volumes:
+  postgres_data:
