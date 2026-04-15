@@ -1,20 +1,58 @@
 # Empleados y Recursos Humanos
 import random
+from datetime import datetime, timedelta
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils.timezone import now
-
-
+from django.core.exceptions import ValidationError
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 
 
 class Fabrica(models.Model):
+    """
+    Modelo Fabrica / Planta - Representa una planta industrial con métricas SCADA
+    """
+    ESTADOS_PLANTA = [
+        ('OPERATIVO', 'Operativo'),
+        ('ADVERTENCIA', 'Advertencia'),
+        ('CRITICO', 'Crítico'),
+        ('OFFLINE', 'Offline'),
+    ]
+    
     nombre = models.CharField(max_length=100, unique=True)
     ubicacion = models.CharField(max_length=255, blank=True, null=True)
     pais = models.CharField(max_length=100)
     fecha_creacion = models.DateField(default=now)
+    
+    # Campos SCADA
+    estado = models.CharField(max_length=20, choices=ESTADOS_PLANTA, default='OPERATIVO')
+    porcentaje_produccion = models.FloatField(default=0, help_text="Porcentaje de producción actual (0-100)")
+    porcentaje_eficiencia = models.FloatField(default=0, help_text="Porcentaje de eficiencia (0-100)")
+    temperatura_promedio = models.FloatField(default=0, help_text="Temperatura promedio en °C")
+    consumo_energia = models.FloatField(default=0, help_text="Consumo de energía en kWh")
+    alarmas_activas = models.IntegerField(default=0, help_text="Número de alarmas activas")
 
     def __str__(self):
         return self.nombre
+    
+    def actualizar_metricas(self):
+        """Actualiza automáticamente las métricas de la planta"""
+        # Contar alarmas activas
+        self.alarmas_activas = self.alarmas.filter(estado='ABIERTA').count()
+        
+        # Determinar estado basado en alarmas
+        alarmas_criticas = self.alarmas.filter(estado='ABIERTA', severidad='ALTA').count()
+        alarmas_advertencia = self.alarmas.filter(estado='ABIERTA', severidad='MEDIA').count()
+        
+        if alarmas_criticas > 0:
+            self.estado = 'CRITICO'
+        elif alarmas_advertencia > 0:
+            self.estado = 'ADVERTENCIA'
+        elif self.alarmas_activas == 0:
+            self.estado = 'OPERATIVO'
+        
+        self.save()
 
 
 
@@ -98,6 +136,27 @@ class Empleado(models.Model):
     clave = models.CharField(max_length=10, unique=True, editable=False, default="")
     email = models.EmailField(unique=True)
     estado = models.CharField(max_length=20, choices=ESTADOS_EMPLEADO, default='ACTIVO')
+    
+    # Nuevos campos para tipo y rol
+    tipo_empleado = models.CharField(
+        max_length=50,
+        choices=[
+            ('OPERARIO', 'Operario'),
+            ('SUPERVISOR', 'Supervisor'),
+            ('TECNICO', 'Técnico'),
+            ('JEFE_PLANTA', 'Jefe de Planta'),
+            ('ADMINISTRATIVO', 'Administrativo'),
+        ],
+        default='OPERARIO',
+        help_text="Tipo de empleado"
+    )
+    
+    rol_actual = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Rol o cargo actual"
+    )
 
     def save(self, *args, **kwargs):
         # Si el estado cambia, registrar el historial
@@ -137,181 +196,98 @@ class EmpleadoSeccion(models.Model):
         return f"{self.empleado} en {self.seccion} desde {self.fecha_union}"
 
 
-
-class PruebasMedicas(models.Model):
-    empleado = models.ForeignKey('Empleado', on_delete=models.CASCADE, related_name="pruebas_medicas")
-    fecha_prueba = models.DateField(default=now)
-    tipo_prueba = models.CharField(max_length=100)  # Ejemplo: "Examen de sangre", "Rayos X"
-    resultado = models.TextField(blank=True, null=True)  # Observaciones o resultados de la prueba
-    documento = models.FileField(
-        upload_to='pruebas_medicas/documentos/%Y/%m/%d/',
-        blank=True,
-        null=True,
-        help_text="Sube un archivo relacionado con la prueba médica (PDF, Word, etc.)"
-    )
-    imagen = models.ImageField(
-        upload_to='pruebas_medicas/imagenes/%Y/%m/%d/',
-        blank=True,
-        null=True,
-        help_text="Sube una imagen relacionada con la prueba médica (JPG, PNG, etc.)"
-    )
-    observaciones = models.TextField(blank=True, null=True)
-
-    def clean(self):
-        """
-        Validación para asegurarse de que al menos uno de los dos (documento o imagen) sea subido.
-        """
-        if not self.documento and not self.imagen:
-            raise ValidationError("Debes cargar un documento o una imagen.")
-
-    def __str__(self):
-        return f"Prueba médica de {self.empleado} - {self.tipo_prueba} ({self.fecha_prueba})"
+# ============================================================================
+# RRHH - Modelos PruebasMedicas, RegistroFichaje, PagoMensual, Sancion eliminados
+# No son necesarios para sistema SCADA industrial
+# ============================================================================
 
 
-class RegistroFichaje(models.Model):
-    empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="fichajes")
-    fecha = models.DateField(default=now)
-    hora_entrada = models.TimeField()
-    hora_salida = models.TimeField(null=True, blank=True)
-
-    def calcular_tarifas(self):
-        if not self.hora_salida:
-            return {"error": "Salida no registrada"}
-
-        entrada_real = datetime.combine(self.fecha, self.hora_entrada)
-        salida_real = datetime.combine(self.fecha, self.hora_salida)
-
-        tipo_tarifa = self.empleado.tipo_tarifa
-        if not tipo_tarifa:
-            return {"error": "Tipo de tarifa no asignado"}
-
-        tiempo_total = salida_real - entrada_real
-        horas_totales = tiempo_total.total_seconds() / 3600
-
-        horas_normales = min(horas_totales, 8)  # Supongamos 8 horas normales por día
-        horas_extras = max(0, horas_totales - 8)
-
-        salario_normal = horas_normales * tipo_tarifa.tarifa_por_hora
-        salario_extra = horas_extras * tipo_tarifa.tarifa_extra
-
-        return {
-            "tiempo_normal": round(horas_normales, 2),
-            "tiempo_extra": round(horas_extras, 2),
-            "salario_normal": round(salario_normal, 2),
-            "salario_extra": round(salario_extra, 2),
-        }
-
-    def __str__(self):
-        return f"{self.empleado} - {self.fecha}: {self.hora_entrada} a {self.hora_salida or 'Pendiente'}"
-
-
-class PagoMensual(models.Model):
-    empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="pagos_mensuales")
-    mes = models.DateField()
-    total_horas_normales = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    total_horas_extras = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    total_pago = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-
-    def calcular_pago_mensual(self):
-        fichajes = RegistroFichaje.objects.filter(
-            empleado=self.empleado,
-            fecha__year=self.mes.year,
-            fecha__month=self.mes.month
-        )
-
-        horas_normales = 0
-        horas_extras = 0
-        total_pago = 0
-
-        # Cálculo de fichajes
-        for fichaje in fichajes:
-            tarifas = fichaje.calcular_tarifas()
-            if 'error' not in tarifas:
-                horas_normales += tarifas['tiempo_normal']
-                horas_extras += tarifas['tiempo_extra']
-                total_pago += tarifas['salario_normal'] + tarifas['salario_extra']
-
-        # Descuento por sanciones
-        sanciones = Sancion.objects.filter(
-            empleado=self.empleado,
-            fecha_inicio__month=self.mes.month,
-            fecha_inicio__year=self.mes.year
-        )
-        dias_sancionados = sum(sancion.duracion() for sancion in sanciones)
-        descuento_sanciones = (dias_sancionados / 30) * total_pago
-        total_pago -= descuento_sanciones
-
-        # Bonos por eventos especiales
-        eventos = EventoEspecial.objects.filter(
-            empleado=self.empleado,
-            fecha__month=self.mes.month,
-            fecha__year=self.mes.year
-        )
-        total_bonos = sum(evento.monto for evento in eventos)
-        total_pago += total_bonos
-
-        # Vacaciones tomadas en el mes
-        vacaciones = Vacacion.objects.filter(empleado=self.empleado)
-        dias_vacaciones_tomados = sum(
-            vacacion.dias_tomados for vacacion in vacaciones if vacacion.dias_tomados > 0
-        )
-        descuento_vacaciones = (dias_vacaciones_tomados / 30) * total_pago
-        total_pago -= descuento_vacaciones
-
-        self.total_horas_normales = horas_normales
-        self.total_horas_extras = horas_extras
-        self.total_pago = total_pago
-        self.save()
-
-    def __str__(self):
-        return f"Pago mensual de {self.empleado} - {self.mes.strftime('%B %Y')}: ${self.total_pago}"
-
-
-class Sancion(models.Model):
+class CambioEmpleado(models.Model):
+    """
+    Registro de cambios en empleados (promociones, cambios de tipo, cambios de tarifa, etc.)
+    Reemplaza al modelo Promocion con funcionalidad más amplia.
+    """
+    TIPOS_CAMBIO = [
+        ('PROMOCION', 'Promoción'),
+        ('CAMBIO_TIPO', 'Cambio de Tipo'),
+        ('CAMBIO_TARIFA', 'Cambio de Tarifa'),
+        ('CAMBIO_ROL', 'Cambio de Rol'),
+        ('DEGRADACION', 'Degradación'),
+    ]
+    
     ESTADOS = [
-        ('pendiente', 'Pendiente'),
-        ('aprobada', 'Aprobada'),
-        ('rechazada', 'Rechazada'),
+        ('PENDIENTE', 'Pendiente'),
+        ('APROBADO', 'Aprobado'),
+        ('RECHAZADO', 'Rechazado'),
     ]
 
-    empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="sanciones")
-    motivo = models.CharField(max_length=255)
-    fecha_inicio = models.DateField()
-    fecha_fin = models.DateField()
-    estado = models.CharField(max_length=10, choices=ESTADOS, default='pendiente')
-    solicitada_por = models.CharField(max_length=100)
-    autorizada_por = models.ForeignKey(
-        Empleado, on_delete=models.SET_NULL, null=True, blank=True, related_name="sanciones_autorizadas"
+    empleado = models.ForeignKey(
+        Empleado,
+        on_delete=models.CASCADE,
+        related_name='cambios_historial',
+        help_text="Empleado que sufre el cambio"
+    )
+    
+    tipo_cambio = models.CharField(
+        max_length=20,
+        choices=TIPOS_CAMBIO,
+        help_text="Tipo de cambio realizado"
+    )
+    
+    # Valores anteriores
+    tipo_empleado_anterior = models.CharField(max_length=50, blank=True, null=True)
+    rango_anterior = models.CharField(max_length=50, blank=True, null=True)
+    tarifa_anterior = models.ForeignKey(
+        TipoTarifa,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cambios_desde',
+        help_text="Tarifa anterior"
+    )
+    rol_anterior = models.CharField(max_length=100, blank=True, null=True)
+    
+    # Valores nuevos
+    tipo_empleado_nuevo = models.CharField(max_length=50, blank=True, null=True)
+    rango_nuevo = models.CharField(max_length=50, blank=True, null=True)
+    tarifa_nueva = models.ForeignKey(
+        TipoTarifa,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cambios_hacia',
+        help_text="Tarifa nueva"
+    )
+    rol_nuevo = models.CharField(max_length=100, blank=True, null=True)
+    
+    # Metadatos del cambio
+    fecha_cambio = models.DateField(default=now)
+    motivo = models.TextField(blank=True, null=True, help_text="Motivo del cambio")
+    descripcion = models.CharField(max_length=255, blank=True, null=True)
+    
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='PENDIENTE')
+    solicitado_por = models.CharField(max_length=100, help_text="Quién solicitó el cambio")
+    autorizado_por = models.ForeignKey(
+        Empleado,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cambios_autorizados',
+        help_text="Quién autorizó el cambio"
     )
     fecha_cambio_estado = models.DateTimeField(auto_now=True)
-
+    
+    class Meta:
+        ordering = ['-fecha_cambio']
+        verbose_name = 'Cambio de Empleado'
+        verbose_name_plural = 'Cambios de Empleados'
+    
     def __str__(self):
-        return f"Sanción: {self.empleado} - {self.estado}"
-
-
-class Promocion(models.Model):
-    ESTADOS = [
-        ('pendiente', 'Pendiente'),
-        ('aprobada', 'Aprobada'),
-        ('rechazada', 'Rechazada'),
-    ]
-
-    empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="promociones")
-    descripcion = models.CharField(max_length=255)
-    fecha = models.DateField()
-    nuevo_rango = models.CharField(max_length=50, choices=Empleado._meta.get_field('rango').choices)
-    estado = models.CharField(max_length=10, choices=ESTADOS, default='pendiente')
-    solicitada_por = models.CharField(max_length=100)
-    autorizada_por = models.ForeignKey(
-        Empleado, on_delete=models.SET_NULL, null=True, blank=True, related_name="promociones_autorizadas"
-    )
-    fecha_cambio_estado = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"Promoción: {self.empleado} a {self.nuevo_rango} - {self.estado}"
+        return f"{self.empleado.nombre} - {self.get_tipo_cambio_display()} ({self.fecha_cambio})"
 
 
 class Transferencia(models.Model):
+    """Transferencia de empleado a otra ubicación/planta"""
     empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="transferencias")
     nueva_direccion = models.CharField(max_length=255)
     fecha = models.DateField()
@@ -321,203 +297,20 @@ class Transferencia(models.Model):
         return f"Transferencia de {self.empleado} a {self.nueva_direccion} el {self.fecha}"
 
 
-class Falta(models.Model):
-    empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="faltas")
-    fecha = models.DateField()
-    motivo = models.TextField(blank=True, null=True)
-
-    def __str__(self):
-        return f"Falta de {self.empleado} el {self.fecha}"
+# ============================================================================
+# RRHH - Modelos eliminados: Falta, Vacacion, HistorialEstadoVacacion, Licencia,
+# EventoEspecial, PoliticaVacaciones, AccidenteLaboral, Capacitacion, EmpleadoCapacitacion
+# No son necesarios para sistema SCADA industrial
+# ============================================================================
 
 
-class Vacacion(models.Model):
-    ESTADOS = [
-        ('pendiente', 'Pendiente'),
-        ('aprobada', 'Aprobada'),
-        ('rechazada', 'Rechazada'),
-    ]
+# ============================================================================
+# INVENTARIO Y PROVEEDORES
+# ============================================================================
 
-    fecha_inicio = models.DateField()
-    fecha_fin = models.DateField()
-    estado = models.CharField(max_length=10, choices=ESTADOS, default='pendiente')
-    solicitada_por = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="vacaciones")
-    autorizada_por = models.ForeignKey(
-        Empleado, on_delete=models.SET_NULL, null=True, blank=True, related_name="vacaciones_autorizadas"
-    )
-    fecha_cambio_estado = models.DateTimeField(auto_now=True)
-
-    def save(self, *args, **kwargs):
-        if self.pk:  # Si la vacación ya existe en la base de datos
-            original = Vacacion.objects.get(pk=self.pk)
-            if original.estado != self.estado:
-                # Registrar el cambio de estado
-                HistorialEstadoVacacion.objects.create(
-                    vacacion=self,
-                    estado_anterior=original.estado,
-                    estado_nuevo=self.estado,
-                    realizado_por=self.autorizada_por
-                )
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"Vacaciones: {self.solicitada_por} - {self.estado}"
-
-
-class HistorialEstadoVacacion(models.Model):
-    vacacion = models.ForeignKey('Vacacion', on_delete=models.CASCADE, related_name="historial_estados")
-    estado_anterior = models.CharField(max_length=10)
-    estado_nuevo = models.CharField(max_length=10)
-    fecha_cambio = models.DateTimeField(auto_now_add=True)
-    realizado_por = models.ForeignKey('Empleado', on_delete=models.SET_NULL, null=True, blank=True)
-
-    def __str__(self):
-        return f"Vacación #{self.vacacion.id}: {self.estado_anterior} -> {self.estado_nuevo} ({self.fecha_cambio})"
-
-
-class Licencia(models.Model):
-    ESTADOS = [
-        ('pendiente', 'Pendiente'),
-        ('aprobada', 'Aprobada'),
-        ('rechazada', 'Rechazada'),
-    ]
-
-    TIPOS = [
-        ('maternidad', 'Maternidad'),
-        ('psiquiatrica', 'Psiquiatrica'),
-        ('enfermedad', 'Enfermedad'),
-        ('por accidente', 'Por accidente'),
-        ('problemas familiares', 'Problemas familiares'),
-    ]
-
-    BINARIO= [
-        ('sí', 'Sí'),
-        ('no', 'No'),
-    ]
-
-    fecha_inicio = models.DateField()
-    fecha_fin = models.DateField()
-    estado = models.CharField(max_length=20, choices=ESTADOS, default='pendiente')
-    tipo = models.CharField(max_length=20, choices=TIPOS, default='Maternidad')
-    gose_sueldo = models.CharField(max_length=20, choices=BINARIO, default='Si')
-    solicitada_por = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="licencias")
-    autorizada_por = models.ForeignKey(
-        Empleado, on_delete=models.SET_NULL, null=True, blank=True, related_name="licencias_autorizadas"
-    )
-
-
-class EventoEspecial(models.Model):
-    empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="eventos_especiales")
-    descripcion = models.TextField()
-    monto = models.DecimalField(max_digits=10, decimal_places=2)
-    fecha = models.DateField()
-
-    def __str__(self):
-        return f"Evento especial para {self.empleado} - ${self.monto} el {self.fecha}"
-
-
-class PoliticaVacaciones(models.Model):
-    fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name="politicas_vacaciones")
-    pais = models.CharField(max_length=100)  # País asociado a la política
-    estado = models.CharField(max_length=100,default="Desconocido")  # Estado o provincia
-    antiguedad_minima = models.PositiveIntegerField(default=0)  # En años
-    antiguedad_maxima = models.PositiveIntegerField(default=0)
-    dias_vacaciones = models.PositiveIntegerField()  # Número de días de vacaciones por año
-
-    class Meta:
-        # La combinación de 'pais' y 'estado' será única
-        unique_together = ['pais', 'estado']  # Esto asegura que no haya duplicados de pais y estado
-
-    def __str__(self):
-        return f"{self.pais} - {self.estado} - {self.antiguedad_minima}-{self.antiguedad_maxima} años: {self.dias_vacaciones} días"
-
-
-class AccidenteLaboral(models.Model):
-    empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="accidentes")
-    fecha_accidente = models.DateField()
-    descripcion = models.TextField()
-    indemnizacion_autorizada = models.BooleanField(default=False)
-    proveedor_seguro = models.CharField(max_length=255)  # Proveedor de seguro
-    monto_indemnizacion = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    dias_incapacidad = models.PositiveIntegerField(default=0)  # Días en los que el empleado no trabaja
-
-    def autorizar_indemnizacion(self):
-        # Aquí puedes agregar la lógica para autorizar la indemnización
-        self.indemnizacion_autorizada = True
-        self.save()
-
-    def __str__(self):
-        return f"Accidente de {self.empleado} - {self.fecha_accidente}"
-
-
-    
-
-
-
-# Modelo de Capacitación
-class Capacitacion(models.Model):
-    TIPOS_CAPACITACION = [
-        ('TECNICA', 'Técnica'),
-        ('SEGURIDAD', 'Seguridad'),
-        ('HIGIENE', 'Higiene'),
-        ('SALUD', 'Salud'),
-        ('RRHH', 'Recursos Humanos'),
-    ]
-
-    nombre = models.CharField(max_length=100)
-    descripcion = models.TextField(blank=True, null=True)
-    duracion_horas = models.PositiveIntegerField()  # Duración en horas
-    tipo = models.CharField(
-        max_length=20,
-        choices=TIPOS_CAPACITACION,
-        default='TECNICA'
-    )  # Tipo de capacitación
-    fecha_creacion = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.nombre} ({self.get_tipo_display()})"
-
-# Modelo intermedio para relacionar empleados y capacitaciones
-class EmpleadoCapacitacion(models.Model):
-    empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="capacitaciones")
-    capacitacion = models.ForeignKey(Capacitacion, on_delete=models.CASCADE, related_name="empleados")
-    fecha_realizacion = models.DateField()  # Fecha en que se realizó la capacitación
-    estado = models.CharField(
-        max_length=20,
-        choices=[
-            ('COMPLETADO', 'Completado'),
-            ('EN_PROCESO', 'En proceso'),
-            ('NO_INICIADO', 'No iniciado')
-        ],
-        default='NO_INICIADO'
-    )
-    calificacion = models.FloatField(blank=True, null=True)  # Calificación obtenida (opcional)
-
-    def __str__(self):
-        return f"{self.empleado} - {self.capacitacion} ({self.estado})"
-
-#hasta aca las clases relacionadas con empleado
-
-
-
-# Modelo de Proveedor
-class Proveedor(models.Model):
-    nombre = models.CharField(max_length=150)
-    tipo = models.CharField(max_length=50, choices=[
-        ('ART', 'ART'),
-        ('Seguro', 'Seguro'),
-        ('Equipamiento', 'Equipamiento'),
-        ('Materia Prima', 'Materia Prima'),
-        ('Transporte', 'Transporte'),
-        ('Publicidad', 'Publicidad'),
-        ('Ayuda Legal', 'Ayuda Legal'),
-        ('Ayuda Financiera', 'Ayuda Financiera'),
-        ('Otro', 'Otro'),
-    ])
-    contacto = models.CharField(max_length=100)
-    ubicacion = models.CharField(max_length=255, blank=True, null=True)
-
-    def __str__(self):
-        return self.nombre
+# Modelos eliminados: Proveedor, PedidoProveedor, DetallePedidoProveedor,
+# Comprador, PedidoComprador
+# No son necesarios para sistema SCADA industrial
 
 
 # Modelo de Inventario
@@ -551,7 +344,7 @@ class ItemInventario(models.Model):
 
     numero_serie = models.CharField(max_length=50, primary_key=True)  # Clave primaria personalizada
     inventario = models.ForeignKey('Inventario', on_delete=models.CASCADE, related_name="items")
-    proveedor = models.ForeignKey('Proveedor', on_delete=models.SET_NULL, null=True, related_name="items")
+    # Campo proveedor eliminado - no necesario para sistema SCADA
     seccion = models.ForeignKey('Seccion', on_delete=models.SET_NULL, null=True, blank=True)
     categoria = models.CharField(max_length=40, choices=TIPOS)
     nombre = models.CharField(max_length=100)
@@ -565,84 +358,8 @@ class ItemInventario(models.Model):
         return f"{self.numero_serie} - {self.nombre} ({self.inventario.nombre})"
 
 
-# Modificación del modelo PedidoProveedor
-class PedidoProveedor(models.Model):
-    proveedor = models.ForeignKey('Proveedor', on_delete=models.CASCADE, related_name='pedidos')
-    fecha_pedido = models.DateTimeField(auto_now_add=True)
-    fecha_recibido = models.DateTimeField(blank=True, null=True)
-    total_monto = models.DecimalField(max_digits=10, decimal_places=2)
-    empleado_encargado = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='pedidos_proveedor_realizados')
-    items = models.ManyToManyField('ItemInventario', through='DetallePedidoProveedor', related_name='items_pedidos_proveedor')
-    vehiculo_usado = models.ForeignKey('ItemInventario', on_delete=models.SET_NULL, null=True, blank=True, related_name='vehiculos_usados_en_pedidos')
-    factura = models.FileField(
-        upload_to='pedidos_proveedor/facturas/%Y/%m/%d/',
-        blank=True,
-        null=True,
-        help_text="Carga una factura o recibo relacionado con el pedido."
-    )
-    imagen_factura = models.ImageField(
-        upload_to='pedidos_proveedor/imagenes/%Y/%m/%d/',
-        blank=True,
-        null=True,
-        help_text="Carga una imagen del recibo relacionado con el pedido."
-    )
-
-    def __str__(self):
-        return f"Pedido a {self.proveedor.nombre} el {self.fecha_pedido}"
-
-class DetallePedidoProveedor(models.Model):
-    pedido = models.ForeignKey(PedidoProveedor, on_delete=models.CASCADE, related_name='detalles')
-    item = models.ForeignKey(ItemInventario, on_delete=models.CASCADE, related_name='detalles_pedido_proveedor')
-    cantidad_pedida = models.PositiveIntegerField()
-    cantidad_recibida = models.PositiveIntegerField(default=0)
-
-    def __str__(self):
-        return f"{self.cantidad_pedida}/{self.cantidad_recibida} de {self.item.nombre}"
-
-
-class Comprador(models.Model):
-    nombre = models.CharField(max_length=100)
-    contacto = models.CharField(max_length=100)
-    direccion = models.CharField(max_length=255)
-    email = models.EmailField(unique=True, blank=True, null=True)
-
-    def __str__(self):
-        return self.nombre
-
-
-# Modificación del modelo PedidoComprador
-class PedidoComprador(models.Model):
-    comprador = models.ForeignKey('Comprador', on_delete=models.CASCADE, related_name='pedidos')
-    fecha_pedido = models.DateTimeField(auto_now_add=True)
-    fecha_entrega = models.DateTimeField(blank=True, null=True)
-    total_monto = models.DecimalField(max_digits=10, decimal_places=2)
-    vehiculo_usado = models.ForeignKey('ItemInventario', on_delete=models.SET_NULL, null=True, blank=True, related_name='pedidos_transportados')
-    empleado_encargado = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='pedidos_realizados')
-    productos = models.ManyToManyField('ItemInventario', through='DetallePedidoComprador', related_name='pedidos')
-    factura = models.FileField(
-        upload_to='pedidos_comprador/facturas/%Y/%m/%d/',
-        blank=True,
-        null=True,
-        help_text="Carga una factura o recibo relacionado con el pedido."
-    )
-    imagen_factura = models.ImageField(
-        upload_to='pedidos_comprador/imagenes/%Y/%m/%d/',
-        blank=True,
-        null=True,
-        help_text="Carga una imagen del recibo relacionado con el pedido."
-    )
-
-    def __str__(self):
-        return f"Pedido {self.id} - {self.comprador.nombre}"
-
-
-class DetallePedidoComprador(models.Model):
-    pedido = models.ForeignKey(PedidoComprador, on_delete=models.CASCADE, related_name='detalles')
-    producto = models.ForeignKey(ItemInventario, on_delete=models.CASCADE, related_name='detalles_pedido')
-    cantidad = models.PositiveIntegerField()
-
-    def __str__(self):
-        return f"{self.cantidad} de {self.producto.nombre} en Pedido {self.pedido.id}"
+# Modelos PedidoProveedor, DetallePedidoProveedor, Comprador, PedidoComprador eliminados
+# No son necesarios para sistema SCADA industrial
 
 
 class BomboAlmacenamiento(models.Model):
@@ -707,21 +424,6 @@ class Receta(models.Model):
         return self.nombre
 
 
-# Reutilizamos ItemInventario como dispositivo
-class EstadoItem(models.Model):
-    """
-    Modelo para registrar estados de los items (pueden ser sensores, actuadores, etc.).
-    """
-    item = models.ForeignKey('ItemInventario', on_delete=models.CASCADE, related_name="estados")
-    timestamp = models.DateTimeField(default=now)
-    dato = models.FloatField()  # Ejemplo: nivel de líquido, velocidad, etc.
-    unidad = models.CharField(max_length=20, default="N/A")  # Ejemplo: litros, segundos, etc.
-
-    def __str__(self):
-        return f"{self.item.nombre} - {self.dato} {self.unidad} ({self.timestamp})"
-
-
-
 class DetalleReceta(models.Model):
     receta = models.ForeignKey(Receta, on_delete=models.CASCADE, related_name='detalles')
     ingrediente = models.ForeignKey(ItemInventario, on_delete=models.CASCADE, related_name='detalles_receta')
@@ -744,7 +446,7 @@ class EjecucionReceta(models.Model):
     ], default='PENDIENTE')
 
     def __str__(self):
-        return f"Ejecución de {self.receta.nombre} en {self.planta.nombre} ({self.tiempo_inicio})"
+        return f"Ejecución de {self.receta.nombre} en {self.seccion.nombre} ({self.tiempo_inicio})"
 
 class Produccion(models.Model):
     receta = models.ForeignKey(Receta, on_delete=models.CASCADE, related_name='producciones')
@@ -826,39 +528,934 @@ class RegistroPagoTarea(models.Model):
         return f"Pago de {self.monto} a {self.empleado} por tarea {self.tarea} el {self.fecha_pago}"
 
 
-# Modelo de Registro Financiero
-class RegistroFinanciero(models.Model):
-    TIPOS_TRANSACCION = [
-        ('INGRESO', 'Ingreso'),
-        ('GASTO', 'Gasto'),
-    ]
-    CATEGORIAS = [
-        ('SALARIOS', 'Salarios'),
-        ('IMPUESTOS', 'Impuestos'),
-        ('PROVEEDORES', 'Proveedores'),
-        ('SERVICIOS', 'Servicios Públicos (agua, luz, etc.)'),
-        ('VENTAS', 'Ventas'),
-        ('OTROS', 'Otros'),
-    ]
 
-    fabrica = models.ForeignKey('Fabrica', on_delete=models.CASCADE, related_name="registros_financieros")
-    tipo = models.CharField(max_length=20, choices=TIPOS_TRANSACCION)
-    categoria = models.CharField(max_length=50, choices=CATEGORIAS)
-    monto = models.DecimalField(max_digits=15, decimal_places=2)
-    fecha = models.DateField()
+# =============================================================================
+# MODELOS SCADA - Sistema de Control y Monitorización
+# =============================================================================
+
+class Sistema(models.Model):
+    """
+    Representa un sistema o línea de producción dentro de una planta.
+    Ejemplo: Sistema de Mezcla A, Línea de Producción 1, etc.
+    """
+    nombre = models.CharField(max_length=100)
+    fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='sistemas')
     descripcion = models.TextField(blank=True, null=True)
-    factura = models.FileField(
-        upload_to='finanzas/facturas/%Y/%m/%d/',
-        blank=True,
-        null=True,
-        help_text="Carga una factura o recibo en PDF relacionado con la transacción."
-    )
-    imagen_factura = models.ImageField(
-        upload_to='finanzas/imagenes/%Y/%m/%d/',
-        blank=True,
-        null=True,
-        help_text="Carga una imagen del recibo relacionado con la transacción."
-    )
-
+    activo = models.BooleanField(default=True)
+    
+    class Meta:
+        unique_together = ('nombre', 'fabrica')
+        verbose_name_plural = "Sistemas"
+    
     def __str__(self):
-        return f"{self.tipo} - {self.categoria} (${self.monto}) - {self.fecha}"
+        return f"{self.nombre} - {self.fabrica.nombre}"
+
+
+class DispositivoSCADA(models.Model):
+    """
+    Representa sensores, actuadores, máquinas y equipamiento SCADA.
+    """
+    CATEGORIAS = [
+        ('SENSOR_TEMPERATURA', 'Sensor de Temperatura'),
+        ('SENSOR_PRESION', 'Sensor de Presión'),
+        ('SENSOR_FLUJO', 'Sensor de Flujo'),
+        ('SENSOR_NIVEL', 'Sensor de Nivel'),
+        ('SENSOR_HUMEDAD', 'Sensor de Humedad'),
+        ('MOTOR', 'Motor'),
+        ('BOMBA', 'Bomba'),
+        ('VALVULA', 'Válvula'),
+        ('PLC', 'PLC'),
+        ('HMI', 'HMI'),
+        ('MEZCLADORA', 'Mezcladora'),
+        ('ENVASADORA', 'Envasadora'),
+        ('TRANSPORTADOR', 'Transportador'),
+        ('ROBOT', 'Robot'),
+        ('OTRO', 'Otro'),
+    ]
+    
+    ESTADOS = [
+        ('ONLINE', 'Online'),
+        ('OFFLINE', 'Offline'),
+        ('MANTENIMIENTO', 'En Mantenimiento'),
+        ('ERROR', 'Error'),
+    ]
+    
+    numero_serie = models.CharField(max_length=50, unique=True, primary_key=True)
+    nombre = models.CharField(max_length=100)
+    categoria = models.CharField(max_length=50, choices=CATEGORIAS)
+    sistema = models.ForeignKey(Sistema, on_delete=models.SET_NULL, null=True, blank=True, related_name='dispositivos')
+    seccion = models.ForeignKey(Seccion, on_delete=models.SET_NULL, null=True, blank=True, related_name='dispositivos')
+    inventario = models.ForeignKey(Inventario, on_delete=models.SET_NULL, null=True, blank=True, related_name='dispositivos')
+    
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='OFFLINE')
+    
+    # Configuración MQTT
+    topic_mqtt = models.CharField(max_length=255, blank=True, null=True, help_text="Topic MQTT para este dispositivo")
+    
+    # Metadatos
+    fecha_instalacion = models.DateField(default=now)
+    ultima_lectura = models.DateTimeField(null=True, blank=True)
+    descripcion = models.TextField(blank=True, null=True)
+    
+    class Meta:
+        verbose_name = "Dispositivo SCADA"
+        verbose_name_plural = "Dispositivos SCADA"
+    
+    def __str__(self):
+        return f"{self.numero_serie} - {self.nombre}"
+
+
+class Alarma(models.Model):
+    """
+    Sistema de alarmas SCADA para monitorización y alertas.
+    """
+    SEVERIDADES = [
+        ('ALTA', 'Alta'),
+        ('MEDIA', 'Media'),
+        ('BAJA', 'Baja'),
+    ]
+    
+    ESTADOS_ALARMA = [
+        ('ABIERTA', 'Abierta'),
+        ('CERRADA', 'Cerrada'),
+    ]
+    
+    fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='alarmas')
+    dispositivo = models.ForeignKey(DispositivoSCADA, on_delete=models.SET_NULL, null=True, blank=True, related_name='alarmas')
+    descripcion = models.TextField()
+    severidad = models.CharField(max_length=10, choices=SEVERIDADES)
+    estado = models.CharField(max_length=10, choices=ESTADOS_ALARMA, default='ABIERTA')
+    
+    fecha_hora_inicio = models.DateTimeField(auto_now_add=True)
+    fecha_hora_cierre = models.DateTimeField(null=True, blank=True)
+    
+    usuario_cierre = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='alarmas_cerradas')
+    notas_resolucion = models.TextField(blank=True, null=True)
+    
+    def __str__(self):
+        dispositivo_nombre = self.dispositivo.nombre if self.dispositivo else "Sistema"
+        return f"[{self.severidad}] {dispositivo_nombre} - {self.descripcion[:50]}"
+    
+    def cerrar_alarma(self, usuario, notas=''):
+        """Cierra una alarma activa"""
+        self.estado = 'CERRADA'
+        self.fecha_hora_cierre = now()
+        self.usuario_cierre = usuario
+        self.notas_resolucion = notas
+        self.save()
+        
+        # Actualizar contador de alarmas de la planta
+        if self.fabrica:
+            self.fabrica.actualizar_metricas()
+
+
+class LecturaSensor(models.Model):
+    """
+    Registro de lecturas de sensores - Time-series data
+    """
+    dispositivo = models.ForeignKey(DispositivoSCADA, on_delete=models.CASCADE, related_name='lecturas')
+    timestamp = models.DateTimeField(default=now, db_index=True)
+    valor = models.FloatField()
+    unidad = models.CharField(max_length=20, default="N/A")
+    
+    # Metadata adicional
+    calidad = models.CharField(max_length=20, default="GOOD", help_text="GOOD, BAD, UNCERTAIN")
+    
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['dispositivo', '-timestamp']),
+        ]
+        verbose_name = "Lectura de Sensor"
+        verbose_name_plural = "Lecturas de Sensores"
+    
+    def __str__(self):
+        return f"{self.dispositivo.nombre}: {self.valor} {self.unidad} ({self.timestamp})"
+
+
+class OrdenProduccion(models.Model):
+    """
+    Órdenes de producción para planificación y seguimiento.
+    """
+    ESTADOS_ORDEN = [
+        ('PENDIENTE', 'Pendiente'),
+        ('EN_PROCESO', 'En Proceso'),
+        ('COMPLETADA', 'Completada'),
+        ('CANCELADA', 'Cancelada'),
+    ]
+    
+    codigo = models.CharField(max_length=50, unique=True, editable=False)
+    producto = models.CharField(max_length=100)
+    cantidad = models.IntegerField()
+    
+    # Planificación
+    fecha_inicio = models.DateField()
+    hora_inicio = models.TimeField(default='08:00')
+    fecha_fin = models.DateField()
+    hora_fin = models.TimeField(default='17:00')
+    
+    # Asignación
+    fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='ordenes_produccion')
+    sistema = models.ForeignKey(Sistema, on_delete=models.SET_NULL, null=True, blank=True, related_name='ordenes')
+    dispositivo = models.ForeignKey(DispositivoSCADA, on_delete=models.SET_NULL, null=True, blank=True, related_name='ordenes')
+    
+    # Estado y progreso
+    estado = models.CharField(max_length=20, choices=ESTADOS_ORDEN, default='PENDIENTE')
+    progreso = models.IntegerField(default=0, help_text="Porcentaje de progreso 0-100")
+    
+    # Relación con receta/plantilla
+    receta = models.ForeignKey(Receta, on_delete=models.SET_NULL, null=True, blank=True, related_name='ordenes_produccion')
+    
+    # Metadata
+    creado_por = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='ordenes_creadas')
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    observaciones = models.TextField(blank=True, null=True)
+    
+    def save(self, *args, **kwargs):
+        if not self.codigo:
+            # Generar código único: OP-YYYY-NNNN
+            from datetime import datetime
+            year = datetime.now().year
+            count = OrdenProduccion.objects.filter(codigo__startswith=f'OP-{year}').count() + 1
+            self.codigo = f'OP-{year}-{count:04d}'
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.codigo} - {self.producto}"
+    
+    class Meta:
+        ordering = ['-fecha_creacion']
+        verbose_name = "Orden de Producción"
+        verbose_name_plural = "Órdenes de Producción"
+
+
+class PlantillaProduccion(models.Model):
+    """
+    Plantillas/Recetas mejoradas para procesos de producción.
+    Compatible con el componente FormularioPlantilla de la UI.
+    """
+    TIPOS = [
+        ('PRODUCCION', 'Producción'),
+        ('ESPECIALIDAD', 'Especialidad'),
+        ('MANTENIMIENTO', 'Mantenimiento'),
+        ('CALIBRACION', 'Calibración'),
+    ]
+    
+    nombre = models.CharField(max_length=100)
+    tipo = models.CharField(max_length=50, choices=TIPOS)
+    descripcion = models.TextField(blank=True, null=True)
+    
+    # Tiempo estimado
+    tiempo_horas = models.IntegerField(default=0)
+    tiempo_minutos = models.IntegerField(default=0)
+    
+    # Ingredientes/Materiales (almacenado como JSON o texto estructurado)
+    ingredientes_json = models.TextField(blank=True, null=True, help_text="JSON con lista de ingredientes")
+    
+    # Relación opcional con Receta existente
+    receta_base = models.ForeignKey(Receta, on_delete=models.SET_NULL, null=True, blank=True, related_name='plantillas')
+    
+    activo = models.BooleanField(default=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.nombre} ({self.tipo})"
+    
+    @property
+    def tiempo_estimado(self):
+        """Retorna el tiempo en formato legible"""
+        if self.tiempo_horas > 0 and self.tiempo_minutos > 0:
+            return f"{self.tiempo_horas}h {self.tiempo_minutos}m"
+        elif self.tiempo_horas > 0:
+            return f"{self.tiempo_horas}h"
+        else:
+            return f"{self.tiempo_minutos}m"
+    
+    class Meta:
+        verbose_name = "Plantilla de Producción"
+        verbose_name_plural = "Plantillas de Producción"
+
+
+class ConfiguracionMQTT(models.Model):
+    """
+    Configuración de servidor MQTT para comunicación IoT.
+    """
+    nombre = models.CharField(max_length=100, unique=True)
+    broker_url = models.CharField(max_length=255, help_text="URL del broker MQTT")
+    puerto = models.IntegerField(default=1883)
+    
+    # Autenticación
+    usuario = models.CharField(max_length=100, blank=True, null=True)
+    password = models.CharField(max_length=100, blank=True, null=True)
+    
+    # Opciones
+    usar_tls = models.BooleanField(default=False)
+    keep_alive = models.IntegerField(default=60, help_text="Keep alive en segundos")
+    
+    # Topics
+    topic_base = models.CharField(max_length=255, default="scada/", help_text="Topic base para suscripciones")
+    
+    activo = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return f"{self.nombre} ({self.broker_url}:{self.puerto})"
+    
+    class Meta:
+        verbose_name = "Configuración MQTT"
+        verbose_name_plural = "Configuraciones MQTT"
+
+
+class RegistroAuditoria(models.Model):
+    """
+    Registro de auditoría para tracking de acciones en el sistema.
+    """
+    TIPOS_ACCION = [
+        ('CREAR', 'Crear'),
+        ('MODIFICAR', 'Modificar'),
+        ('ELIMINAR', 'Eliminar'),
+        ('LOGIN', 'Inicio de Sesión'),
+        ('LOGOUT', 'Cierre de Sesión'),
+        ('ALARMA_ABIERTA', 'Alarma Abierta'),
+        ('ALARMA_CERRADA', 'Alarma Cerrada'),
+        ('ORDEN_CREADA', 'Orden Creada'),
+        ('ORDEN_COMPLETADA', 'Orden Completada'),
+        ('CONFIGURACION', 'Cambio de Configuración'),
+        ('OTRO', 'Otro'),
+    ]
+    
+    # Usuario que realiza la acción
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='acciones_auditoria')
+    
+    # Detalles de la acción
+    tipo_accion = models.CharField(max_length=50, choices=TIPOS_ACCION)
+    modelo = models.CharField(max_length=100, help_text="Modelo afectado")
+    objeto_id = models.CharField(max_length=100, blank=True, null=True, help_text="ID del objeto afectado")
+    descripcion = models.TextField()
+    
+    # Metadata
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    
+    # Datos adicionales (JSON)
+    datos_adicionales = models.TextField(blank=True, null=True, help_text="JSON con datos adicionales")
+    
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['-timestamp']),
+            models.Index(fields=['usuario', '-timestamp']),
+        ]
+        verbose_name = "Registro de Auditoría"
+        verbose_name_plural = "Registros de Auditoría"
+    
+    def __str__(self):
+        usuario_nombre = self.usuario.username if self.usuario else "Sistema"
+        return f"[{self.tipo_accion}] {usuario_nombre} - {self.descripcion[:50]} ({self.timestamp})"
+
+
+class IngredienteAlmacenamiento(models.Model):
+    """
+    Ingredientes disponibles en el sistema de almacenamiento.
+    Para uso con PlantillaProduccion.
+    """
+    nombre = models.CharField(max_length=100, unique=True)
+    categoria = models.CharField(max_length=50, blank=True, null=True)
+    unidad_medida = models.CharField(max_length=20, default="L")
+    stock_actual = models.FloatField(default=0)
+    stock_minimo = models.FloatField(default=0)
+    
+    # Relación con almacenamiento físico
+    bombo = models.ForeignKey(BomboAlmacenamiento, on_delete=models.SET_NULL, null=True, blank=True, related_name='ingredientes')
+    
+    activo = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return f"{self.nombre} ({self.stock_actual} {self.unidad_medida})"
+    
+    class Meta:
+        verbose_name = "Ingrediente"
+        verbose_name_plural = "Ingredientes"
+
+
+# ============================================================================
+# MODELOS SCADA ADICIONALES - Compatibilidad con SCADA-UI
+# ============================================================================
+
+class Notificacion(models.Model):
+    """
+    Sistema de notificaciones para usuarios del sistema SCADA.
+    Aparece en el componente NotificationsContext de la UI.
+    
+    Casos de uso:
+    - Notificar alarmas críticas
+    - Avisar de cambios en órdenes de producción
+    - Alertar sobre problemas de sensores
+    - Confirmar acciones exitosas
+    """
+    TIPOS = [
+        ('INFO', 'Información'),
+        ('WARNING', 'Advertencia'),
+        ('SUCCESS', 'Éxito'),
+        ('ERROR', 'Error'),
+    ]
+    
+    usuario = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='notificaciones',
+        help_text="Usuario que recibe la notificación"
+    )
+    
+    titulo = models.CharField(
+        max_length=200,
+        help_text="Título corto de la notificación"
+    )
+    
+    mensaje = models.TextField(
+        help_text="Mensaje detallado"
+    )
+    
+    tipo = models.CharField(
+        max_length=10,
+        choices=TIPOS,
+        default='INFO',
+        help_text="Tipo de notificación"
+    )
+    
+    fecha_hora = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        help_text="Fecha y hora de creación"
+    )
+    
+    leida = models.BooleanField(
+        default=False,
+        help_text="Indica si el usuario ya la leyó"
+    )
+    
+    # Generic relation para vincular con cualquier objeto
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True
+    )
+    object_id = models.PositiveIntegerField(null=True, blank=True)
+    content_object = GenericForeignKey('content_type', 'object_id')
+    
+    class Meta:
+        ordering = ['-fecha_hora']
+        verbose_name = 'Notificación'
+        verbose_name_plural = 'Notificaciones'
+        indexes = [
+            models.Index(fields=['usuario', '-fecha_hora']),
+            models.Index(fields=['leida', '-fecha_hora']),
+        ]
+    
+    def __str__(self):
+        return f"{self.titulo} - {self.usuario.username}"
+
+
+class MantenimientoProgramado(models.Model):
+    """
+    Planificación de mantenimientos futuros para plantas y dispositivos.
+    Aparece en PlanificacionProduccion.tsx junto con órdenes de producción.
+    
+    Diferencia con RegistroMantenimiento:
+    - MantenimientoProgramado: Para PLANIFICAR mantenimientos futuros
+    - RegistroMantenimiento: Para REGISTRAR mantenimientos ya REALIZADOS
+    """
+    ESTADOS = [
+        ('PROGRAMADO', 'Programado'),
+        ('EN_CURSO', 'En Curso'),
+        ('COMPLETADO', 'Completado'),
+        ('CANCELADO', 'Cancelado'),
+    ]
+    
+    # Identificación
+    nombre = models.CharField(
+        max_length=200,
+        help_text="Nombre descriptivo del mantenimiento"
+    )
+    
+    descripcion = models.TextField(
+        help_text="Descripción detallada de las tareas"
+    )
+    
+    # Programación
+    fecha_inicio = models.DateField(
+        help_text="Fecha de inicio planificada"
+    )
+    
+    hora_inicio = models.TimeField(
+        help_text="Hora de inicio planificada"
+    )
+    
+    fecha_fin = models.DateField(
+        help_text="Fecha de finalización planificada"
+    )
+    
+    hora_fin = models.TimeField(
+        help_text="Hora de finalización planificada"
+    )
+    
+    # Asignación
+    fabrica = models.ForeignKey(
+        Fabrica,
+        on_delete=models.CASCADE,
+        related_name='mantenimientos_programados',
+        help_text="Planta/fábrica donde se realizará"
+    )
+    
+    sistema = models.ForeignKey(
+        Sistema,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='mantenimientos_programados',
+        help_text="Sistema específico (opcional)"
+    )
+    
+    dispositivo = models.ForeignKey(
+        DispositivoSCADA,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='mantenimientos_programados',
+        help_text="Dispositivo/máquina específica (opcional)"
+    )
+    
+    # Estado
+    estado = models.CharField(
+        max_length=20,
+        choices=ESTADOS,
+        default='PROGRAMADO'
+    )
+    
+    # Personal asignado
+    personal_asignado = models.ManyToManyField(
+        Empleado,
+        blank=True,
+        related_name='mantenimientos_asignados',
+        help_text="Empleados asignados al mantenimiento"
+    )
+    
+    # Relación con registro de mantenimiento realizado
+    registro_mantenimiento = models.OneToOneField(
+        RegistroMantenimiento,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='mantenimiento_programado_origen',
+        help_text="Se crea automáticamente al completar el mantenimiento"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['fecha_inicio', 'hora_inicio']
+        verbose_name = 'Mantenimiento Programado'
+        verbose_name_plural = 'Mantenimientos Programados'
+        indexes = [
+            models.Index(fields=['fecha_inicio', 'estado']),
+            models.Index(fields=['fabrica', 'estado']),
+        ]
+    
+    def __str__(self):
+        return f"{self.nombre} - {self.fabrica.nombre} ({self.fecha_inicio})"
+    
+    @property
+    def duracion_planificada(self):
+        """Calcula la duración planificada del mantenimiento"""
+        from datetime import datetime
+        inicio = datetime.combine(self.fecha_inicio, self.hora_inicio)
+        fin = datetime.combine(self.fecha_fin, self.hora_fin)
+        return fin - inicio
+
+
+class UnidadAlmacenamiento(models.Model):
+    """
+    Unidades de almacenamiento genéricas (tanques, silos, depósitos).
+    Compatible con StorageContext de la UI (AdministracionAlmacenamiento.tsx).
+    
+    REEMPLAZA a BomboAlmacenamiento que era muy específico.
+    
+    Esta clase es más genérica y tiene todos los campos que la UI necesita:
+    - nodeId: para vincular con diagrama SCADA
+    - type: tank, silo, deposit
+    - temperature: monitorización de temperatura
+    - status: active, inactive, warning, error
+    """
+    TIPOS = [
+        ('TANK', 'Tanque'),
+        ('SILO', 'Silo'),
+        ('DEPOSIT', 'Depósito'),
+    ]
+    
+    ESTADOS = [
+        ('ACTIVE', 'Activo'),
+        ('INACTIVE', 'Inactivo'),
+        ('WARNING', 'Advertencia'),
+        ('ERROR', 'Error'),
+    ]
+    
+    # Identificación
+    inventario = models.ForeignKey(
+        Inventario,
+        on_delete=models.CASCADE,
+        related_name='unidades_almacenamiento',
+        help_text="Inventario al que pertenece"
+    )
+    
+    nombre = models.CharField(
+        max_length=100,
+        help_text="Nombre de la unidad (ej: Tanque A, Silo Norte)"
+    )
+    
+    tipo = models.CharField(
+        max_length=20,
+        choices=TIPOS,
+        help_text="Tipo de unidad de almacenamiento"
+    )
+    
+    # Contenido
+    contenido = models.CharField(
+        max_length=200,
+        help_text="Qué contiene actualmente (ej: Aceite de Oliva)"
+    )
+    
+    volumen_actual = models.FloatField(
+        default=0,
+        help_text="Volumen actual en la unidad especificada"
+    )
+    
+    capacidad = models.FloatField(
+        help_text="Capacidad máxima en la unidad especificada"
+    )
+    
+    unidad = models.CharField(
+        max_length=20,
+        default='L',
+        help_text="Unidad de medida (L, m³, kg, etc.)"
+    )
+    
+    # Monitorización
+    temperatura = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Temperatura en °C"
+    )
+    
+    estado = models.CharField(
+        max_length=20,
+        choices=ESTADOS,
+        default='ACTIVE',
+        help_text="Estado operativo de la unidad"
+    )
+    
+    # Relación con SCADA
+    node_id = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="ID del nodo en diagrama SCADA (ej: tank-1)"
+    )
+    
+    dispositivo_sensor = models.ForeignKey(
+        DispositivoSCADA,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='unidades_monitoreadas',
+        help_text="Sensor que monitorea esta unidad"
+    )
+    
+    # Auditoría
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['nombre']
+        verbose_name = 'Unidad de Almacenamiento'
+        verbose_name_plural = 'Unidades de Almacenamiento'
+        indexes = [
+            models.Index(fields=['node_id']),
+            models.Index(fields=['estado']),
+        ]
+    
+    def __str__(self):
+        return f"{self.nombre} ({self.contenido})"
+    
+    @property
+    def nivel_porcentaje(self):
+        """Calcula el porcentaje de llenado"""
+        if self.capacidad > 0:
+            return round((self.volumen_actual / self.capacidad) * 100, 2)
+        return 0
+    
+    @property
+    def espacio_disponible(self):
+        """Calcula el espacio disponible"""
+        return max(0, self.capacidad - self.volumen_actual)
+
+
+class HistorialProduccion(models.Model):
+    """
+    Historial de producciones finalizadas con métricas completas.
+    Se crea automáticamente cuando una OrdenProduccion se completa.
+    
+    Proporciona:
+    - Datos históricos para análisis
+    - Métricas de cumplimiento
+    - Costos reales vs planificados
+    - Base de datos para reportes y dashboards
+    """
+    # Referencia a la orden original
+    orden_produccion = models.OneToOneField(
+        OrdenProduccion,
+        on_delete=models.CASCADE,
+        related_name='historial',
+        help_text="Orden de producción que generó este historial"
+    )
+    
+    # Datos generales (desnormalizados para consultas rápidas)
+    producto = models.CharField(
+        max_length=200,
+        help_text="Nombre del producto (copiado de la orden)"
+    )
+    
+    fabrica = models.ForeignKey(
+        Fabrica,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='historial_producciones',
+        help_text="Planta donde se produjo"
+    )
+    
+    # Cantidades
+    cantidad_planificada = models.IntegerField(
+        help_text="Cantidad que se planificó producir"
+    )
+    
+    cantidad_producida = models.IntegerField(
+        help_text="Cantidad realmente producida"
+    )
+    
+    porcentaje_cumplimiento = models.FloatField(
+        help_text="Porcentaje de cumplimiento (producida/planificada * 100)"
+    )
+    
+    # Tiempos
+    tiempo_planificado = models.DurationField(
+        help_text="Tiempo que se planificó (hora_fin - hora_inicio)"
+    )
+    
+    tiempo_real = models.DurationField(
+        help_text="Tiempo que realmente tomó"
+    )
+    
+    fecha_inicio_real = models.DateTimeField(
+        help_text="Fecha y hora real de inicio"
+    )
+    
+    fecha_fin_real = models.DateTimeField(
+        help_text="Fecha y hora real de finalización"
+    )
+    
+    # Recursos utilizados
+    empleados_asignados = models.ManyToManyField(
+        Empleado,
+        blank=True,
+        related_name='producciones_historial',
+        help_text="Empleados que trabajaron en esta producción"
+    )
+    
+    receta_utilizada = models.ForeignKey(
+        Receta,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='producciones_historial',
+        help_text="Receta base utilizada"
+    )
+    
+    # Calidad
+    defectos_detectados = models.IntegerField(
+        default=0,
+        help_text="Cantidad de defectos detectados"
+    )
+    
+    porcentaje_calidad = models.FloatField(
+        default=100,
+        help_text="Porcentaje de calidad (100 = sin defectos)"
+    )
+    
+    # Costos (opcional)
+    costo_materiales = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Costo real de materiales"
+    )
+    
+    costo_mano_obra = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Costo real de mano de obra"
+    )
+    
+    costo_energia = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Costo de energía consumida"
+    )
+    
+    costo_total = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Costo total (suma de todos los costos)"
+    )
+    
+    # Observaciones
+    observaciones = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Observaciones generales sobre la producción"
+    )
+    
+    # Auditoría
+    fecha_registro = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Fecha cuando se creó este registro histórico"
+    )
+    
+    class Meta:
+        ordering = ['-fecha_fin_real']
+        verbose_name = 'Historial de Producción'
+        verbose_name_plural = 'Historiales de Producción'
+        indexes = [
+            models.Index(fields=['-fecha_fin_real']),
+            models.Index(fields=['fabrica', '-fecha_fin_real']),
+            models.Index(fields=['producto', '-fecha_fin_real']),
+        ]
+    
+    def __str__(self):
+        return f"{self.producto} - {self.fecha_fin_real.strftime('%Y-%m-%d')}"
+    
+    @property
+    def eficiencia_temporal(self):
+        """Calcula eficiencia temporal (tiempo_planificado / tiempo_real * 100)"""
+        if self.tiempo_real.total_seconds() > 0:
+            return round((self.tiempo_planificado.total_seconds() / self.tiempo_real.total_seconds()) * 100, 2)
+        return 0
+    
+    def save(self, *args, **kwargs):
+        """Calcula automáticamente algunos campos antes de guardar"""
+        # Calcular porcentaje de cumplimiento
+        if self.cantidad_planificada > 0:
+            self.porcentaje_cumplimiento = round(
+                (self.cantidad_producida / self.cantidad_planificada) * 100, 2
+            )
+        
+        # Calcular costo total si hay costos individuales
+        if self.costo_materiales or self.costo_mano_obra or self.costo_energia:
+            self.costo_total = (
+                (self.costo_materiales or 0) +
+                (self.costo_mano_obra or 0) +
+                (self.costo_energia or 0)
+            )
+        
+        super().save(*args, **kwargs)
+
+
+class ComunicacionMQTT(models.Model):
+    """
+    Registro histórico de comunicaciones MQTT para debugging y auditoría.
+    
+    Permite:
+    - Ver qué mensajes se enviaron/recibieron
+    - Debugging de problemas de comunicación
+    - Auditoría de comandos enviados a dispositivos
+    """
+    DIRECCIONES = [
+        ('PUBLICADO', 'Publicado'),
+        ('RECIBIDO', 'Recibido'),
+    ]
+    
+    configuracion = models.ForeignKey(
+        ConfiguracionMQTT,
+        on_delete=models.CASCADE,
+        related_name='comunicaciones',
+        help_text="Configuración MQTT utilizada"
+    )
+    
+    topic = models.CharField(
+        max_length=255,
+        db_index=True,
+        help_text="Topic MQTT (ej: scada/planta1/sensor1/temperatura)"
+    )
+    
+    payload = models.TextField(
+        help_text="Datos enviados/recibidos (JSON, plain text, etc.)"
+    )
+    
+    direccion = models.CharField(
+        max_length=20,
+        choices=DIRECCIONES,
+        help_text="Si fue publicado o recibido"
+    )
+    
+    timestamp = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        help_text="Momento exacto de la comunicación"
+    )
+    
+    qos = models.IntegerField(
+        default=0,
+        help_text="Quality of Service MQTT (0, 1, o 2)"
+    )
+    
+    # Relación con dispositivo (si aplica)
+    dispositivo = models.ForeignKey(
+        DispositivoSCADA,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='comunicaciones_mqtt',
+        help_text="Dispositivo relacionado (si aplica)"
+    )
+    
+    # Control de éxito/error
+    exitoso = models.BooleanField(
+        default=True,
+        help_text="Si la comunicación fue exitosa"
+    )
+    
+    mensaje_error = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Mensaje de error si falló"
+    )
+    
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = 'Comunicación MQTT'
+        verbose_name_plural = 'Comunicaciones MQTT'
+        indexes = [
+            models.Index(fields=['topic', '-timestamp']),
+            models.Index(fields=['dispositivo', '-timestamp']),
+            models.Index(fields=['exitoso', '-timestamp']),
+        ]
+    
+    def __str__(self):
+        return f"{self.direccion} - {self.topic} ({self.timestamp.strftime('%Y-%m-%d %H:%M:%S')})"
