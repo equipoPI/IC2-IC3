@@ -1,0 +1,28 @@
+[Unit]
+Description=Raspberry Pi SCADA Gateway
+Documentation=https://github.com/tu-repo/raspberry_gateway
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/opt/scada_gateway
+ExecStart=/opt/scada_gateway/venv/bin/python /opt/scada_gateway/src/gateway_main.py
+Restart=always
+RestartSec=10
+
+# Configuración de recursos
+LimitNOFILE=65536
+
+# Salidas de log
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=scada_gateway
+
+# Seguridad
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

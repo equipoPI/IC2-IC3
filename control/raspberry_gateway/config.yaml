@@ -1,0 +1,238 @@
+# Configuración del Gateway Raspberry Pi - Sistema SCADA
+
+# Configuración de comunicación serial con Arduino
+serial:
+  port: "/dev/ttyACM0"  # Cambiar a /dev/ttyUSB0 si es necesario
+  baudrate: 9600
+  timeout: 1.0
+  reconnect_delay: 5  # segundos
+  max_reconnect_attempts: 10
+  read_interval: 0.1  # segundos entre lecturas
+
+# Configuración del broker MQTT
+mqtt:
+  broker: "localhost"  # Cambiar por la IP del servidor MQTT
+  port: 1883
+  username: "scada_user"  # Usuario MQTT
+  password: "scada_pass"  # Contraseña MQTT
+  client_id: "raspberry_scada_gateway"
+  keepalive: 60
+  qos: 1  # 0=At most once, 1=At least once, 2=Exactly once
+  
+  # Topics base para la planta
+  topics:
+    base: "scada/planta1"
+    
+    # Publicación (Raspberry → App Web)
+    publish:
+      estado_general: "estado/general"
+      nivel_bombo1: "sensores/nivel/bombo1"
+      nivel_bombo2: "sensores/nivel/bombo2"
+      nivel_mezcla: "sensores/nivel/mezcla"
+      caudal_1: "sensores/caudal/1"
+      caudal_2: "sensores/caudal/2"
+      bomba1: "actuadores/bomba1"
+      bomba2: "actuadores/bomba2"
+      bomba_mezcla: "actuadores/bomba_mezcla"
+      mezclador: "actuadores/mezclador"
+      bomba_repo: "actuadores/bomba_reposicion"
+      tiempo_restante: "proceso/tiempo_restante"
+      alarmas: "alarmas"
+      diagnostico: "diagnostico"
+    
+    # Suscripción (App Web → Raspberry)
+    subscribe:
+      comandos_repo: "comandos/reposicion"
+      comandos_mezcla: "comandos/mezcla"
+      comandos_control: "comandos/control"
+      configuracion: "configuracion"
+      consultas: "consultas/historico"
+  
+  # Configuración TLS (opcional, para producción)
+  tls:
+    enabled: false
+    ca_certs: "/etc/ssl/certs/ca-certificates.crt"
+    certfile: null
+    keyfile: null
+
+# Base de datos local SQLite
+database:
+  path: "./data/scada_local.db"
+  retention_days: 7  # Mantener datos de última semana
+  backup_enabled: true
+  backup_path: "./backups"
+  backup_interval_hours: 24
+  auto_vacuum: true
+  
+  # Configuración de limpieza automática
+  cleanup:
+    enabled: true
+    interval_hours: 6
+    keep_critical_events: 30  # días
+
+# Sistema de diagnóstico
+diagnostics:
+  enabled: true
+  check_interval: 60  # segundos
+  
+  # Umbrales de alerta
+  thresholds:
+    temperature_warning: 70  # °C
+    temperature_critical: 80  # °C
+    cpu_warning: 80  # %
+    cpu_critical: 95  # %
+    memory_warning: 85  # %
+    memory_critical: 95  # %
+    disk_warning: 85  # %
+    disk_critical: 95  # %
+  
+  # Enviar diagnóstico por MQTT
+  publish_interval: 300  # segundos (5 minutos)
+
+# Sistema de logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
+  
+  # Archivo principal
+  main:
+    file: "./logs/gateway.log"
+    rotation: "100 MB"
+    retention: "30 days"
+    compression: "zip"
+  
+  # Logs específicos por módulo
+  modules:
+    serial:
+      file: "./logs/serial.log"
+      level: "DEBUG"
+    mqtt:
+      file: "./logs/mqtt.log"
+      level: "INFO"
+    database:
+      file: "./logs/database.log"
+      level: "INFO"
+    diagnostics:
+      file: "./logs/diagnostics.log"
+      level: "INFO"
+
+# API REST local (para configuración y consultas)
+api:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8000
+  reload: false  # Solo en desarrollo
+  log_level: "info"
+  
+  # Seguridad básica
+  auth:
+    enabled: false  # Activar en producción
+    api_key: "cambiar-esta-clave-secreta"
+
+# Mapeo del protocolo Arduino (Sistema_SCADA)
+arduino_protocol:
+  # Formato de recepción desde Arduino
+  # Campos separados por coma en el orden que Arduino los envía
+  receive_format:
+    - name: "nivel_bombo1"
+      index: 0
+      type: "float"
+    - name: "porcentaje_bombo1"
+      index: 1
+      type: "int"
+    - name: "nivel_bombo2"
+      index: 2
+      type: "float"
+    - name: "porcentaje_bombo2"
+      index: 3
+      type: "int"
+    - name: "nivel_mezcla"
+      index: 4
+      type: "float"
+    - name: "porcentaje_mezcla"
+      index: 5
+      type: "int"
+    - name: "caudal_1"
+      index: 6
+      type: "float"
+    - name: "caudal_2"
+      index: 7
+      type: "float"
+    - name: "estado_bomba1"
+      index: 8
+      type: "bool"
+    - name: "estado_bomba2"
+      index: 9
+      type: "bool"
+    - name: "estado_bomba_mezcla"
+      index: 10
+      type: "bool"
+    - name: "estado_mezclador"
+      index: 11
+      type: "bool"
+    - name: "estado_bomba_repo"
+      index: 12
+      type: "bool"
+    - name: "error"
+      index: 13
+      type: "int"
+    - name: "hora_restante"
+      index: 14
+      type: "int"
+    - name: "min_restante"
+      index: 15
+      type: "int"
+    - name: "estado_proceso"
+      index: 16
+      type: "int"
+  
+  # Comandos hacia Arduino
+  send_commands:
+    reposicion: "R{bombo}{valor}"  # Ej: R1050
+    frenar: "F"
+    detener: "D"
+    vaciar: "V"
+    continuar: "A"
+    hora: "H{valor}"
+    minuto: "M{valor}"
+    liquido_1: "L1{valor}"
+    liquido_2: "L2{valor}"
+
+# Configuración de la planta (puede venir del backend Django)
+planta:
+  id: "planta1"
+  nombre: "Planta de Mezclas - Prototipo IC1"
+  ubicacion: "Laboratorio"
+  descripcion: "Sistema SCADA de control de mezclas con 2 bombos de ingredientes y 1 bombo de mezcla"
+  
+  # Capacidades de los bombos (en litros)
+  capacidades:
+    bombo1: 100
+    bombo2: 100
+    bombo_mezcla: 200
+
+# Configuración de reconexión y recuperación
+recovery:
+  serial:
+    enabled: true
+    max_attempts: -1  # -1 = infinitos intentos
+    backoff_factor: 2  # Multiplicador de delay entre intentos
+    max_delay: 60  # segundos
+  
+  mqtt:
+    enabled: true
+    max_attempts: -1
+    backoff_factor: 2
+    max_delay: 60
+  
+  database:
+    enabled: true
+    max_attempts: 5
+    backoff_factor: 1.5
+
+# Modo de desarrollo
+development:
+  enabled: false  # Activar para pruebas sin hardware real
+  simulate_arduino: false
+  mock_data_interval: 2  # segundos
+  verbose_logging: true
