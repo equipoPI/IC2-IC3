@@ -1,10 +1,8 @@
 from django.contrib import admin
-# from .models import Sancion, Promocion, Transferencia, Falta, Vacacion, EventoEspecial
+from .models import Fabrica
 
-# admin.site.register(Sancion)
-# admin.site.register(Promocion)
-# admin.site.register(Transferencia)
-# admin.site.register(Falta)
-# admin.site.register(Vacacion)
-# admin.site.register(EventoEspecial)
-
+@admin.register(Fabrica)
+class FabricaAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'estado', 'porcentaje_produccion', 'alarmas_activas', 'fecha_creacion')
+    list_filter = ('estado', 'pais')
+    search_fields = ('nombre', 'ubicacion')

@@ -39,17 +39,17 @@ class Fabrica(models.Model):
     def actualizar_metricas(self):
         """Actualiza automáticamente las métricas de la planta"""
         # Contar alarmas activas
-        self.alarmas_activas = self.alarmas.filter(estado='ABIERTA').count()
+        # self.alarmas_activas = self.alarmas.filter(estado='ABIERTA').count()
         
-        # Determinar estado basado en alarmas
-        alarmas_criticas = self.alarmas.filter(estado='ABIERTA', severidad='ALTA').count()
-        alarmas_advertencia = self.alarmas.filter(estado='ABIERTA', severidad='MEDIA').count()
+        # # Determinar estado basado en alarmas
+        # alarmas_criticas = self.alarmas.filter(estado='ABIERTA', severidad='ALTA').count()
+        # alarmas_advertencia = self.alarmas.filter(estado='ABIERTA', severidad='MEDIA').count()
         
-        if alarmas_criticas > 0:
+        if self.alarmas_activas >= 5:
             self.estado = 'CRITICO'
-        elif alarmas_advertencia > 0:
+        elif self.alarmas_activas > 0:
             self.estado = 'ADVERTENCIA'
-        elif self.alarmas_activas == 0:
+        else:
             self.estado = 'OPERATIVO'
         
         self.save()
@@ -130,7 +130,7 @@ class Empleado(models.Model):
     fecha_contratacion = models.DateField()
     contacto = models.CharField(max_length=50)
     direccion = models.CharField(max_length=255)
-    tipo_tarifa = models.ForeignKey(TipoTarifa, on_delete=models.SET_NULL, null=True)
+    ##tipo_tarifa = models.ForeignKey(TipoTarifa, on_delete=models.SET_NULL, null=True)
     cbu = models.CharField(max_length=22, blank=True, null=True)  # CBU del empleado
     alias_bancario = models.CharField(max_length=50, blank=True, null=True)  # Alias bancario del empleado
     clave = models.CharField(max_length=10, unique=True, editable=False, default="")
