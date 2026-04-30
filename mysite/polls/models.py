@@ -807,53 +807,6 @@ class ConfiguracionMQTT(models.Model):
         verbose_name_plural = "Configuraciones MQTT"
 
 
-class RegistroAuditoria(models.Model):
-    """
-    Registro de auditoría para tracking de acciones en el sistema.
-    """
-    TIPOS_ACCION = [
-        ('CREAR', 'Crear'),
-        ('MODIFICAR', 'Modificar'),
-        ('ELIMINAR', 'Eliminar'),
-        ('LOGIN', 'Inicio de Sesión'),
-        ('LOGOUT', 'Cierre de Sesión'),
-        ('ALARMA_ABIERTA', 'Alarma Abierta'),
-        ('ALARMA_CERRADA', 'Alarma Cerrada'),
-        ('ORDEN_CREADA', 'Orden Creada'),
-        ('ORDEN_COMPLETADA', 'Orden Completada'),
-        ('CONFIGURACION', 'Cambio de Configuración'),
-        ('OTRO', 'Otro'),
-    ]
-    
-    # Usuario que realiza la acción
-    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='acciones_auditoria')
-    
-    # Detalles de la acción
-    tipo_accion = models.CharField(max_length=50, choices=TIPOS_ACCION)
-    modelo = models.CharField(max_length=100, help_text="Modelo afectado")
-    objeto_id = models.CharField(max_length=100, blank=True, null=True, help_text="ID del objeto afectado")
-    descripcion = models.TextField()
-    
-    # Metadata
-    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
-    ip_address = models.GenericIPAddressField(null=True, blank=True)
-    
-    # Datos adicionales (JSON)
-    datos_adicionales = models.TextField(blank=True, null=True, help_text="JSON con datos adicionales")
-    
-    class Meta:
-        ordering = ['-timestamp']
-        indexes = [
-            models.Index(fields=['-timestamp']),
-            models.Index(fields=['usuario', '-timestamp']),
-        ]
-        verbose_name = "Registro de Auditoría"
-        verbose_name_plural = "Registros de Auditoría"
-    
-    def __str__(self):
-        usuario_nombre = self.usuario.username if self.usuario else "Sistema"
-        return f"[{self.tipo_accion}] {usuario_nombre} - {self.descripcion[:50]} ({self.timestamp})"
-
 
 class IngredienteAlmacenamiento(models.Model):
     """
@@ -883,79 +836,79 @@ class IngredienteAlmacenamiento(models.Model):
 # MODELOS SCADA ADICIONALES - Compatibilidad con SCADA-UI
 # ============================================================================
 
-class Notificacion(models.Model):
-    """
-    Sistema de notificaciones para usuarios del sistema SCADA.
-    Aparece en el componente NotificationsContext de la UI.
+# class Notificacion(models.Model): --------RELACIONADO CON ALARMAS----------
+#     """
+#     Sistema de notificaciones para usuarios del sistema SCADA.
+#     Aparece en el componente NotificationsContext de la UI.
     
-    Casos de uso:
-    - Notificar alarmas críticas
-    - Avisar de cambios en órdenes de producción
-    - Alertar sobre problemas de sensores
-    - Confirmar acciones exitosas
-    """
-    TIPOS = [
-        ('INFO', 'Información'),
-        ('WARNING', 'Advertencia'),
-        ('SUCCESS', 'Éxito'),
-        ('ERROR', 'Error'),
-    ]
+#     Casos de uso:
+#     - Notificar alarmas críticas
+#     - Avisar de cambios en órdenes de producción
+#     - Alertar sobre problemas de sensores
+#     - Confirmar acciones exitosas
+#     """
+#     TIPOS = [
+#         ('INFO', 'Información'),
+#         ('WARNING', 'Advertencia'),
+#         ('SUCCESS', 'Éxito'),
+#         ('ERROR', 'Error'),
+#     ]
     
-    usuario = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='notificaciones',
-        help_text="Usuario que recibe la notificación"
-    )
+#     usuario = models.ForeignKey(
+#         User,
+#         on_delete=models.CASCADE,
+#         related_name='notificaciones',
+#         help_text="Usuario que recibe la notificación"
+#     )
     
-    titulo = models.CharField(
-        max_length=200,
-        help_text="Título corto de la notificación"
-    )
+#     titulo = models.CharField(
+#         max_length=200,
+#         help_text="Título corto de la notificación"
+#     )
     
-    mensaje = models.TextField(
-        help_text="Mensaje detallado"
-    )
+#     mensaje = models.TextField(
+#         help_text="Mensaje detallado"
+#     )
     
-    tipo = models.CharField(
-        max_length=10,
-        choices=TIPOS,
-        default='INFO',
-        help_text="Tipo de notificación"
-    )
+#     tipo = models.CharField(
+#         max_length=10,
+#         choices=TIPOS,
+#         default='INFO',
+#         help_text="Tipo de notificación"
+#     )
     
-    fecha_hora = models.DateTimeField(
-        auto_now_add=True,
-        db_index=True,
-        help_text="Fecha y hora de creación"
-    )
+#     fecha_hora = models.DateTimeField(
+#         auto_now_add=True,
+#         db_index=True,
+#         help_text="Fecha y hora de creación"
+#     )
     
-    leida = models.BooleanField(
-        default=False,
-        help_text="Indica si el usuario ya la leyó"
-    )
+#     leida = models.BooleanField(
+#         default=False,
+#         help_text="Indica si el usuario ya la leyó"
+#     )
     
-    # Generic relation para vincular con cualquier objeto
-    content_type = models.ForeignKey(
-        ContentType,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True
-    )
-    object_id = models.PositiveIntegerField(null=True, blank=True)
-    content_object = GenericForeignKey('content_type', 'object_id')
+#     # Generic relation para vincular con cualquier objeto
+#     content_type = models.ForeignKey(
+#         ContentType,
+#         on_delete=models.CASCADE,
+#         null=True,
+#         blank=True
+#     )
+#     object_id = models.PositiveIntegerField(null=True, blank=True)
+#     content_object = GenericForeignKey('content_type', 'object_id')
     
-    class Meta:
-        ordering = ['-fecha_hora']
-        verbose_name = 'Notificación'
-        verbose_name_plural = 'Notificaciones'
-        indexes = [
-            models.Index(fields=['usuario', '-fecha_hora']),
-            models.Index(fields=['leida', '-fecha_hora']),
-        ]
+#     class Meta:
+#         ordering = ['-fecha_hora']
+#         verbose_name = 'Notificación'
+#         verbose_name_plural = 'Notificaciones'
+#         indexes = [
+#             models.Index(fields=['usuario', '-fecha_hora']),
+#             models.Index(fields=['leida', '-fecha_hora']),
+#         ]
     
-    def __str__(self):
-        return f"{self.titulo} - {self.usuario.username}"
+#     def __str__(self):
+#         return f"{self.titulo} - {self.usuario.username}"
 
 
 class MantenimientoProgramado(models.Model):
@@ -1035,12 +988,12 @@ class MantenimientoProgramado(models.Model):
     )
     
     # Personal asignado
-    personal_asignado = models.ManyToManyField(
-        Empleado,
-        blank=True,
-        related_name='mantenimientos_asignados',
-        help_text="Empleados asignados al mantenimiento"
-    )
+    # personal_asignado = models.ManyToManyField(
+    #     Empleado,
+    #     blank=True,
+    #     related_name='mantenimientos_asignados',
+    #     help_text="Empleados asignados al mantenimiento"
+    # )
     
     # Relación con registro de mantenimiento realizado
     registro_mantenimiento = models.OneToOneField(
@@ -1076,7 +1029,7 @@ class MantenimientoProgramado(models.Model):
         return fin - inicio
 
 
-class UnidadAlmacenamiento(models.Model):
+class UnidadAlmacenamiento(models.Model): #VER SI SE UNIFICA CON INVENTARIO, ITEMINVENTARIO, BOMBOALMACENAMIENTO-------
     """
     Unidades de almacenamiento genéricas (tanques, silos, depósitos).
     Compatible con StorageContext de la UI (AdministracionAlmacenamiento.tsx).
