@@ -1,0 +1,17 @@
+# Datos generados por Mosquitto
+data/
+log/
+
+# Archivos de contraseñas (sensible)
+config/passwd
+config/passwd.tmp
+
+# Certificados SSL (sensible)
+config/certs/
+
+# Backups
+*.bak
+*.backup
+
+# Archivos de configuración local
+config/*.local.conf

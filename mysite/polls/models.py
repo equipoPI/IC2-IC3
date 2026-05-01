@@ -39,17 +39,17 @@ class Fabrica(models.Model):
     def actualizar_metricas(self):
         """Actualiza automáticamente las métricas de la planta"""
         # Contar alarmas activas
-        self.alarmas_activas = self.alarmas.filter(estado='ABIERTA').count()
+        # self.alarmas_activas = self.alarmas.filter(estado='ABIERTA').count()
         
-        # Determinar estado basado en alarmas
-        alarmas_criticas = self.alarmas.filter(estado='ABIERTA', severidad='ALTA').count()
-        alarmas_advertencia = self.alarmas.filter(estado='ABIERTA', severidad='MEDIA').count()
+        # # Determinar estado basado en alarmas
+        # alarmas_criticas = self.alarmas.filter(estado='ABIERTA', severidad='ALTA').count()
+        # alarmas_advertencia = self.alarmas.filter(estado='ABIERTA', severidad='MEDIA').count()
         
-        if alarmas_criticas > 0:
+        if self.alarmas_activas >= 5:
             self.estado = 'CRITICO'
-        elif alarmas_advertencia > 0:
+        elif self.alarmas_activas > 0:
             self.estado = 'ADVERTENCIA'
-        elif self.alarmas_activas == 0:
+        else:
             self.estado = 'OPERATIVO'
         
         self.save()
@@ -72,19 +72,19 @@ class Seccion(models.Model):
 
 
 
-class TipoTarifa(models.Model):
-    nombre = models.CharField(max_length=100)
-    tarifa_por_hora = models.DecimalField(max_digits=10, decimal_places=2)
-    tarifa_extra = models.DecimalField(max_digits=10, decimal_places=2)  # Incluye tarifa extra directamente
-    fecha_alta = models.DateField(default=now)
-    clave = models.CharField(max_length=150, unique=True, editable=False)
+# class TipoTarifa(models.Model):
+#     nombre = models.CharField(max_length=100)
+#     tarifa_por_hora = models.DecimalField(max_digits=10, decimal_places=2)
+#     tarifa_extra = models.DecimalField(max_digits=10, decimal_places=2)  # Incluye tarifa extra directamente
+#     fecha_alta = models.DateField(default=now)
+#     clave = models.CharField(max_length=150, unique=True, editable=False)
 
-    def save(self, *args, **kwargs):
-        self.clave = f"{self.nombre}-{self.fecha_alta.strftime('%Y%m%d')}"
-        super().save(*args, **kwargs)
+#     def save(self, *args, **kwargs):
+#         self.clave = f"{self.nombre}-{self.fecha_alta.strftime('%Y%m%d')}"
+#         super().save(*args, **kwargs)
 
-    def __str__(self):
-        return f"{self.nombre} - ${self.tarifa_por_hora}/hora, extra: ${self.tarifa_extra}/hora"
+#     def __str__(self):
+#         return f"{self.nombre} - ${self.tarifa_por_hora}/hora, extra: ${self.tarifa_extra}/hora"
 
 
 
@@ -130,7 +130,7 @@ class Empleado(models.Model):
     fecha_contratacion = models.DateField()
     contacto = models.CharField(max_length=50)
     direccion = models.CharField(max_length=255)
-    tipo_tarifa = models.ForeignKey(TipoTarifa, on_delete=models.SET_NULL, null=True)
+    ##tipo_tarifa = models.ForeignKey(TipoTarifa, on_delete=models.SET_NULL, null=True)
     cbu = models.CharField(max_length=22, blank=True, null=True)  # CBU del empleado
     alias_bancario = models.CharField(max_length=50, blank=True, null=True)  # Alias bancario del empleado
     clave = models.CharField(max_length=10, unique=True, editable=False, default="")
@@ -202,99 +202,99 @@ class EmpleadoSeccion(models.Model):
 # ============================================================================
 
 
-class CambioEmpleado(models.Model):
-    """
-    Registro de cambios en empleados (promociones, cambios de tipo, cambios de tarifa, etc.)
-    Reemplaza al modelo Promocion con funcionalidad más amplia.
-    """
-    TIPOS_CAMBIO = [
-        ('PROMOCION', 'Promoción'),
-        ('CAMBIO_TIPO', 'Cambio de Tipo'),
-        ('CAMBIO_TARIFA', 'Cambio de Tarifa'),
-        ('CAMBIO_ROL', 'Cambio de Rol'),
-        ('DEGRADACION', 'Degradación'),
-    ]
+# class CambioEmpleado(models.Model):
+#     """
+#     Registro de cambios en empleados (promociones, cambios de tipo, cambios de tarifa, etc.)
+#     Reemplaza al modelo Promocion con funcionalidad más amplia.
+#     """
+#     TIPOS_CAMBIO = [
+#         ('PROMOCION', 'Promoción'),
+#         ('CAMBIO_TIPO', 'Cambio de Tipo'),
+#         ('CAMBIO_TARIFA', 'Cambio de Tarifa'),
+#         ('CAMBIO_ROL', 'Cambio de Rol'),
+#         ('DEGRADACION', 'Degradación'),
+#     ]
     
-    ESTADOS = [
-        ('PENDIENTE', 'Pendiente'),
-        ('APROBADO', 'Aprobado'),
-        ('RECHAZADO', 'Rechazado'),
-    ]
+#     ESTADOS = [
+#         ('PENDIENTE', 'Pendiente'),
+#         ('APROBADO', 'Aprobado'),
+#         ('RECHAZADO', 'Rechazado'),
+#     ]
 
-    empleado = models.ForeignKey(
-        Empleado,
-        on_delete=models.CASCADE,
-        related_name='cambios_historial',
-        help_text="Empleado que sufre el cambio"
-    )
+#     empleado = models.ForeignKey(
+#         Empleado,
+#         on_delete=models.CASCADE,
+#         related_name='cambios_historial',
+#         help_text="Empleado que sufre el cambio"
+#     )
     
-    tipo_cambio = models.CharField(
-        max_length=20,
-        choices=TIPOS_CAMBIO,
-        help_text="Tipo de cambio realizado"
-    )
+#     tipo_cambio = models.CharField(
+#         max_length=20,
+#         choices=TIPOS_CAMBIO,
+#         help_text="Tipo de cambio realizado"
+#     )
     
-    # Valores anteriores
-    tipo_empleado_anterior = models.CharField(max_length=50, blank=True, null=True)
-    rango_anterior = models.CharField(max_length=50, blank=True, null=True)
-    tarifa_anterior = models.ForeignKey(
-        TipoTarifa,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='cambios_desde',
-        help_text="Tarifa anterior"
-    )
-    rol_anterior = models.CharField(max_length=100, blank=True, null=True)
+#     # Valores anteriores
+#     tipo_empleado_anterior = models.CharField(max_length=50, blank=True, null=True)
+#     rango_anterior = models.CharField(max_length=50, blank=True, null=True)
+#     tarifa_anterior = models.ForeignKey(
+#         TipoTarifa,
+#         on_delete=models.SET_NULL,
+#         null=True,
+#         blank=True,
+#         related_name='cambios_desde',
+#         help_text="Tarifa anterior"
+#     )
+#     rol_anterior = models.CharField(max_length=100, blank=True, null=True)
     
-    # Valores nuevos
-    tipo_empleado_nuevo = models.CharField(max_length=50, blank=True, null=True)
-    rango_nuevo = models.CharField(max_length=50, blank=True, null=True)
-    tarifa_nueva = models.ForeignKey(
-        TipoTarifa,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='cambios_hacia',
-        help_text="Tarifa nueva"
-    )
-    rol_nuevo = models.CharField(max_length=100, blank=True, null=True)
+#     # Valores nuevos
+#     tipo_empleado_nuevo = models.CharField(max_length=50, blank=True, null=True)
+#     rango_nuevo = models.CharField(max_length=50, blank=True, null=True)
+#     tarifa_nueva = models.ForeignKey(
+#         TipoTarifa,
+#         on_delete=models.SET_NULL,
+#         null=True,
+#         blank=True,
+#         related_name='cambios_hacia',
+#         help_text="Tarifa nueva"
+#     )
+#     rol_nuevo = models.CharField(max_length=100, blank=True, null=True)
     
-    # Metadatos del cambio
-    fecha_cambio = models.DateField(default=now)
-    motivo = models.TextField(blank=True, null=True, help_text="Motivo del cambio")
-    descripcion = models.CharField(max_length=255, blank=True, null=True)
+#     # Metadatos del cambio
+#     fecha_cambio = models.DateField(default=now)
+#     motivo = models.TextField(blank=True, null=True, help_text="Motivo del cambio")
+#     descripcion = models.CharField(max_length=255, blank=True, null=True)
     
-    estado = models.CharField(max_length=20, choices=ESTADOS, default='PENDIENTE')
-    solicitado_por = models.CharField(max_length=100, help_text="Quién solicitó el cambio")
-    autorizado_por = models.ForeignKey(
-        Empleado,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='cambios_autorizados',
-        help_text="Quién autorizó el cambio"
-    )
-    fecha_cambio_estado = models.DateTimeField(auto_now=True)
+#     estado = models.CharField(max_length=20, choices=ESTADOS, default='PENDIENTE')
+#     solicitado_por = models.CharField(max_length=100, help_text="Quién solicitó el cambio")
+#     autorizado_por = models.ForeignKey(
+#         Empleado,
+#         on_delete=models.SET_NULL,
+#         null=True,
+#         blank=True,
+#         related_name='cambios_autorizados',
+#         help_text="Quién autorizó el cambio"
+#     )
+#     fecha_cambio_estado = models.DateTimeField(auto_now=True)
     
-    class Meta:
-        ordering = ['-fecha_cambio']
-        verbose_name = 'Cambio de Empleado'
-        verbose_name_plural = 'Cambios de Empleados'
+#     class Meta:
+#         ordering = ['-fecha_cambio']
+#         verbose_name = 'Cambio de Empleado'
+#         verbose_name_plural = 'Cambios de Empleados'
     
-    def __str__(self):
-        return f"{self.empleado.nombre} - {self.get_tipo_cambio_display()} ({self.fecha_cambio})"
+#     def __str__(self):
+#         return f"{self.empleado.nombre} - {self.get_tipo_cambio_display()} ({self.fecha_cambio})"
 
 
-class Transferencia(models.Model):
-    """Transferencia de empleado a otra ubicación/planta"""
-    empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="transferencias")
-    nueva_direccion = models.CharField(max_length=255)
-    fecha = models.DateField()
-    autorizado_por = models.ForeignKey(Empleado, on_delete=models.SET_NULL, null=True, related_name="transferencias_autorizadas")
+# class Transferencia(models.Model):
+#     """Transferencia de empleado a otra ubicación/planta"""
+#     empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="transferencias")
+#     nueva_direccion = models.CharField(max_length=255)
+#     fecha = models.DateField()
+#     autorizado_por = models.ForeignKey(Empleado, on_delete=models.SET_NULL, null=True, related_name="transferencias_autorizadas")
 
-    def __str__(self):
-        return f"Transferencia de {self.empleado} a {self.nueva_direccion} el {self.fecha}"
+#     def __str__(self):
+#         return f"Transferencia de {self.empleado} a {self.nueva_direccion} el {self.fecha}"
 
 
 # ============================================================================
@@ -329,17 +329,17 @@ class Inventario(models.Model):
 
 class ItemInventario(models.Model):
     TIPOS = [
-        ('RESIDUO', 'Residuo'),
+     #   ('RESIDUO', 'Residuo'),
         ('PRODUCTO', 'Producto'),
         ('MATERIA PRIMA', 'Materia Prima'),
-        ('REPUESTO', 'Repuesto'),
-        ('COMPONENTE', 'Componente'),
-        ('MÁQUINA', 'Máquina'),
-        ('ACTUADOR/SENSOR', 'Actuador/Sensor'),
-        ('HERRAMIENTA', 'Herramienta'),
-        ('VEHÍCULO', 'Vehículo'),
-        ('ELECTRODOMÉSTICO', 'Electrodoméstico'),
-        ('VARIOS', 'Varios'),
+       # ('REPUESTO', 'Repuesto'),
+       # ('COMPONENTE', 'Componente'),
+       # ('MÁQUINA', 'Máquina'),
+       # ('ACTUADOR/SENSOR', 'Actuador/Sensor'),
+       # ('HERRAMIENTA', 'Herramienta'),
+       # ('VEHÍCULO', 'Vehículo'),
+       # ('ELECTRODOMÉSTICO', 'Electrodoméstico'),
+       # ('VARIOS', 'Varios'),
     ]
 
     numero_serie = models.CharField(max_length=50, primary_key=True)  # Clave primaria personalizada
@@ -361,24 +361,8 @@ class ItemInventario(models.Model):
 # Modelos PedidoProveedor, DetallePedidoProveedor, Comprador, PedidoComprador eliminados
 # No son necesarios para sistema SCADA industrial
 
-
-class BomboAlmacenamiento(models.Model):
-    inventario = models.ForeignKey(Inventario, on_delete=models.CASCADE, related_name="bombos")
-    nombre = models.CharField(max_length=100)
-    capacidad_total_litros = models.FloatField()  # Capacidad en litros
-    capacidad_usada_litros = models.FloatField(default=0)  # Cantidad actualmente almacenada
-    tipo_contenido = models.CharField(max_length=50, choices=[
-        ('LIQUIDO', 'Líquido'),
-        ('RESIDUO', 'Residuo'),
-    ])
-    descripcion = models.TextField(blank=True, null=True)
-
-    def __str__(self):
-        return f"{self.nombre} ({self.inventario.nombre})"
-
-    def espacio_disponible(self):
-        return self.capacidad_total_litros - self.capacidad_usada_litros
-
+# Modelo BomboAlmacenamiento eliminado - reemplazado por UnidadAlmacenamiento
+# que es más genérico y compatible con SCADA
 
 
 # Modelo de Historial de Movimientos entre Inventario y Secciones
@@ -423,7 +407,7 @@ class Receta(models.Model):
     def __str__(self):
         return self.nombre
 
-
+#VER SI AÑADIR TIEMPODETRABAJO
 class DetalleReceta(models.Model):
     receta = models.ForeignKey(Receta, on_delete=models.CASCADE, related_name='detalles')
     ingrediente = models.ForeignKey(ItemInventario, on_delete=models.CASCADE, related_name='detalles_receta')
@@ -460,16 +444,16 @@ class Produccion(models.Model):
     def __str__(self):
         return f"Producción de {self.receta.nombre} en {self.seccion.nombre} ({self.fecha_inicio})"
 
+#VER DE UNIR EJECUCIONRECETA Y PRODUCCION 
 
+# class DetalleResiduos(models.Model):
+#     produccion = models.ForeignKey(Produccion, on_delete=models.CASCADE, related_name='detalles_residuos')
+#     residuo = models.ForeignKey(ItemInventario, on_delete=models.CASCADE, related_name='detalles_residuos')
+#     cantidad_generada = models.FloatField()  # Cantidad generada (en kg, litros, unidades, etc.)
+#     unidad = models.CharField(max_length=50, choices=[('kg', 'Kilogramos'), ('litros', 'Litros'), ('unidades', 'Unidades')])
 
-class DetalleResiduos(models.Model):
-    produccion = models.ForeignKey(Produccion, on_delete=models.CASCADE, related_name='detalles_residuos')
-    residuo = models.ForeignKey(ItemInventario, on_delete=models.CASCADE, related_name='detalles_residuos')
-    cantidad_generada = models.FloatField()  # Cantidad generada (en kg, litros, unidades, etc.)
-    unidad = models.CharField(max_length=50, choices=[('kg', 'Kilogramos'), ('litros', 'Litros'), ('unidades', 'Unidades')])
-
-    def __str__(self):
-        return f"{self.cantidad_generada} {self.unidad} de {self.residuo.nombre} en {self.produccion}"
+#     def __str__(self):
+#         return f"{self.cantidad_generada} {self.unidad} de {self.residuo.nombre} en {self.produccion}"
 
 
 class RegistroMantenimiento(models.Model):
@@ -507,25 +491,27 @@ class RegistroMantenimiento(models.Model):
             f"{self.componente.nombre} - {self.estado} "
             f"(De {self.seccion_origen.nombre} a {self.seccion_destino.nombre})"
         )
+  
+#SIMPLICAR REGISTROMANTENIMIENTO Y QUE SOLO MUESTRE EL ESTADO DE LOS EQUIPOS (DISPONIBLE, EN MANTENIMIENTO, AVERIADO, TRABAJANDO)
 
-class RegistroPagoTarea(models.Model):
-    empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="pagos_por_tarea")
-    tarea = models.ForeignKey(RegistroMantenimiento, on_delete=models.CASCADE, related_name="pagos_asociados")
-    monto = models.DecimalField(max_digits=10, decimal_places=2)
-    fecha_pago = models.DateField(default=now)
-    metodo_pago = models.CharField(
-        max_length=50,
-        choices=[
-            ('TRANSFERENCIA', 'Transferencia Bancaria'),
-            ('EFECTIVO', 'Efectivo'),
-            ('CHEQUE', 'Cheque'),
-        ],
-        default='TRANSFERENCIA'
-    )
-    observaciones = models.TextField(blank=True, null=True)
+# class RegistroPagoTarea(models.Model):
+#     empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="pagos_por_tarea")
+#     tarea = models.ForeignKey(RegistroMantenimiento, on_delete=models.CASCADE, related_name="pagos_asociados")
+#     monto = models.DecimalField(max_digits=10, decimal_places=2)
+#     fecha_pago = models.DateField(default=now)
+#     metodo_pago = models.CharField(
+#         max_length=50,
+#         choices=[
+#             ('TRANSFERENCIA', 'Transferencia Bancaria'),
+#             ('EFECTIVO', 'Efectivo'),
+#             ('CHEQUE', 'Cheque'),
+#         ],
+#         default='TRANSFERENCIA'
+#     )
+#     observaciones = models.TextField(blank=True, null=True)
 
-    def __str__(self):
-        return f"Pago de {self.monto} a {self.empleado} por tarea {self.tarea} el {self.fecha_pago}"
+#     def __str__(self):
+#         return f"Pago de {self.monto} a {self.empleado} por tarea {self.tarea} el {self.fecha_pago}"
 
 
 
@@ -573,7 +559,7 @@ class DispositivoSCADA(models.Model):
         ('OTRO', 'Otro'),
     ]
     
-    ESTADOS = [
+    ESTADOS = [ #VER LOS ESTADOS DE REGISTROMANTENIMIENTO
         ('ONLINE', 'Online'),
         ('OFFLINE', 'Offline'),
         ('MANTENIMIENTO', 'En Mantenimiento'),
@@ -605,48 +591,48 @@ class DispositivoSCADA(models.Model):
         return f"{self.numero_serie} - {self.nombre}"
 
 
-class Alarma(models.Model):
-    """
-    Sistema de alarmas SCADA para monitorización y alertas.
-    """
-    SEVERIDADES = [
-        ('ALTA', 'Alta'),
-        ('MEDIA', 'Media'),
-        ('BAJA', 'Baja'),
-    ]
+# class Alarma(models.Model): -------SE COMENTO PORQUE ES DE BAJA PRIORIDAD------
+#     """
+#     Sistema de alarmas SCADA para monitorización y alertas.
+#     """
+#     SEVERIDADES = [
+#         ('ALTA', 'Alta'),
+#         ('MEDIA', 'Media'),
+#         ('BAJA', 'Baja'),
+#     ]
     
-    ESTADOS_ALARMA = [
-        ('ABIERTA', 'Abierta'),
-        ('CERRADA', 'Cerrada'),
-    ]
+#     ESTADOS_ALARMA = [
+#         ('ABIERTA', 'Abierta'),
+#         ('CERRADA', 'Cerrada'),
+#     ]
     
-    fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='alarmas')
-    dispositivo = models.ForeignKey(DispositivoSCADA, on_delete=models.SET_NULL, null=True, blank=True, related_name='alarmas')
-    descripcion = models.TextField()
-    severidad = models.CharField(max_length=10, choices=SEVERIDADES)
-    estado = models.CharField(max_length=10, choices=ESTADOS_ALARMA, default='ABIERTA')
+#     fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='alarmas')
+#     dispositivo = models.ForeignKey(DispositivoSCADA, on_delete=models.SET_NULL, null=True, blank=True, related_name='alarmas')
+#     descripcion = models.TextField()
+#     severidad = models.CharField(max_length=10, choices=SEVERIDADES)
+#     estado = models.CharField(max_length=10, choices=ESTADOS_ALARMA, default='ABIERTA')
     
-    fecha_hora_inicio = models.DateTimeField(auto_now_add=True)
-    fecha_hora_cierre = models.DateTimeField(null=True, blank=True)
+#     fecha_hora_inicio = models.DateTimeField(auto_now_add=True)
+#     fecha_hora_cierre = models.DateTimeField(null=True, blank=True)
     
-    usuario_cierre = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='alarmas_cerradas')
-    notas_resolucion = models.TextField(blank=True, null=True)
+#     usuario_cierre = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='alarmas_cerradas')
+#     notas_resolucion = models.TextField(blank=True, null=True)
     
-    def __str__(self):
-        dispositivo_nombre = self.dispositivo.nombre if self.dispositivo else "Sistema"
-        return f"[{self.severidad}] {dispositivo_nombre} - {self.descripcion[:50]}"
+#     def __str__(self):
+#         dispositivo_nombre = self.dispositivo.nombre if self.dispositivo else "Sistema"
+#         return f"[{self.severidad}] {dispositivo_nombre} - {self.descripcion[:50]}"
     
-    def cerrar_alarma(self, usuario, notas=''):
-        """Cierra una alarma activa"""
-        self.estado = 'CERRADA'
-        self.fecha_hora_cierre = now()
-        self.usuario_cierre = usuario
-        self.notas_resolucion = notas
-        self.save()
+#     def cerrar_alarma(self, usuario, notas=''):
+#         """Cierra una alarma activa"""
+#         self.estado = 'CERRADA'
+#         self.fecha_hora_cierre = now()
+#         self.usuario_cierre = usuario
+#         self.notas_resolucion = notas
+#         self.save()
         
-        # Actualizar contador de alarmas de la planta
-        if self.fabrica:
-            self.fabrica.actualizar_metricas()
+#         # Actualizar contador de alarmas de la planta
+#         if self.fabrica:
+#             self.fabrica.actualizar_metricas()
 
 
 class LecturaSensor(models.Model):
@@ -805,69 +791,48 @@ class ConfiguracionMQTT(models.Model):
         verbose_name_plural = "Configuraciones MQTT"
 
 
-class RegistroAuditoria(models.Model):
-    """
-    Registro de auditoría para tracking de acciones en el sistema.
-    """
-    TIPOS_ACCION = [
-        ('CREAR', 'Crear'),
-        ('MODIFICAR', 'Modificar'),
-        ('ELIMINAR', 'Eliminar'),
-        ('LOGIN', 'Inicio de Sesión'),
-        ('LOGOUT', 'Cierre de Sesión'),
-        ('ALARMA_ABIERTA', 'Alarma Abierta'),
-        ('ALARMA_CERRADA', 'Alarma Cerrada'),
-        ('ORDEN_CREADA', 'Orden Creada'),
-        ('ORDEN_COMPLETADA', 'Orden Completada'),
-        ('CONFIGURACION', 'Cambio de Configuración'),
-        ('OTRO', 'Otro'),
-    ]
-    
-    # Usuario que realiza la acción
-    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='acciones_auditoria')
-    
-    # Detalles de la acción
-    tipo_accion = models.CharField(max_length=50, choices=TIPOS_ACCION)
-    modelo = models.CharField(max_length=100, help_text="Modelo afectado")
-    objeto_id = models.CharField(max_length=100, blank=True, null=True, help_text="ID del objeto afectado")
-    descripcion = models.TextField()
-    
-    # Metadata
-    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
-    ip_address = models.GenericIPAddressField(null=True, blank=True)
-    
-    # Datos adicionales (JSON)
-    datos_adicionales = models.TextField(blank=True, null=True, help_text="JSON con datos adicionales")
-    
-    class Meta:
-        ordering = ['-timestamp']
-        indexes = [
-            models.Index(fields=['-timestamp']),
-            models.Index(fields=['usuario', '-timestamp']),
-        ]
-        verbose_name = "Registro de Auditoría"
-        verbose_name_plural = "Registros de Auditoría"
-    
-    def __str__(self):
-        usuario_nombre = self.usuario.username if self.usuario else "Sistema"
-        return f"[{self.tipo_accion}] {usuario_nombre} - {self.descripcion[:50]} ({self.timestamp})"
-
 
 class IngredienteAlmacenamiento(models.Model):
     """
     Ingredientes disponibles en el sistema de almacenamiento.
     Para uso con PlantillaProduccion.
+    Compatible con frontend StorageContext (Ingredient interface).
     """
+    # Categorías compatibles con frontend
+    CATEGORIAS = [
+        ('RAW_MATERIAL', 'Materia Prima'),
+        ('ADDITIVE', 'Aditivo'),
+        ('CATALYST', 'Catalizador'),
+        ('BASE', 'Base'),
+    ]
+    
     nombre = models.CharField(max_length=100, unique=True)
-    categoria = models.CharField(max_length=50, blank=True, null=True)
+    categoria = models.CharField(
+        max_length=20,
+        choices=CATEGORIAS,
+        default='RAW_MATERIAL',
+        help_text="Categoría del ingrediente"
+    )
     unidad_medida = models.CharField(max_length=20, default="L")
     stock_actual = models.FloatField(default=0)
     stock_minimo = models.FloatField(default=0)
     
-    # Relación con almacenamiento físico
-    bombo = models.ForeignKey(BomboAlmacenamiento, on_delete=models.SET_NULL, null=True, blank=True, related_name='ingredientes')
+    # Relación con UnidadAlmacenamiento (compatible con frontend)
+    unidad_almacenamiento = models.ForeignKey(
+        'UnidadAlmacenamiento',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ingredientes_disponibles',
+        help_text="Unidad de almacenamiento donde se encuentra este ingrediente"
+    )
     
     activo = models.BooleanField(default=True)
+    
+    @property
+    def available_in_storage(self):
+        """Propiedad para compatibilidad con frontend"""
+        return self.stock_actual > 0
     
     def __str__(self):
         return f"{self.nombre} ({self.stock_actual} {self.unidad_medida})"
@@ -881,79 +846,79 @@ class IngredienteAlmacenamiento(models.Model):
 # MODELOS SCADA ADICIONALES - Compatibilidad con SCADA-UI
 # ============================================================================
 
-class Notificacion(models.Model):
-    """
-    Sistema de notificaciones para usuarios del sistema SCADA.
-    Aparece en el componente NotificationsContext de la UI.
+# class Notificacion(models.Model): --------RELACIONADO CON ALARMAS----------
+#     """
+#     Sistema de notificaciones para usuarios del sistema SCADA.
+#     Aparece en el componente NotificationsContext de la UI.
     
-    Casos de uso:
-    - Notificar alarmas críticas
-    - Avisar de cambios en órdenes de producción
-    - Alertar sobre problemas de sensores
-    - Confirmar acciones exitosas
-    """
-    TIPOS = [
-        ('INFO', 'Información'),
-        ('WARNING', 'Advertencia'),
-        ('SUCCESS', 'Éxito'),
-        ('ERROR', 'Error'),
-    ]
+#     Casos de uso:
+#     - Notificar alarmas críticas
+#     - Avisar de cambios en órdenes de producción
+#     - Alertar sobre problemas de sensores
+#     - Confirmar acciones exitosas
+#     """
+#     TIPOS = [
+#         ('INFO', 'Información'),
+#         ('WARNING', 'Advertencia'),
+#         ('SUCCESS', 'Éxito'),
+#         ('ERROR', 'Error'),
+#     ]
     
-    usuario = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='notificaciones',
-        help_text="Usuario que recibe la notificación"
-    )
+#     usuario = models.ForeignKey(
+#         User,
+#         on_delete=models.CASCADE,
+#         related_name='notificaciones',
+#         help_text="Usuario que recibe la notificación"
+#     )
     
-    titulo = models.CharField(
-        max_length=200,
-        help_text="Título corto de la notificación"
-    )
+#     titulo = models.CharField(
+#         max_length=200,
+#         help_text="Título corto de la notificación"
+#     )
     
-    mensaje = models.TextField(
-        help_text="Mensaje detallado"
-    )
+#     mensaje = models.TextField(
+#         help_text="Mensaje detallado"
+#     )
     
-    tipo = models.CharField(
-        max_length=10,
-        choices=TIPOS,
-        default='INFO',
-        help_text="Tipo de notificación"
-    )
+#     tipo = models.CharField(
+#         max_length=10,
+#         choices=TIPOS,
+#         default='INFO',
+#         help_text="Tipo de notificación"
+#     )
     
-    fecha_hora = models.DateTimeField(
-        auto_now_add=True,
-        db_index=True,
-        help_text="Fecha y hora de creación"
-    )
+#     fecha_hora = models.DateTimeField(
+#         auto_now_add=True,
+#         db_index=True,
+#         help_text="Fecha y hora de creación"
+#     )
     
-    leida = models.BooleanField(
-        default=False,
-        help_text="Indica si el usuario ya la leyó"
-    )
+#     leida = models.BooleanField(
+#         default=False,
+#         help_text="Indica si el usuario ya la leyó"
+#     )
     
-    # Generic relation para vincular con cualquier objeto
-    content_type = models.ForeignKey(
-        ContentType,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True
-    )
-    object_id = models.PositiveIntegerField(null=True, blank=True)
-    content_object = GenericForeignKey('content_type', 'object_id')
+#     # Generic relation para vincular con cualquier objeto
+#     content_type = models.ForeignKey(
+#         ContentType,
+#         on_delete=models.CASCADE,
+#         null=True,
+#         blank=True
+#     )
+#     object_id = models.PositiveIntegerField(null=True, blank=True)
+#     content_object = GenericForeignKey('content_type', 'object_id')
     
-    class Meta:
-        ordering = ['-fecha_hora']
-        verbose_name = 'Notificación'
-        verbose_name_plural = 'Notificaciones'
-        indexes = [
-            models.Index(fields=['usuario', '-fecha_hora']),
-            models.Index(fields=['leida', '-fecha_hora']),
-        ]
+#     class Meta:
+#         ordering = ['-fecha_hora']
+#         verbose_name = 'Notificación'
+#         verbose_name_plural = 'Notificaciones'
+#         indexes = [
+#             models.Index(fields=['usuario', '-fecha_hora']),
+#             models.Index(fields=['leida', '-fecha_hora']),
+#         ]
     
-    def __str__(self):
-        return f"{self.titulo} - {self.usuario.username}"
+#     def __str__(self):
+#         return f"{self.titulo} - {self.usuario.username}"
 
 
 class MantenimientoProgramado(models.Model):
@@ -1033,12 +998,12 @@ class MantenimientoProgramado(models.Model):
     )
     
     # Personal asignado
-    personal_asignado = models.ManyToManyField(
-        Empleado,
-        blank=True,
-        related_name='mantenimientos_asignados',
-        help_text="Empleados asignados al mantenimiento"
-    )
+    # personal_asignado = models.ManyToManyField(
+    #     Empleado,
+    #     blank=True,
+    #     related_name='mantenimientos_asignados',
+    #     help_text="Empleados asignados al mantenimiento"
+    # )
     
     # Relación con registro de mantenimiento realizado
     registro_mantenimiento = models.OneToOneField(
@@ -1074,7 +1039,7 @@ class MantenimientoProgramado(models.Model):
         return fin - inicio
 
 
-class UnidadAlmacenamiento(models.Model):
+class UnidadAlmacenamiento(models.Model): #VER SI SE UNIFICA CON INVENTARIO, ITEMINVENTARIO, BOMBOALMACENAMIENTO-------
     """
     Unidades de almacenamiento genéricas (tanques, silos, depósitos).
     Compatible con StorageContext de la UI (AdministracionAlmacenamiento.tsx).

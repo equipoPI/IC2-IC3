@@ -1,6 +1,7 @@
-Django>=4.0
-psycopg2-binary>=2.9
-django-cors-headers>=4.0
+# ============================================================================
+# Backend Django - Dependencias
+# ============================================================================
+
 # Django y utilidades core
 Django>=5.1.1
 python-decouple>=3.8
@@ -9,14 +10,14 @@ python-decouple>=3.8
 djangorestframework>=3.14.0
 djangorestframework-simplejwt>=5.3.0
 
-# CORS headers para conectar con frontend
+# CORS headers para conectar con frontend React
 django-cors-headers>=4.3.0
 
 # Filtros y paginación avanzada
 django-filter>=23.0
 
-# Base de datos y migraciones
-psycopg2-binary>=2.9.9  # Para PostgreSQL (opcional)
+# Base de datos
+psycopg2-binary>=2.9.9  # PostgreSQL (producción con Docker)
 
 # Manejo de imágenes
 Pillow>=10.0.0
@@ -32,4 +33,4 @@ pytz>=2023.3
 django-extensions>=3.2.3
 
 # APIs y documentación
-drf-spectacular>=0.26.0  # Para generar documentación OpenAPI/Swagger
+drf-spectacular>=0.26.0  # OpenAPI/Swagger

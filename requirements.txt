@@ -1,0 +1,55 @@
+# ============================================================================
+# REQUERIMIENTOS CONSOLIDADOS - Proyecto IC2-IC3 SCADA
+# ============================================================================
+# 
+# Este archivo NO es necesario si usas Docker Compose.
+# Solo úsalo para desarrollo local sin Docker.
+#
+# Instalación:
+#   python -m venv venv
+#   venv\Scripts\activate  (Windows) o source venv/bin/activate (Linux/Mac)
+#   pip install -r requirements.txt
+# ============================================================================
+
+# ============================================================================
+# BACKEND DJANGO (mysite/)
+# ============================================================================
+
+# Django y utilidades core
+Django>=5.1.1
+python-decouple>=3.8
+
+# Django REST Framework
+djangorestframework>=3.14.0
+djangorestframework-simplejwt>=5.3.0
+
+# CORS headers para conectar con frontend React
+django-cors-headers>=4.3.0
+
+# Filtros y paginación avanzada
+django-filter>=23.0
+
+# Base de datos
+psycopg2-binary>=2.9.9  # PostgreSQL (producción)
+# SQLite viene incluido con Python (desarrollo)
+
+# Manejo de imágenes
+Pillow>=10.0.0
+
+# MQTT para IoT/SCADA
+paho-mqtt>=1.6.1
+
+# Utilidades adicionales
+python-dateutil>=2.8.2
+pytz>=2023.3
+
+# Para desarrollo
+django-extensions>=3.2.3
+
+# APIs y documentación
+drf-spectacular>=0.26.0  # OpenAPI/Swagger
+
+# ============================================================================
+# NOTA: Raspberry Pi Gateway tiene su propio requirements.txt
+# Ver: control/raspberry_gateway/requirements.txt
+# ============================================================================
