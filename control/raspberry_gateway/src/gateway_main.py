@@ -6,7 +6,7 @@ Integra Arduino Serial, MQTT, almacenamiento local y diagnósticos
 import sys
 import signal
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from loguru import logger
 import yaml
 
@@ -289,11 +289,34 @@ class SCADAGateway:
                 self.storage.save_event('comando', f'Reposición bombo {bombo} al {valor}%', data, 'mqtt')
                 
                 self.stats['commands_sent'] += 1
+                self._publish_command_response(
+                    data,
+                    topic,
+                    status="executed",
+                    code=0,
+                    result={"bombo": bombo, "valor": valor},
+                )
             else:
                 logger.error("Error enviando comando de reposición")
+                self._publish_command_response(
+                    data,
+                    topic,
+                    status="failed",
+                    code=3,
+                    result={},
+                    error="No se pudo enviar comando al Arduino",
+                )
         
         except Exception as e:
             logger.error(f"Error procesando comando de reposición: {e}")
+            self._publish_command_response(
+                data,
+                topic,
+                status="failed",
+                code=3,
+                result={},
+                error=str(e),
+            )
     
     def _on_command_mezcla(self, data: Dict[str, Any], topic: str):
         """
@@ -331,9 +354,29 @@ class SCADAGateway:
             # Guardar evento
             self.storage.save_event('comando', 'Configuración de mezcla', data, 'mqtt')
             self.stats['commands_sent'] += 1
+            self._publish_command_response(
+                data,
+                topic,
+                status="executed",
+                code=0,
+                result={
+                    "liquido_1": liquido_1,
+                    "liquido_2": liquido_2,
+                    "hora": hora,
+                    "minuto": minuto,
+                },
+            )
         
         except Exception as e:
             logger.error(f"Error procesando comando de mezcla: {e}")
+            self._publish_command_response(
+                data,
+                topic,
+                status="failed",
+                code=3,
+                result={},
+                error=str(e),
+            )
     
     def _on_command_control(self, data: Dict[str, Any], topic: str):
         """
@@ -359,11 +402,43 @@ class SCADAGateway:
                     logger.info(f"Comando de control enviado: {accion}")
                     self.storage.save_event('comando', f'Control: {accion}', data, 'mqtt')
                     self.stats['commands_sent'] += 1
+                    self._publish_command_response(
+                        data,
+                        topic,
+                        status="executed",
+                        code=0,
+                        result={"accion": accion},
+                    )
+                else:
+                    self._publish_command_response(
+                        data,
+                        topic,
+                        status="failed",
+                        code=3,
+                        result={},
+                        error="No se pudo enviar comando de control al Arduino",
+                    )
             else:
                 logger.warning(f"Acción de control desconocida: {accion}")
+                self._publish_command_response(
+                    data,
+                    topic,
+                    status="unsupported",
+                    code=2,
+                    result={"accion": accion},
+                    error="Acción no soportada",
+                )
         
         except Exception as e:
             logger.error(f"Error procesando comando de control: {e}")
+            self._publish_command_response(
+                data,
+                topic,
+                status="failed",
+                code=3,
+                result={},
+                error=str(e),
+            )
     
     def _on_command_config(self, data: Dict[str, Any], topic: str):
         """
@@ -375,6 +450,13 @@ class SCADAGateway:
         """
         logger.info(f"Configuración recibida: {data}")
         self.storage.save_event('config', 'Configuración actualizada', data, 'mqtt')
+        self._publish_command_response(
+            data,
+            topic,
+            status="executed",
+            code=0,
+            result={"config_aplicada": True},
+        )
     
     def _on_query_historico(self, data: Dict[str, Any], topic: str):
         """
@@ -403,11 +485,51 @@ class SCADAGateway:
                 'count': len(mediciones),
                 'data': mediciones[:100]  # Limitar para no saturar MQTT
             })
+
+            self._publish_command_response(
+                data,
+                topic,
+                status="executed",
+                code=0,
+                result={"registros": len(mediciones), "response_topic": response_topic},
+            )
             
             logger.info(f"Consulta histórica procesada: {len(mediciones)} registros")
         
         except Exception as e:
             logger.error(f"Error procesando consulta histórica: {e}")
+            self._publish_command_response(
+                data,
+                topic,
+                status="failed",
+                code=3,
+                result={},
+                error=str(e),
+            )
+
+    def _publish_command_response(
+        self,
+        data: Dict[str, Any],
+        topic: str,
+        status: str,
+        code: int,
+        result: Dict[str, Any],
+        error: Optional[str] = None,
+    ):
+        """
+        Publica respuesta estándar cmd/resp para integración tipo AURA.
+        """
+        if not self.mqtt:
+            return
+
+        self.mqtt.publish_command_response(
+            command_data=data,
+            source_topic=topic,
+            status=status,
+            code=code,
+            result=result,
+            error=error,
+        )
     
     def _on_diagnostic_alert(self, alert: Dict[str, Any]):
         """

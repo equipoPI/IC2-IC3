@@ -3,7 +3,7 @@
 # Configuración de comunicación serial con Arduino
 serial:
   port: "/dev/ttyACM0"  # Cambiar a /dev/ttyUSB0 si es necesario
-  baudrate: 9600
+  baudrate: 115200
   timeout: 1.0
   reconnect_delay: 5  # segundos
   max_reconnect_attempts: 10
@@ -15,12 +15,25 @@ mqtt:
   port: 1883
   username: "scada_user"  # Usuario MQTT
   password: "scada_pass"  # Contraseña MQTT
-  client_id: "raspberry_scada_gateway"
+  client_id: ""  # Si se deja vacío se genera con la MAC de la Raspberry
+  tenant: "rafaela"  # Planta/sede (ej: rafaela, susana, sauce_viejo, ramona)
+  gateway_id: ""  # Opcional: si vacío usa MAC de la Raspberry sin dos puntos
+  default_sector: "ala_este"
+  default_system: "linea_mezclado_1"
   keepalive: 60
   qos: 1  # 0=At most once, 1=At least once, 2=Exactly once
   
-  # Topics base para la planta
+  # Topics y compatibilidad
   topics:
+    # Filtros de suscripción estándar cmd
+    # Se soportan tokens {tenant} y {gateway_id}
+    subscribe_filters:
+      - "{tenant}/{gateway_id}/cmd/#"
+
+    # Mantener salida legacy SCADA mientras se migra frontend/backend
+    enable_legacy_topics: true
+
+    # Base topic legacy (SCADA actual)
     base: "scada/planta1"
     
     # Publicación (Raspberry → App Web)

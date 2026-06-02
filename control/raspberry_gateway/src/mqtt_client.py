@@ -1,16 +1,19 @@
 """
-Cliente MQTT para comunicación con la aplicación web
-Gestiona publicación de datos de sensores y suscripción a comandos
+Cliente MQTT para comunicación con la aplicación web.
+Soporta el esquema estándar tenant/gateway/sector/sistema/dispositivo/variable
+y mantiene compatibilidad con topics legacy de SCADA/planta.
 """
 
-import paho.mqtt.client as mqtt
 import json
+import re
 import time
-import threading
-from typing import Optional, Dict, Any, Callable
+import uuid
 from queue import Queue
-from loguru import logger
+from typing import Optional, Dict, Any, Callable, List
+
+import paho.mqtt.client as mqtt
 import yaml
+from loguru import logger
 
 
 class MQTTClient:
@@ -29,26 +32,36 @@ class MQTTClient:
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
         
-        self.mqtt_config = self.config['mqtt']
+        self.mqtt_config = self.config["mqtt"]
         
         # Configuración MQTT
-        self.broker = self.mqtt_config['broker']
-        self.port = self.mqtt_config['port']
-        self.username = self.mqtt_config.get('username')
-        self.password = self.mqtt_config.get('password')
-        self.client_id = self.mqtt_config['client_id']
-        self.keepalive = self.mqtt_config.get('keepalive', 60)
-        self.qos = self.mqtt_config.get('qos', 1)
-        
-        # Topics
-        self.base_topic = self.mqtt_config['topics']['base']
-        self.publish_topics = self.mqtt_config['topics']['publish']
-        self.subscribe_topics = self.mqtt_config['topics']['subscribe']
+        self.broker = self.mqtt_config["broker"]
+        self.port = self.mqtt_config["port"]
+        self.username = self.mqtt_config.get("username")
+        self.password = self.mqtt_config.get("password")
+        self.keepalive = self.mqtt_config.get("keepalive", 60)
+        self.qos = self.mqtt_config.get("qos", 1)
+
+        # Identidad estándar
+        self.tenant = self._sanitize_token(self.mqtt_config.get("tenant", "planta"))
+        self.gateway_id = self._resolve_gateway_id()
+        self.client_id = self.mqtt_config.get("client_id") or f"rpi_{self.gateway_id}"
+
+        # Defaults para publicar telemetría estructurada
+        self.default_sector = self._sanitize_token(self.mqtt_config.get("default_sector", "sector_general"))
+        self.default_system = self._sanitize_token(self.mqtt_config.get("default_system", "sistema_general"))
+
+        # Configuración de topics
+        topics_cfg = self.mqtt_config.get("topics", {})
+        self.enable_legacy_topics = topics_cfg.get("enable_legacy_topics", True)
+        self.legacy_base_topic = topics_cfg.get("base", "scada/planta1")
+        self.publish_topics = topics_cfg.get("publish", {})
+        self.subscribe_topics = topics_cfg.get("subscribe", {})
+        self.subscribe_filters = self._build_subscribe_filters(topics_cfg.get("subscribe_filters", []))
         
         # Cliente MQTT
         self.client: Optional[mqtt.Client] = None
         self.connected = False
-        self.running = False
         
         # Cola de mensajes a publicar
         self.publish_queue = Queue()
@@ -58,14 +71,101 @@ class MQTTClient:
         
         # Estadísticas
         self.stats = {
-            'messages_published': 0,
-            'messages_received': 0,
-            'errors': 0,
-            'last_publish_time': None,
-            'last_receive_time': None
+            "messages_published": 0,
+            "messages_received": 0,
+            "errors": 0,
+            "last_publish_time": None,
+            "last_receive_time": None,
         }
-        
-        logger.info(f"MQTTClient inicializado para {self.broker}:{self.port}")
+
+        logger.info(
+            f"MQTTClient inicializado para {self.broker}:{self.port} | "
+            f"tenant={self.tenant} gateway={self.gateway_id}"
+        )
+
+    @property
+    def topic_prefix(self) -> str:
+        return f"{self.tenant}/{self.gateway_id}"
+
+    def _sanitize_token(self, value: str) -> str:
+        token = str(value).strip().lower().replace(" ", "_")
+        token = re.sub(r"[^a-z0-9_\-]", "", token)
+        return token or "na"
+
+    def _resolve_gateway_id(self) -> str:
+        forced_id = self.mqtt_config.get("gateway_id")
+        if forced_id:
+            return self._sanitize_token(forced_id)
+
+        mac_int = uuid.getnode()
+        return f"{mac_int:012x}"
+
+    def _apply_topic_tokens(self, topic_filter: str) -> str:
+        return (
+            topic_filter.replace("{tenant}", self.tenant)
+            .replace("{gateway_id}", self.gateway_id)
+            .replace("{device}", self.gateway_id)
+        )
+
+    def _build_subscribe_filters(self, configured_filters: List[str]) -> List[str]:
+        filters: List[str] = [f"{self.topic_prefix}/cmd/#"]
+
+        for f in configured_filters:
+            filters.append(self._apply_topic_tokens(f))
+
+        if self.enable_legacy_topics:
+            for _, topic_path in self.subscribe_topics.items():
+                filters.append(f"{self.legacy_base_topic}/{topic_path}")
+
+        unique_filters = []
+        for f in filters:
+            if f and f not in unique_filters:
+                unique_filters.append(f)
+
+        return unique_filters
+
+    def _extract_command_meta(self, topic: str) -> Optional[Dict[str, str]]:
+        prefix = f"{self.topic_prefix}/cmd/"
+        if not topic.startswith(prefix):
+            return None
+
+        path = topic[len(prefix):].strip("/")
+        parts = [p for p in path.split("/") if p]
+        if not parts:
+            return None
+
+        action = parts[-1]
+        context = parts[:-1]
+
+        meta = {
+            "action": action,
+            "path": path,
+            "scope": "standard",
+        }
+
+        if len(context) >= 1:
+            meta["sector"] = self._sanitize_token(context[0])
+        if len(context) >= 2:
+            meta["system"] = self._sanitize_token(context[1])
+        if len(context) >= 3:
+            meta["device"] = self._sanitize_token(context[2])
+
+        return meta
+
+    def _extract_legacy_meta(self, topic: str) -> Optional[Dict[str, str]]:
+        if not topic.startswith(f"{self.legacy_base_topic}/"):
+            return None
+
+        relative_topic = topic.replace(f"{self.legacy_base_topic}/", "", 1)
+        for command_type in self.command_callbacks.keys():
+            if command_type in relative_topic:
+                return {
+                    "action": command_type,
+                    "path": relative_topic,
+                    "scope": "legacy",
+                }
+
+        return None
     
     def _on_connect(self, client, userdata, flags, rc):
         """
@@ -74,7 +174,7 @@ class MQTTClient:
         if rc == 0:
             self.connected = True
             logger.success(f"Conectado al broker MQTT: {self.broker}")
-            
+
             # Suscribirse a todos los topics de comandos
             self._subscribe_to_topics()
         else:
@@ -112,24 +212,34 @@ class MQTTClient:
             try:
                 data = json.loads(payload)
             except json.JSONDecodeError:
-                data = {'raw': payload}
-            
+                data = {"raw": payload}
+
             # Actualizar estadísticas
-            self.stats['messages_received'] += 1
-            self.stats['last_receive_time'] = time.time()
-            
-            # Determinar tipo de comando según topic
-            relative_topic = topic.replace(f"{self.base_topic}/", "")
-            
-            # Ejecutar callback correspondiente
-            for command_type, callback in self.command_callbacks.items():
-                if command_type in relative_topic:
-                    callback(data, topic)
-                    break
+            self.stats["messages_received"] += 1
+            self.stats["last_receive_time"] = time.time()
+
+            # Intentar parsear estándar y luego legacy
+            command_meta = self._extract_command_meta(topic)
+            if not command_meta:
+                command_meta = self._extract_legacy_meta(topic)
+
+            if not command_meta:
+                logger.debug(f"Mensaje recibido fuera de cmd/resp esperado: {topic}")
+                return
+
+            data["_topic_meta"] = command_meta
+
+            action = command_meta.get("action")
+            callback = self.command_callbacks.get(action)
+            if callback:
+                callback(data, topic)
+                return
+
+            logger.warning(f"No hay callback registrado para acción: {action}")
             
         except Exception as e:
             logger.error(f"Error procesando mensaje MQTT: {e}")
-            self.stats['errors'] += 1
+            self.stats["errors"] += 1
     
     def _on_publish(self, client, userdata, mid):
         """
@@ -141,10 +251,9 @@ class MQTTClient:
         """
         Suscribe a todos los topics configurados
         """
-        for topic_name, topic_path in self.subscribe_topics.items():
-            full_topic = f"{self.base_topic}/{topic_path}"
-            self.client.subscribe(full_topic, qos=self.qos)
-            logger.info(f"Suscrito a topic: {full_topic}")
+        for topic_filter in self.subscribe_filters:
+            self.client.subscribe(topic_filter, qos=self.qos)
+            logger.info(f"Suscrito a topic: {topic_filter}")
     
     def connect(self) -> bool:
         """
@@ -178,14 +287,22 @@ class MQTTClient:
                     tls_version=ssl.PROTOCOL_TLSv1_2
                 )
             
-            # Configurar will (mensaje de última voluntad)
-            will_topic = f"{self.base_topic}/estado/gateway"
+            # Configurar will (mensaje de última voluntad) en estándar
             self.client.will_set(
-                will_topic,
-                payload=json.dumps({'online': False, 'timestamp': time.time()}),
+                f"{self.topic_prefix}/status",
+                payload="offline",
                 qos=self.qos,
-                retain=True
+                retain=True,
             )
+
+            # Will legacy opcional
+            if self.enable_legacy_topics:
+                self.client.will_set(
+                    f"{self.legacy_base_topic}/estado/gateway",
+                    payload=json.dumps({"online": False, "timestamp": time.time()}),
+                    qos=self.qos,
+                    retain=True,
+                )
             
             # Conectar
             self.client.connect(self.broker, self.port, self.keepalive)
@@ -201,11 +318,18 @@ class MQTTClient:
             
             if self.connected:
                 # Publicar estado online
-                self.publish('estado/gateway', {
-                    'online': True,
-                    'timestamp': time.time(),
-                    'client_id': self.client_id
-                }, retain=True)
+                self.publish_status(True)
+
+                if self.enable_legacy_topics:
+                    self.publish(
+                        "estado/gateway",
+                        {
+                            "online": True,
+                            "timestamp": time.time(),
+                            "client_id": self.client_id,
+                        },
+                        retain=True,
+                    )
                 
                 return True
             else:
@@ -222,10 +346,17 @@ class MQTTClient:
         """
         if self.client:
             # Publicar estado offline
-            self.publish('estado/gateway', {
-                'online': False,
-                'timestamp': time.time()
-            }, retain=True)
+            self.publish_status(False)
+
+            if self.enable_legacy_topics:
+                self.publish(
+                    "estado/gateway",
+                    {
+                        "online": False,
+                        "timestamp": time.time(),
+                    },
+                    retain=True,
+                )
             
             self.client.loop_stop()
             self.client.disconnect()
@@ -251,15 +382,12 @@ class MQTTClient:
                 return False
             
             # Construir topic completo si es necesario
-            if not topic_name.startswith(self.base_topic):
-                # Verificar si está en publish_topics
-                if topic_name in self.publish_topics:
-                    topic_path = self.publish_topics[topic_name]
-                    full_topic = f"{self.base_topic}/{topic_path}"
-                else:
-                    full_topic = f"{self.base_topic}/{topic_name}"
-            else:
+            if topic_name.startswith(f"{self.tenant}/") or topic_name.startswith(self.legacy_base_topic):
                 full_topic = topic_name
+            elif self.enable_legacy_topics and topic_name in self.publish_topics:
+                full_topic = f"{self.legacy_base_topic}/{self.publish_topics[topic_name]}"
+            else:
+                full_topic = f"{self.topic_prefix}/{topic_name}"
             
             # Convertir a JSON si es dict
             if isinstance(data, dict):
@@ -276,19 +404,72 @@ class MQTTClient:
             )
             
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                self.stats['messages_published'] += 1
-                self.stats['last_publish_time'] = time.time()
+                self.stats["messages_published"] += 1
+                self.stats["last_publish_time"] = time.time()
                 logger.debug(f"Publicado en {full_topic}: {payload[:100]}")
                 return True
             else:
                 logger.error(f"Error publicando en {full_topic}: {result.rc}")
-                self.stats['errors'] += 1
+                self.stats["errors"] += 1
                 return False
         
         except Exception as e:
             logger.error(f"Error en publish: {e}")
-            self.stats['errors'] += 1
+            self.stats["errors"] += 1
             return False
+
+    def publish_status(self, online: bool):
+        status = "online" if online else "offline"
+        self.publish("status", status, retain=True, qos=self.qos)
+
+    def publish_structured(
+        self,
+        sector: str,
+        system: str,
+        device: str,
+        variable: str,
+        value: Any,
+        qos: Optional[int] = None,
+    ) -> bool:
+        full_topic = (
+            f"{self.topic_prefix}/"
+            f"{self._sanitize_token(sector)}/"
+            f"{self._sanitize_token(system)}/"
+            f"{self._sanitize_token(device)}/"
+            f"{self._sanitize_token(variable)}"
+        )
+        return self.publish(full_topic, value, retain=False, qos=qos)
+
+    def publish_command_response(
+        self,
+        command_data: Dict[str, Any],
+        source_topic: str,
+        status: str,
+        code: int,
+        result: Dict[str, Any],
+        error: Optional[str] = None,
+    ) -> bool:
+        meta = command_data.get("_topic_meta", {})
+        action = meta.get("action") or source_topic.rstrip("/").split("/")[-1]
+        sector = meta.get("sector")
+        system = meta.get("system")
+        device = meta.get("device")
+
+        payload = {
+            "command_id": command_data.get("command_id", f"cmd_{int(time.time() * 1000)}"),
+            "status": status,
+            "code": code,
+            "result": result,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "error": error,
+        }
+
+        if sector and system and device:
+            response_topic = f"resp/{sector}/{system}/{device}/{action}"
+        else:
+            response_topic = f"resp/{action}"
+
+        return self.publish(response_topic, payload, retain=False, qos=self.qos)
     
     def publish_sensor_data(self, sensor_data: Dict[str, Any]):
         """
@@ -298,88 +479,106 @@ class MQTTClient:
             sensor_data: Diccionario con datos del Arduino parseados
         """
         try:
-            # Publicar estado general
-            general_state = {
-                'timestamp': sensor_data.get('timestamp'),
-                'conectado': True,
-                'error': sensor_data.get('error', 0)
-            }
-            self.publish('estado_general', general_state)
-            
-            # Publicar niveles de bombos
-            self.publish('nivel_bombo1', {
-                'nivel': sensor_data.get('nivel_bombo1'),
-                'porcentaje': sensor_data.get('porcentaje_bombo1'),
-                'timestamp': sensor_data.get('timestamp')
-            })
-            
-            self.publish('nivel_bombo2', {
-                'nivel': sensor_data.get('nivel_bombo2'),
-                'porcentaje': sensor_data.get('porcentaje_bombo2'),
-                'timestamp': sensor_data.get('timestamp')
-            })
-            
-            self.publish('nivel_mezcla', {
-                'nivel': sensor_data.get('nivel_mezcla'),
-                'porcentaje': sensor_data.get('porcentaje_mezcla'),
-                'timestamp': sensor_data.get('timestamp')
-            })
-            
-            # Publicar caudales
-            self.publish('caudal_1', {
-                'caudal': sensor_data.get('caudal_1'),
-                'timestamp': sensor_data.get('timestamp')
-            })
-            
-            self.publish('caudal_2', {
-                'caudal': sensor_data.get('caudal_2'),
-                'timestamp': sensor_data.get('timestamp')
-            })
-            
-            # Publicar estados de actuadores
-            self.publish('bomba1', {
-                'estado': sensor_data.get('estado_bomba1'),
-                'timestamp': sensor_data.get('timestamp')
-            })
-            
-            self.publish('bomba2', {
-                'estado': sensor_data.get('estado_bomba2'),
-                'timestamp': sensor_data.get('timestamp')
-            })
-            
-            self.publish('bomba_mezcla', {
-                'estado': sensor_data.get('estado_bomba_mezcla'),
-                'timestamp': sensor_data.get('timestamp')
-            })
-            
-            self.publish('mezclador', {
-                'estado': sensor_data.get('estado_mezclador'),
-                'timestamp': sensor_data.get('timestamp')
-            })
-            
-            self.publish('bomba_repo', {
-                'estado': sensor_data.get('estado_bomba_repo'),
-                'timestamp': sensor_data.get('timestamp')
-            })
-            
-            # Publicar tiempo restante
-            self.publish('tiempo_restante', {
-                'horas': sensor_data.get('hora_restante'),
-                'minutos': sensor_data.get('min_restante'),
-                'timestamp': sensor_data.get('timestamp')
-            })
-            
-            # Publicar alarmas si hay error
-            if sensor_data.get('error', 0) != 0:
-                self.publish('alarmas', {
-                    'codigo_error': sensor_data.get('error'),
-                    'timestamp': sensor_data.get('timestamp'),
-                    'activa': True
-                })
+            sector = self.default_sector
+            system = self.default_system
+
+            # Telemetría estándar con payload simple
+            self.publish_structured(sector, system, "sensor_nivel_01", "valor_cm", sensor_data.get("nivel_bombo1", ""))
+            self.publish_structured(sector, system, "sensor_nivel_01", "porcentaje", sensor_data.get("porcentaje_bombo1", ""))
+            self.publish_structured(sector, system, "sensor_nivel_02", "valor_cm", sensor_data.get("nivel_bombo2", ""))
+            self.publish_structured(sector, system, "sensor_nivel_02", "porcentaje", sensor_data.get("porcentaje_bombo2", ""))
+            self.publish_structured(sector, system, "sensor_nivel_03", "valor_cm", sensor_data.get("nivel_mezcla", ""))
+            self.publish_structured(sector, system, "sensor_nivel_03", "porcentaje", sensor_data.get("porcentaje_mezcla", ""))
+
+            self.publish_structured(sector, system, "caudalimetro_01", "caudal_l", sensor_data.get("caudal_1", ""))
+            self.publish_structured(sector, system, "caudalimetro_02", "caudal_l", sensor_data.get("caudal_2", ""))
+
+            self.publish_structured(sector, system, "bomba_01", "estado", int(bool(sensor_data.get("estado_bomba1", False))))
+            self.publish_structured(sector, system, "bomba_02", "estado", int(bool(sensor_data.get("estado_bomba2", False))))
+            self.publish_structured(sector, system, "bomba_mezcla", "estado", int(bool(sensor_data.get("estado_bomba_mezcla", False))))
+            self.publish_structured(sector, system, "mezclador", "estado", int(bool(sensor_data.get("estado_mezclador", False))))
+            self.publish_structured(sector, system, "bomba_reposicion", "estado", int(bool(sensor_data.get("estado_bomba_repo", False))))
+
+            self.publish_structured(sector, system, "proceso", "hora_restante", sensor_data.get("hora_restante", ""))
+            self.publish_structured(sector, system, "proceso", "min_restante", sensor_data.get("min_restante", ""))
+            self.publish_structured(sector, system, "proceso", "estado", sensor_data.get("estado_proceso", ""))
+            self.publish_structured(sector, system, "proceso", "error", sensor_data.get("error", 0))
+
+            # Compatibilidad legacy opcional
+            if self.enable_legacy_topics:
+                self._publish_legacy_sensor_data(sensor_data)
         
         except Exception as e:
             logger.error(f"Error publicando datos de sensores: {e}")
-            self.stats['errors'] += 1
+            self.stats["errors"] += 1
+
+    def _publish_legacy_sensor_data(self, sensor_data: Dict[str, Any]):
+        # Publicar estado general
+        general_state = {
+            "timestamp": sensor_data.get("timestamp"),
+            "conectado": True,
+            "error": sensor_data.get("error", 0),
+        }
+        self.publish("estado_general", general_state)
+
+        # Publicar niveles de bombos
+        self.publish(
+            "nivel_bombo1",
+            {
+                "nivel": sensor_data.get("nivel_bombo1"),
+                "porcentaje": sensor_data.get("porcentaje_bombo1"),
+                "timestamp": sensor_data.get("timestamp"),
+            },
+        )
+        self.publish(
+            "nivel_bombo2",
+            {
+                "nivel": sensor_data.get("nivel_bombo2"),
+                "porcentaje": sensor_data.get("porcentaje_bombo2"),
+                "timestamp": sensor_data.get("timestamp"),
+            },
+        )
+        self.publish(
+            "nivel_mezcla",
+            {
+                "nivel": sensor_data.get("nivel_mezcla"),
+                "porcentaje": sensor_data.get("porcentaje_mezcla"),
+                "timestamp": sensor_data.get("timestamp"),
+            },
+        )
+
+        # Publicar caudales
+        self.publish("caudal_1", {"caudal": sensor_data.get("caudal_1"), "timestamp": sensor_data.get("timestamp")})
+        self.publish("caudal_2", {"caudal": sensor_data.get("caudal_2"), "timestamp": sensor_data.get("timestamp")})
+
+        # Publicar estados de actuadores
+        self.publish("bomba1", {"estado": sensor_data.get("estado_bomba1"), "timestamp": sensor_data.get("timestamp")})
+        self.publish("bomba2", {"estado": sensor_data.get("estado_bomba2"), "timestamp": sensor_data.get("timestamp")})
+        self.publish(
+            "bomba_mezcla",
+            {"estado": sensor_data.get("estado_bomba_mezcla"), "timestamp": sensor_data.get("timestamp")},
+        )
+        self.publish("mezclador", {"estado": sensor_data.get("estado_mezclador"), "timestamp": sensor_data.get("timestamp")})
+        self.publish("bomba_repo", {"estado": sensor_data.get("estado_bomba_repo"), "timestamp": sensor_data.get("timestamp")})
+
+        self.publish(
+            "tiempo_restante",
+            {
+                "horas": sensor_data.get("hora_restante"),
+                "minutos": sensor_data.get("min_restante"),
+                "timestamp": sensor_data.get("timestamp"),
+            },
+        )
+
+        if sensor_data.get("error", 0) != 0:
+            self.publish(
+                "alarmas",
+                {
+                    "codigo_error": sensor_data.get("error"),
+                    "timestamp": sensor_data.get("timestamp"),
+                    "activa": True,
+                },
+            )
     
     def register_command_callback(self, command_type: str, callback: Callable):
         """
@@ -403,68 +602,56 @@ class MQTTClient:
             **self.stats,
             'connected': self.connected,
             'broker': self.broker,
-            'base_topic': self.base_topic
+            'topic_prefix': self.topic_prefix,
+            'tenant': self.tenant,
+            'gateway_id': self.gateway_id,
         }
 
 
 # Ejemplo de uso
 if __name__ == "__main__":
-    # Configurar logger
     logger.add("logs/mqtt.log", rotation="10 MB")
-    
-    # Crear cliente MQTT
+
     mqtt_client = MQTTClient()
-    
-    # Definir callbacks para comandos
+
     def on_reposicion(data, topic):
-        print(f"Comando de reposición recibido: {data}")
-    
-    def on_mezcla(data, topic):
-        print(f"Comando de mezcla recibido: {data}")
-    
-    def on_control(data, topic):
-        print(f"Comando de control recibido: {data}")
-    
-    # Registrar callbacks
-    mqtt_client.register_command_callback('reposicion', on_reposicion)
-    mqtt_client.register_command_callback('mezcla', on_mezcla)
-    mqtt_client.register_command_callback('control', on_control)
-    
-    # Conectar
+        print(f"Comando de reposición recibido: {topic} -> {data}")
+
+    mqtt_client.register_command_callback("reposicion", on_reposicion)
+
     if mqtt_client.connect():
         print("Conectado a MQTT. Presiona Ctrl+C para salir...")
-        
+
         try:
-            # Publicar datos de prueba
             while True:
-                # Simular datos de sensores
                 test_data = {
-                    'timestamp': time.time(),
-                    'nivel_bombo1': 45.5,
-                    'porcentaje_bombo1': 45,
-                    'nivel_bombo2': 60.2,
-                    'porcentaje_bombo2': 60,
-                    'nivel_mezcla': 30.1,
-                    'porcentaje_mezcla': 30,
-                    'caudal_1': 5.5,
-                    'caudal_2': 4.2,
-                    'estado_bomba1': False,
-                    'estado_bomba2': False,
-                    'estado_bomba_mezcla': False,
-                    'estado_mezclador': True,
-                    'estado_bomba_repo': False,
-                    'error': 0,
-                    'hora_restante': 2,
-                    'min_restante': 30
+                    "timestamp": time.time(),
+                    "nivel_bombo1": 45.5,
+                    "porcentaje_bombo1": 45,
+                    "nivel_bombo2": 60.2,
+                    "porcentaje_bombo2": 60,
+                    "nivel_mezcla": 30.1,
+                    "porcentaje_mezcla": 30,
+                    "caudal_1": 5.5,
+                    "caudal_2": 4.2,
+                    "estado_bomba1": False,
+                    "estado_bomba2": False,
+                    "estado_bomba_mezcla": False,
+                    "estado_mezclador": True,
+                    "estado_bomba_repo": False,
+                    "error": 0,
+                    "hora_restante": 2,
+                    "min_restante": 30,
+                    "estado_proceso": 1,
                 }
-                
+
                 mqtt_client.publish_sensor_data(test_data)
-                
+
                 stats = mqtt_client.get_stats()
                 print(f"Stats: {stats}")
-                
+
                 time.sleep(5)
-        
+
         except KeyboardInterrupt:
             print("\nDeteniendo...")
             mqtt_client.disconnect()
