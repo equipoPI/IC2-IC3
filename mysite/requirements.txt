@@ -33,3 +33,5 @@ django-extensions>=3.2.3
 
 # APIs y documentación
 drf-spectacular>=0.26.0  # Para generar documentación OpenAPI/Swagger
+
+django-cors-headers

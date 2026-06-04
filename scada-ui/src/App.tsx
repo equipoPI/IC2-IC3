@@ -2,6 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import FabricasDashboard from "@/components/FabricasDashboard";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import MainLayout from "@/components/layout/MainLayout";
 import Dashboard from "@/pages/Dashboard";
@@ -34,6 +35,8 @@ const ProtectedRoutes = () => {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
+        {/* TU NUEVA RUTA DE PRUEBA AQUÍ */}
+        <Route path="/prueba-api" element={<FabricasDashboard />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -46,6 +49,7 @@ const ProtectedRoutes = () => {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/empleados" element={<GestionEmpleados />} />
         <Route path="/plantas" element={<GestionPlantas />} />
+       
         <Route path="/sensores" element={<GestionSensores />} />
         <Route path="/monitorizacion" element={<MonitorizacionSCADA />} />
         <Route path="/scada" element={<VisualizacionSCADA />} />

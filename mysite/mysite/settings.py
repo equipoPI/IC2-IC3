@@ -38,17 +38,15 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # Django REST Framework
     'rest_framework',
     'rest_framework.authtoken',
-    # CORS headers para conectar con el frontend React
-    'corsheaders',
+    'corsheaders',#para conectar con el frontend React
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'corsheaders.middleware.CorsMiddleware',  # Debe estar antes de CommonMiddleware
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # Debe estar antes de CommonMiddleware
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -263,7 +261,8 @@ LOGGING = {
         },
     },
 }
-
+# Habilita el acceso desde cualquier puerto/dominio (Ideal para desarrollo)
+CORS_ALLOW_ALL_ORIGINS = True
 # Para usar en el código:
 # import logging
 # logger = logging.getLogger('scada')
