@@ -11,12 +11,12 @@ serial:
 
 # Configuración del broker MQTT
 mqtt:
-  broker: "localhost"  # Cambiar por la IP del servidor MQTT
+  broker: "192.168.137.1"
   port: 1883
   username: "scada_user"  # Usuario MQTT
   password: "scada_pass"  # Contraseña MQTT
   client_id: ""  # Si se deja vacío se genera con la MAC de la Raspberry
-  tenant: "rafaela"  # Planta/sede (ej: rafaela, susana, sauce_viejo, ramona)
+  tenant: "rafaela"
   gateway_id: ""  # Opcional: si vacío usa MAC de la Raspberry sin dos puntos
   default_sector: "ala_este"
   default_system: "linea_mezclado_1"

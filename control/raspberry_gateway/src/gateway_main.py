@@ -6,6 +6,7 @@ Integra Arduino Serial, MQTT, almacenamiento local y diagnósticos
 import sys
 import signal
 import time
+from pathlib import Path
 from typing import Dict, Any, Optional
 from loguru import logger
 import yaml
@@ -34,21 +35,23 @@ class SCADAGateway:
         logger.info("=" * 60)
         
         # Cargar configuración
-        with open(config_path, 'r') as f:
+        resolved_config_path = self._resolve_config_path(config_path)
+        self.config_path = str(resolved_config_path)
+        with open(resolved_config_path, 'r') as f:
             self.config = yaml.safe_load(f)
-        
+
         # Configurar logging
         self._configure_logging()
-        
+
         # Inicializar componentes
         self.arduino: Optional[ArduinoSerial] = None
         self.mqtt: Optional[MQTTClient] = None
         self.storage: Optional[DataStorage] = None
         self.diagnostics: Optional[SystemDiagnostics] = None
-        
+
         # Estado
         self.running = False
-        
+
         # Estadísticas
         self.stats = {
             'start_time': time.time(),
@@ -56,11 +59,26 @@ class SCADAGateway:
             'commands_sent': 0,
             'errors': 0
         }
-        
+
         # Inicializar componentes
         self._init_components()
-        
+
         logger.success("Gateway inicializado correctamente")
+
+    def _resolve_config_path(self, config_path: str) -> Path:
+        """
+        Resuelve la ruta del archivo de configuración de forma robusta.
+        """
+        config_candidate = Path(config_path)
+        if config_candidate.is_file():
+            return config_candidate
+
+        # Soporta ejecución como módulo desde la raíz del repositorio.
+        gateway_root_config = Path(__file__).resolve().parent.parent / config_path
+        if gateway_root_config.is_file():
+            return gateway_root_config
+
+        raise FileNotFoundError(f"No se encontró archivo de configuración: {config_path}")
     
     def _configure_logging(self):
         """
@@ -96,18 +114,18 @@ class SCADAGateway:
         try:
             # Almacenamiento
             logger.info("Inicializando sistema de almacenamiento...")
-            self.storage = DataStorage()
+            self.storage = DataStorage(config_path=self.config_path)
             self.storage.save_event('system', 'Gateway iniciado')
             
             # Arduino Serial
             logger.info("Inicializando comunicación con Arduino...")
-            self.arduino = ArduinoSerial()
+            self.arduino = ArduinoSerial(config_path=self.config_path)
             self.arduino.set_data_callback(self._on_arduino_data)
             self.arduino.set_error_callback(self._on_arduino_error)
             
             # Cliente MQTT
             logger.info("Inicializando cliente MQTT...")
-            self.mqtt = MQTTClient()
+            self.mqtt = MQTTClient(config_path=self.config_path)
             self.mqtt.register_command_callback('reposicion', self._on_command_reposicion)
             self.mqtt.register_command_callback('mezcla', self._on_command_mezcla)
             self.mqtt.register_command_callback('control', self._on_command_control)
@@ -116,7 +134,7 @@ class SCADAGateway:
             
             # Diagnósticos
             logger.info("Inicializando sistema de diagnóstico...")
-            self.diagnostics = SystemDiagnostics()
+            self.diagnostics = SystemDiagnostics(config_path=self.config_path)
             self.diagnostics.set_alert_callback(self._on_diagnostic_alert)
             self.diagnostics.set_publish_callback(self._on_diagnostic_publish)
             
