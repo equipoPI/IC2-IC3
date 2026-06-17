@@ -1,0 +1,148 @@
+# =============================================================================
+# COMANDOS ÚTILES PARA EL ENTORNO DE DESARROLLO (DOCKER & PYTHON VENV)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. DOCKER Y DOCKER COMPOSE (Orquestación del Stack completo)
+# -----------------------------------------------------------------------------
+
+# Levantar el entorno por primera vez o en segundo plano (Recomendado)
+docker compose up -d
+
+# Levantar reconstruyendo las imágenes (Útil tras modificar Dockerfile o dependencies)
+docker compose up -d --build
+
+# Ver el estado operativo de los contenedores
+docker compose ps
+
+# Apagar y remover los contenedores activos deteniendo el stack
+docker compose down
+
+# Eliminar contenedores, volúmenes de datos y redes creadas (Limpieza total)
+docker compose down -v
+
+# Monitorear logs de todos los servicios en tiempo real (Interactivo)
+docker compose logs -f
+
+# Ver logs de un contenedor específico (ejemplo: logs del backend)
+docker compose logs --tail 100 -f backend
+
+# Reiniciar todos los servicios del stack
+docker compose restart
+
+# Reiniciar un servicio puntual (ejemplo: motor de base de datos)
+docker compose restart db
+
+# Ejecutar comandos directamente dentro de un contenedor en ejecución (ejemplo: Bash del backend)
+docker compose exec backend bash
+
+
+# -----------------------------------------------------------------------------
+# 2. OPERACIONES DENTRO DEL CONTENEDOR BACKEND (DJANGO / BD)
+# -----------------------------------------------------------------------------
+
+# Generar archivos de migraciones tras alterar modelos en polls/models.py
+docker compose exec backend python manage.py makemigrations
+
+# Aplicar las migraciones a la base de datos PostgreSQL
+docker compose exec backend python manage.py migrate
+
+# Crear un superusuario de administración para el panel Django (/admin)
+docker compose exec backend python manage.py createsuperuser
+
+# Arrancar el daemon de escucha MQTT de fondo (Worker persistente)
+docker compose exec -d backend sh -c "python -u manage.py mqtt_listener > /app/mqtt_worker.log 2>&1"
+
+# Inspeccionar logs de telemetría del daemon MQTT en ejecución
+docker compose exec backend cat /app/mqtt_worker.log
+
+# Abrir el Shell interactivo del ORM de Django
+docker compose exec backend python manage.py shell
+
+
+# -----------------------------------------------------------------------------
+# 3. ENTORNO VIRTUAL DE PYTHON (LOCAL / HOST)
+# -----------------------------------------------------------------------------
+
+# Crear el entorno virtual en la carpeta local "myenv"
+python -m venv myenv
+
+# Activar el entorno virtual (PowerShell - Windows)
+# (Si hay problemas de permisos ejecutar antes: Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned)
+.\myenv\Scripts\Activate.ps1
+
+# Activar el entorno virtual (CMD clásico - Windows)
+.\myenv\Scripts\activate.bat
+
+# Activar el entorno virtual (Bash / Linux / macOS)
+source myenv/bin/activate
+
+# Desactivar el entorno virtual activo
+deactivate
+
+# Instalar los paquetes requeridos por el sistema desde el archivo local de dependencias
+pip install -r requirements.txt
+
+# Actualizar pip e instalar un paquete puntual en su última versión
+python -m pip install --upgrade pip
+pip install nombre_paquete
+
+# Listar paquetes instalados en el entorno y sus versiones correspondientes
+pip list
+ 
+# -----------------------------------------------------------------------------
+# 4. RASPBERRY GATEWAY (Ejecución local en Raspberry Pi)
+# -----------------------------------------------------------------------------
+
+# Ir al directorio del gateway (en la Raspberry o en la máquina donde se ejecutará)
+cd control/raspberry_gateway
+
+# --- Entorno virtual y dependencias ---
+# Crear un venv (si no existe)
+python -m venv venv
+
+# Activar el entorno virtual (Bash - Raspberry/Linux)
+source venv/bin/activate
+
+# Instalar dependencias del gateway
+pip install -r requirements.txt
+
+# Verificar que el Arduino aparece como puerto serie (ej: /dev/ttyACM0 o /dev/ttyUSB0)
+ls -l /dev/ttyACM* /dev/ttyUSB* || true
+
+# (Opcional) Dar permisos al puerto serie para el usuario actual
+# sudo usermod -a -G dialout $USER && newgrp dialout
+
+# --- Ejecutar el gateway en primer plano (útil para debugging) ---
+# Ejecuta el proceso en modo no-buffered para ver logs en tiempo real
+python -u src/gateway_main.py
+
+# Ejecutar en segundo plano y registrar logs
+nohup python -u src/gateway_main.py > gateway.log 2>&1 &
+
+# Ver logs (archivo) en tiempo real
+tail -f gateway.log
+
+# --- Ejecutar el mock MQTT (para pruebas sin Arduino) ---
+# Publica telemetría sintética al broker configurado en config.yaml
+python -u src/mock_mqtt_gateway.py --help
+# Ejemplo de uso (usa config.yaml por defecto):
+python -u src/mock_mqtt_gateway.py
+
+# --- Ejecutar como servicio systemd (instalación y gestión) ---
+# Copiar unidad systemd incluida y activar servicio para iniciar al boot
+sudo cp raspberry_gateway.service /etc/systemd/system/raspberry_gateway.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now raspberry_gateway.service
+
+# Estado del servicio y logs del journal
+sudo systemctl status raspberry_gateway.service -l
+sudo journalctl -u raspberry_gateway.service -f
+
+# Para detener/eliminar el servicio
+sudo systemctl stop raspberry_gateway.service
+sudo systemctl disable raspberry_gateway.service
+
+# Para matar proceso manualmente (si no se usa systemd)
+pkill -f src/gateway_main.py || true
+

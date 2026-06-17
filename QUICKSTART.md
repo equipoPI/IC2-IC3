@@ -9,25 +9,25 @@ Guía rápida para levantar el sistema SCADA completo: Raspberry Pi Gateway + Ba
 ```
 ┌─────────────┐      USB Serial      ┌──────────────────┐
 │   Arduino   │ ◄──────────────────► │  Raspberry Pi 4  │
-│  (Hardware) │                       │    (Gateway)     │
-└─────────────┘                       └────────┬─────────┘
-                                               │
-                                          MQTT (1883)
-                                               │
-                                               ▼
+│  (Hardware) │                      │    (Gateway)     │
+└─────────────┘                      └────────┬─────────┘
+                                              │
+                                         MQTT (1883)
+                                              │
+                                              ▼
                      ┌─────────────────────────────────────────┐
                      │         PC/Servidor (Docker)            │
                      │  ┌──────────────────────────────────┐   │
                      │  │      Mosquitto MQTT Broker       │   │
                      │  │         (puerto 1883)            │   │
                      │  └───────────┬──────────────────────┘   │
-                     │              │                           │
+                     │              │                          │
                      │  ┌───────────┴─────────┬────────────┐   │
                      │  │                     │            │   │
                      │  ▼                     ▼            ▼   │
-                     │ Backend            Frontend     PostgreSQL │
-                     │ Django             React          (DB)   │
-                     │ (8000)            (5173)        (5432)   │
+                     │ Backend            Frontend  PostgreSQL │
+                     │ Django             React         (DB)   │
+                     │ (8000)            (5173)       (5432)   │
                      └─────────────────────────────────────────┘
 ```
 

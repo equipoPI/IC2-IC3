@@ -1,0 +1,151 @@
+
+Buena pregunta — acá te dejo un diseño práctico y dónde implementar cada capa de autenticación/autorización para cubrir UI, dispositivos y broker MQTT, con recomendaciones concretas y archivos que deberías tocar en este repo.
+
+Principio general
+
+Centralizar la autorización y la gestión de usuarios en el backend (mysite) siempre que sea posible. El backend emite credenciales válidas (tokens) y aplica roles/permiso de nivel negocio; el broker y los dispositivos confían en esas credenciales o en reglas locales (ACL) para permitir funcionamiento seguro.
+Resumen por componente
+
+Broker MQTT (mosquitto) — Autenticación/ACL de conexión de dispositivos
+
+¿Qué poner aquí?: Autenticación básica de clientes (usuario/clave), ACLs por topic, TLS para transporte.
+Dónde configurarlo: mosquitto/config/mosquitto.conf y mosquitto/config/acl.conf (o acl.conf.example).
+Recomendado: usar password_file (mosquitto_passwd) para clientes estáticos (Raspberry/Arduino gateways) y acl_file para restringir publish/subscribe por topic. Si usás WebSocket para browser, habilitar listener para WebSocket con TLS y autenticación.
+Opcional avanzado: integrar mosquitto con backend (via plugin o autenticador HTTP) para validar tokens dinámicamente.
+Backend Django (mysite) — Gestión de usuarios, roles y emisión de tokens
+
+¿Qué poner aquí?: Autenticación de usuarios (username/password), OAuth2/JWT para sesiones de frontend, gestión de roles (admin, operador, vista). Control de permisos para comandos que UI envía a dispositivos.
+Dónde tocar: mysite/settings.py, polls/mqtt_services.py (o módulo que maneje MQTT), vistas/serializers que expongan API para login, roles y control.
+Recomendado: implementar API de autenticación que devuelva JWT (p. ej. djangorestframework-simplejwt) y endpoints que validen si un usuario puede enviar X comando. Backend puede publicar en topics MQTT con credenciales «backend» (broker-side) o usar un puente autenticado.
+Política: el backend debe validar autorización antes de publicar comandos críticos al broker.
+Frontend (scada-ui) — Autenticación de usuarios y uso de tokens
+
+¿Qué poner aquí?: Login UI que obtiene token JWT del backend; almacenamiento seguro (sessionStorage); usar token para llamadas a la API.
+Si vas directo al broker (MQTT over WebSocket): obtener credenciales temporales desde el backend (por ejemplo: endpoint /api/mqtt-cred/ que devuelve user/pass con TTL) en vez de embedir credenciales fijas en el cliente.
+Dónde tocar: scada-ui/src/* (archivo de configuración, componente de login, cliente MQTT init). .env para URL del backend.
+Gateway Raspberry / Arduino — Autenticación del dispositivo
+
+¿Qué poner aquí?: Credenciales de cliente MQTT guardadas en control/raspberry_gateway/config.yaml (usuario/clave o certificado), y usar TLS si es posible. En hardware con limitaciones, mantener credenciales en archivo protegido y rotarlas periódicamente.
+Dónde tocar: control/raspberry_gateway/config.yaml y src/mqtt_client.py o gateway_main.py.
+Recomendado: que el dispositivo sólo publique/subscriba a los topics necesarios; aplicar ACLs en broker.
+Mapeo de permisos a topics
+
+Convención: topics por recurso/rol, p. ej. scada/<site>/commands (solo backend/operador), scada/<site>/telemetry (publish desde gateway), scada/<site>/status (publish desde gateway).
+ACL ejemplo: permitir que usuarios con rol operador publiquen scada/+/commands pero no scada/+/admin/#. Gateways solo publican scada/<id>/telemetry y se suscriben a scada/<id>/control.
+Flujos recomendados (seguro y simple)
+
+Usuario hace login en UI → UI obtiene JWT del backend.
+UI solicita credenciales MQTT temporales al backend (si usa MQTT over WS), o envía comandos via API (backend verifica permisos y publica en MQTT).
+Backend publica comandos en el broker con su propia cuenta autorizada; broker aplica ACLs para permitirlo.
+Gateways publican telemetría en topics designados; backend suscribe y guarda lo necesario en DB y reenvía a UI si corresponde.
+Qué cambiar en tu repositorio (archivos concretos)
+
+mosquitto/config/mosquitto.conf — habilitar listener TLS/WebSocket y password_file/acl_file.
+mosquitto/config/acl.conf — definir reglas por topic (ej: user backend full, user gateway1 pub only to telemetry).
+mysite/settings.py — configurar JWT, CORS, y parámetros del broker si backend publica/subscribes (MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASS).
+polls/mqtt_services.py o manage.py mqtt_listener — comprobar que usa credenciales seguras y que valida permisos antes de procesar comandos entrantes.
+control/raspberry_gateway/config.yaml — guardar credenciales cliente MQTT y TLS CA/cert si aplicable.
+scada-ui/.env o scada-ui/src/config — endpoint del backend y si aplica, la URL WebSocket del broker.
+Practicas de seguridad adicionales
+
+Usar TLS en broker (certs válidos) para conexiones públicas.
+No exponer credenciales permanentes en el frontend.
+Rotar credenciales/contraseñas periodicamente.
+Logging y monitoreo de conexiones MQTT (intentos fallidos).
+Minimizar permisos por principio de menor privilegio.
+Siguiente paso que puedo ejecutar ahora
+
+Revisar mosquitto/config/mosquitto.conf y acl.conf en tu repo y proponerte cambios concretos.
+Revisar mysite para ver si ya hay soporte JWT/roles o endpoints de control (si querés, examino mysite/settings.py y polls/mqtt_services.py).
+
+
+Optimized tool selection
+
+Perfecto — sí: todo lo anterior cubre dónde y cómo implementar la lógica. A continuación te doy un plan claro y conciso (qué código tocar, qué endpoints/modelos crear, topics y validaciones) para que la UI pueda detectar sistemas disponibles, registrarlos, mostrarlos en el diagrama y garantizar consistencia con el hardware.
+
+Resumen rápido (objetivo)
+
+Detectar sistemas/devices disponibles (gateways/arduinos) automáticamente.
+Permitir al usuario “añadir”/registrar un sistema desde la UI.
+Mostrar un diagrama estilizado y panel de datos en tiempo real.
+Garantizar que la UI represente el estado real (reconciliación y errores controlados).
+Dónde implementar cada pieza (archivos / módulos)
+
+Detección automática de sistemas (discovery)
+Broker MQTT:
+Topic convention: cada gateway publica un mensaje de “heartbeat / discovery” periódicamente en scada/discovery/<gateway_id> con payload JSON {id, name, capabilities, ts}. (Implementar en control/raspberry_gateway/src/gateway_main.py o mqtt_client.py).
+Backend:
+Servicio de escucha MQTT: mysite/polls/mqtt_services.py o manage.py mqtt_listener recibe scada/discovery/# y registra/actualiza una entrada en DB (modelo Gateway).
+Archivo a tocar: mysite/polls/models.py (añadir modelo Gateway), polls/migrations, polls/mqtt_services.py.
+Frontend:
+Suscripción a un endpoint WebSocket del backend (recomendado) o directamente al broker WS para topics scada/discovery/#.
+scada-ui/src/contexts/ o src/hooks/ crear useDiscovery() que actualiza lista de sistemas disponibles.
+Registro / “añadir” sistema desde UI
+Backend API:
+Endpoint POST /api/systems/ para crear un registro manual o confirmar un discovery (polls/views.py, polls/serializers.py).
+Endpoint GET /api/systems/ para listar (incluye estado: online/last_seen/capabilities).
+Autorización: solo roles con permiso can_register_system.
+Frontend:
+Página/Modal “Añadir Sistema” que muestra descubrimientos detectados y permite confirmar/editar alias, ubicación y mapeo de sensores al diagrama (scada-ui/src/pages/...).
+Al confirmar, frontend llama a /api/systems/ con JWT.
+Mapeo de datos y diagrama
+Data model:
+System / Device model con campos: id, name, type, topics (telemetry/topic_base), mapping JSON (qué topic→qué widget), last_seen, online bool.
+Backend:
+Endpoint PUT /api/systems/<id>/mapping para definir qué topics alimentan cada elemento del diagrama.
+Servicio que valida el mapping: polls/validators.py.
+Frontend:
+Componente Diagram en scada-ui/src/components/Diagram/* que recibe mapping y subscribe a topics relevantes (vía backend websocket o MQTT-WS).
+Cuando llegan mensajes, actualizar los widgets y el diagrama (lib: useState/useReducer; opcional: Redux).
+Flujo en tiempo real y consistencia
+Transporte:
+Opción A (recomendada): Backend subscribe a MQTT y reemite eventos vía WebSocket/Server-Sent-Events a UI. UI no necesita credenciales MQTT.
+Opción B: UI se conecta directamente al broker MQTT over WebSocket con credenciales temporales.
+Reconciliación y checks:
+Backend mantiene last_seen por gateway y expone online = now - last_seen < threshold.
+Cada mensaje recibido por backend se valida (schema JSON, fields requeridos). Fallos se registran y se exponen en /api/events/errors.
+UI muestra indicadores: online/offline, validación OK/error en cada widget (tooltip con last_valid_ts / last_invalid_reason).
+Confirmación de comandos:
+UI envía comando a backend (POST /api/systems/<id>/commands) → backend valida permisos → publica en MQTT topic scada/<id>/commands → gateway ejecuta → gateway responde en scada/<id>/ack → backend registra ack y devuelve resultado a UI.
+Autenticación/Autorización (resumen aplicado)
+Login UI → obtiene JWT (DRF + simplejwt) en backend.
+Backend valida quien puede:
+Registrar sistemas.
+Modificar mappings.
+Enviar comandos.
+Broker: ACL para permitir solo publicaciones/subscripciones según cliente (gateway vs backend vs UI-temp-cred).
+Validaciones concretas a añadir
+En backend:
+Schema validation para telemetry (ej. JSON Schema en polls/validators.py).
+Rate limiting por gateway si necesario.
+Reintentos y dead-letter para mensajes malformados.
+En frontend:
+Verificación visual: diffs entre reported topology (discovery) y registered topology (mapping) con alertas si no coinciden.
+Botón “Re-sincronizar” que solicita re-publish de discovery al gateway (POST /api/systems/<id>/ping → backend publica scada/<id>/ping).
+Logs y auditoría
+Backend guarda logs de:
+registros/ediciones de sistemas (modelo Audit o usar django-simple-history).
+comandos enviados y sus acks.
+UI muestra historial breve por sistema (últimos N eventos).
+Acciones mínimas y archivos a crear/modificar (lista corta)
+
+mysite/polls/models.py: crear Gateway/System/Mapping/Audit models.
+mysite/polls/mqtt_services.py: listener para scada/discovery/#, scada/<id>/telemetry, scada/<id>/ack.
+mysite/polls/serializers.py y views.py: endpoints CRUD /api/systems/, /api/systems/<id>/mapping, /api/systems/<id>/commands.
+scada-ui/src/components/DiscoveryList.jsx, Diagram.jsx, SystemDetail.jsx.
+control/raspberry_gateway/src/gateway_main.py: publicar discovery heartbeat y adherir al payload capabilities + topics.
+Pruebas y flujo de verificación
+
+Test 1 (discovery): arrancar gateway mock (python -u src/mock_mqtt_gateway.py) → verificar backend recibe scada/discovery/<id> y aparece en /api/systems/ como pending o unconfirmed.
+Test 2 (añadir y mapear): desde UI confirmar el sistema y asignar mapping → backend persiste mapping y UI empieza a mostrar datos.
+Test 3 (end-to-end control): UI envía comando → backend publica → gateway ejecuta → ack llega → UI muestra confirmación.
+Test 4 (errores): gateway manda payload malformado → backend registra error y UI marca widget en rojo.
+Siguientes pasos que puedo hacer ahora (elige uno)
+
+A) Revisar el código actual en mysite/polls y proponer PR/patch con los modelos y listener MQTT básicos.
+B) Crear ejemplos de endpoints Django (serializers+views) y un pequeño schema de modelos.
+C) Crear componentes React/TSX minimal en scada-ui para Discovery + Diagram demo (mock data).
+D) Generar un diagrama del flow completo (MQTT ↔ backend ↔ UI) y ejemplos de payloads JSON.
+Decime cuál opción querés que ejecute y empiezo (puedo crear los archivos/patches y luego correr pruebas locales).
+
+TODO: Antes de publicar o compartir el repositorio, cambiar/ocultar las credenciales de ejemplo (`DJANGO_SUPERUSER_*`) usadas para prototipado.

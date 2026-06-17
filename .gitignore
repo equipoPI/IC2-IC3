@@ -53,6 +53,9 @@ desktop.ini
 .env.local
 .env.*.local
 
+# Local key file with prototype credentials (should not be committed)
+key.env
+
 # Backups
 *.bak
 *.backup
