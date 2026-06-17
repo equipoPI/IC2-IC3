@@ -35,8 +35,6 @@ const ProtectedRoutes = () => {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
-        {/* TU NUEVA RUTA DE PRUEBA AQUÍ */}
-        <Route path="/prueba-api" element={<FabricasDashboard />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );

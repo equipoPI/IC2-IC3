@@ -7,7 +7,7 @@ export default function FabricasDashboard() {
 
     // 2. El motor que busca los datos al abrir la pantalla
     useEffect(() => {
-        // Hacemos la llamada HTTP a tu backend (asegurate de que la URL sea la correcta)
+        // Hacemos la llamada HTTP a tu backend (URL sea la correcta)
         fetch('http://localhost:8000/polls/api/fabricas/')
             .then(respuesta => respuesta.json())
             .then(datos => {
