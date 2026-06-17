@@ -5,10 +5,10 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import (
     # Modelos base
-    Fabrica, Seccion, Empleado, TipoTarifa,
+    Fabrica, Seccion, Empleado,
     
     # Inventario
-    Inventario, ItemInventario, Proveedor,
+    Inventario, ItemInventario,
     
     # SCADA
     Sistema, DispositivoSCADA, Alarma, LecturaSensor,

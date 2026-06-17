@@ -1,74 +1,11 @@
-# Empleados y Recursos Humanos
-import random
-from datetime import datetime, timedelta
-from django.db import models
-from django.contrib.auth.models import User
-from django.utils.timezone import now
-from django.core.exceptions import ValidationError
-from django.contrib.contenttypes.fields import GenericForeignKey
-from django.contrib.contenttypes.models import ContentType
+"""Shim: importa las clases desde el paquete `models_pkg`.
 
+Después de la refactorización inicial, `models_pkg` contiene las definiciones
+reales. Esto mantiene compatibilidad con `from polls import models` y otros
+imports que esperan `polls.models`.
+"""
 
-class Fabrica(models.Model):
-    """
-    Modelo Fabrica / Planta - Representa una planta industrial con métricas SCADA
-    """
-    ESTADOS_PLANTA = [
-        ('OPERATIVO', 'Operativo'),
-        ('ADVERTENCIA', 'Advertencia'),
-        ('CRITICO', 'Crítico'),
-        ('OFFLINE', 'Offline'),
-    ]
-    
-    nombre = models.CharField(max_length=100, unique=True)
-    ubicacion = models.CharField(max_length=255, blank=True, null=True)
-    pais = models.CharField(max_length=100)
-    fecha_creacion = models.DateField(default=now)
-    
-    # Campos SCADA
-    estado = models.CharField(max_length=20, choices=ESTADOS_PLANTA, default='OPERATIVO')
-    porcentaje_produccion = models.FloatField(default=0, help_text="Porcentaje de producción actual (0-100)")
-    porcentaje_eficiencia = models.FloatField(default=0, help_text="Porcentaje de eficiencia (0-100)")
-    temperatura_promedio = models.FloatField(default=0, help_text="Temperatura promedio en °C")
-    consumo_energia = models.FloatField(default=0, help_text="Consumo de energía en kWh")
-    alarmas_activas = models.IntegerField(default=0, help_text="Número de alarmas activas")
-
-    def __str__(self):
-        return self.nombre
-    
-    def actualizar_metricas(self):
-        """Actualiza automáticamente las métricas de la planta"""
-        # Contar alarmas activas
-        # self.alarmas_activas = self.alarmas.filter(estado='ABIERTA').count()
-        
-        # # Determinar estado basado en alarmas
-        # alarmas_criticas = self.alarmas.filter(estado='ABIERTA', severidad='ALTA').count()
-        # alarmas_advertencia = self.alarmas.filter(estado='ABIERTA', severidad='MEDIA').count()
-        
-        if self.alarmas_activas >= 5:
-            self.estado = 'CRITICO'
-        elif self.alarmas_activas > 0:
-            self.estado = 'ADVERTENCIA'
-        else:
-            self.estado = 'OPERATIVO'
-        
-        self.save()
-
-
-
-# Modelo de Sección
-class Seccion(models.Model):
-    nombre = models.CharField(max_length=100)
-    fabrica = models.ForeignKey('Fabrica', on_delete=models.CASCADE, related_name="secciones")
-    capacidad_trabajadores = models.PositiveIntegerField()
-    tamano_seccion = models.FloatField()  # Tamaño en m²
-    agenda = models.TextField(blank=True, null=True)  # Cronograma o agenda de actividades
-
-    class Meta:
-        unique_together = ('nombre', 'fabrica')  # Cada sección es única dentro de una fábrica
-
-    def __str__(self):
-        return f"{self.nombre} - {self.fabrica.nombre}"
+from .models_pkg import *
 
 
 
@@ -591,48 +528,48 @@ class DispositivoSCADA(models.Model):
         return f"{self.numero_serie} - {self.nombre}"
 
 
-# class Alarma(models.Model): -------SE COMENTO PORQUE ES DE BAJA PRIORIDAD------
-#     """
-#     Sistema de alarmas SCADA para monitorización y alertas.
-#     """
-#     SEVERIDADES = [
-#         ('ALTA', 'Alta'),
-#         ('MEDIA', 'Media'),
-#         ('BAJA', 'Baja'),
-#     ]
+class Alarma(models.Model):
+    """
+    Sistema de alarmas SCADA para monitorización y alertas.
+    """
+    SEVERIDADES = [
+        ('ALTA', 'Alta'),
+        ('MEDIA', 'Media'),
+        ('BAJA', 'Baja'),
+    ]
     
-#     ESTADOS_ALARMA = [
-#         ('ABIERTA', 'Abierta'),
-#         ('CERRADA', 'Cerrada'),
-#     ]
+    ESTADOS_ALARMA = [
+        ('ABIERTA', 'Abierta'),
+        ('CERRADA', 'Cerrada'),
+    ]
     
-#     fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='alarmas')
-#     dispositivo = models.ForeignKey(DispositivoSCADA, on_delete=models.SET_NULL, null=True, blank=True, related_name='alarmas')
-#     descripcion = models.TextField()
-#     severidad = models.CharField(max_length=10, choices=SEVERIDADES)
-#     estado = models.CharField(max_length=10, choices=ESTADOS_ALARMA, default='ABIERTA')
+    fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='alarmas')
+    dispositivo = models.ForeignKey(DispositivoSCADA, on_delete=models.SET_NULL, null=True, blank=True, related_name='alarmas')
+    descripcion = models.TextField()
+    severidad = models.CharField(max_length=10, choices=SEVERIDADES)
+    estado = models.CharField(max_length=10, choices=ESTADOS_ALARMA, default='ABIERTA')
     
-#     fecha_hora_inicio = models.DateTimeField(auto_now_add=True)
-#     fecha_hora_cierre = models.DateTimeField(null=True, blank=True)
+    fecha_hora_inicio = models.DateTimeField(auto_now_add=True)
+    fecha_hora_cierre = models.DateTimeField(null=True, blank=True)
     
-#     usuario_cierre = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='alarmas_cerradas')
-#     notas_resolucion = models.TextField(blank=True, null=True)
+    usuario_cierre = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='alarmas_cerradas')
+    notas_resolucion = models.TextField(blank=True, null=True)
     
-#     def __str__(self):
-#         dispositivo_nombre = self.dispositivo.nombre if self.dispositivo else "Sistema"
-#         return f"[{self.severidad}] {dispositivo_nombre} - {self.descripcion[:50]}"
+    def __str__(self):
+        dispositivo_nombre = self.dispositivo.nombre if self.dispositivo else "Sistema"
+        return f"[{self.severidad}] {dispositivo_nombre} - {self.descripcion[:50]}"
     
-#     def cerrar_alarma(self, usuario, notas=''):
-#         """Cierra una alarma activa"""
-#         self.estado = 'CERRADA'
-#         self.fecha_hora_cierre = now()
-#         self.usuario_cierre = usuario
-#         self.notas_resolucion = notas
-#         self.save()
+    def cerrar_alarma(self, usuario, notas=''):
+        """Cierra una alarma activa"""
+        self.estado = 'CERRADA'
+        self.fecha_hora_cierre = now()
+        self.usuario_cierre = usuario
+        self.notas_resolucion = notas
+        self.save()
         
-#         # Actualizar contador de alarmas de la planta
-#         if self.fabrica:
-#             self.fabrica.actualizar_metricas()
+        # Actualizar contador de alarmas de la planta
+        if self.fabrica:
+            self.fabrica.actualizar_metricas()
 
 
 class LecturaSensor(models.Model):
@@ -1358,7 +1295,9 @@ class ComunicacionMQTT(models.Model):
     
     configuracion = models.ForeignKey(
         ConfiguracionMQTT,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='comunicaciones',
         help_text="Configuración MQTT utilizada"
     )
@@ -1424,3 +1363,27 @@ class ComunicacionMQTT(models.Model):
     
     def __str__(self):
         return f"{self.direccion} - {self.topic} ({self.timestamp.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
+class RegistroAuditoria(models.Model):
+    """
+    Registro de auditoría para el sistema SCADA.
+    """
+    usuario = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='registros_auditoria',
+        help_text="Usuario que realizó la acción"
+    )
+    accion = models.CharField(max_length=255, help_text="Acción realizada")
+    detalle = models.TextField(blank=True, null=True, help_text="Detalles adicionales")
+    fecha_hora = models.DateTimeField(auto_now_add=True, db_index=True)
+    ip_origen = models.CharField(max_length=50, blank=True, null=True)
+
+    class Meta:
+        ordering = ['-fecha_hora']
+        verbose_name = 'Registro de Auditoría'
+        verbose_name_plural = 'Registros de Auditoría'
+
+    def __str__(self):
+        return f"{self.usuario.username} - {self.accion} ({self.fecha_hora})"
