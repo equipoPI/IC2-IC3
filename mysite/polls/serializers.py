@@ -5,7 +5,12 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import (
     # Modelos base
-    Fabrica
+    Fabrica,
+    OrdenProduccion, 
+    Receta, 
+    DetalleReceta, 
+    EjecucionReceta, 
+    HistorialProduccion
     #, Seccion, Empleado, TipoTarifa,
     
     # Inventario
@@ -138,62 +143,62 @@ class FabricaSerializer(serializers.ModelSerializer):
 # # Serializers de Producción
 # # =============================================================================
 
-# class RecetaSerializer(serializers.ModelSerializer):
-#     """Serializer para Recetas"""
-#     class Meta:
-#         model = Receta
-#         fields = '__all__'
+class RecetaSerializer(serializers.ModelSerializer):
+     """Serializer para Recetas"""
+     class Meta:
+         model = Receta
+         fields = '__all__'
 
 
-# class DetalleRecetaSerializer(serializers.ModelSerializer):
-#     """Serializer para ingredientes de recetas"""
-#     ingrediente_nombre = serializers.CharField(source='ingrediente.nombre', read_only=True)
+class DetalleRecetaSerializer(serializers.ModelSerializer):
+     """Serializer para ingredientes de recetas"""
+     ingrediente_nombre = serializers.CharField(source='ingrediente.nombre', read_only=True)
     
-#     class Meta:
-#         model = DetalleReceta
-#         fields = '__all__'
+     class Meta:
+         model = DetalleReceta
+         fields = '__all__'
 
 
-# class RecetaConDetallesSerializer(serializers.ModelSerializer):
-#     """Serializer de receta con todos sus ingredientes"""
-#     detalles = DetalleRecetaSerializer(many=True, read_only=True)
+class HistorialProduccionSerializer(serializers.ModelSerializer):
+    """Serializer para los registros históricos al finalizar"""
+    producto_nombre = serializers.CharField(source='orden_produccion.producto', read_only=True)
+
+    class Meta:
+        model = HistorialProduccion
+        fields = '__all__'
+
+
+class OrdenProduccionSerializer(serializers.ModelSerializer):
+     """Serializer para Órdenes de Producción"""
+     fabrica_nombre = serializers.CharField(source='fabrica.nombre', read_only=True)
+     sistema_nombre = serializers.CharField(source='sistema.nombre', read_only=True)
+     dispositivo_nombre = serializers.CharField(source='dispositivo.nombre', read_only=True)
+     receta_nombre = serializers.CharField(source='receta.nombre', read_only=True)
+     creado_por_nombre = serializers.CharField(source='creado_por.username', read_only=True)
     
-#     class Meta:
-#         model = Receta
-#         fields = '__all__'
+     class Meta:
+        model = OrdenProduccion
+        fields = ['id', 'codigo', 'producto', 'cantidad', 'estado', 'fecha_inicio']
 
 
-# class OrdenProduccionSerializer(serializers.ModelSerializer):
-#     """Serializer para Órdenes de Producción"""
-#     fabrica_nombre = serializers.CharField(source='fabrica.nombre', read_only=True)
-#     sistema_nombre = serializers.CharField(source='sistema.nombre', read_only=True)
-#     dispositivo_nombre = serializers.CharField(source='dispositivo.nombre', read_only=True)
-#     receta_nombre = serializers.CharField(source='receta.nombre', read_only=True)
-#     creado_por_nombre = serializers.CharField(source='creado_por.username', read_only=True)
+class OrdenProduccionListSerializer(serializers.ModelSerializer):
+     """Serializer reducido para listado de órdenes"""
+     fabrica_nombre = serializers.CharField(source='fabrica.nombre', read_only=True)
     
-#     class Meta:
-#         model = OrdenProduccion
-#         fields = '__all__'
-#         read_only_fields = ['codigo', 'fecha_creacion']
+     class Meta:
+         model = OrdenProduccion
+         fields = ['codigo', 'producto', 'cantidad', 'unidad', 'estado', 'progreso',
+                   'fecha_inicio', 'fecha_fin', 'fabrica_nombre']
 
 
-# class OrdenProduccionListSerializer(serializers.ModelSerializer):
-#     """Serializer reducido para listado de órdenes"""
-#     fabrica_nombre = serializers.CharField(source='fabrica.nombre', read_only=True)
-    
-#     class Meta:
-#         model = OrdenProduccion
-#         fields = ['codigo', 'producto', 'cantidad', 'estado', 'progreso',
-#                   'fecha_inicio', 'fecha_fin', 'fabrica_nombre']
+class EjecucionRecetaSerializer(serializers.ModelSerializer):
+    """Serializer para el seguimiento de la ejecución en tiempo real"""
+    receta_nombre = serializers.CharField(source='receta.nombre', read_only=True)
+    seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
 
-
-# class PlantillaProduccionSerializer(serializers.ModelSerializer):
-#     """Serializer para Plantillas de Producción"""
-#     tiempo_estimado_texto = serializers.CharField(source='tiempo_estimado', read_only=True)
-    
-#     class Meta:
-#         model = PlantillaProduccion
-#         fields = '__all__'
+    class Meta:
+        model = EjecucionReceta
+        fields = '__all__'
 
 
 # class IngredienteAlmacenamientoSerializer(serializers.ModelSerializer):

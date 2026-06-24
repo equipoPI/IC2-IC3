@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Calendar, FileText, Plus, Clock, Target, Edit, Trash2, Search, Wrench, CalendarDays, BarChart3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +38,7 @@ interface OrdenProduccion {
   id: string;
   producto: string;
   cantidad: number;
+  unidad: string;
   fechaInicio: string;
   horaInicio: string;
   fechaFin: string;
@@ -71,10 +72,10 @@ interface Plantilla {
 }
 
 const ordenesIniciales: OrdenProduccion[] = [
-  { id: "ORD-001", producto: "Producto A-100", cantidad: 5000, fechaInicio: "2024-01-15", horaInicio: "08:00", fechaFin: "2024-01-15", horaFin: "14:00", planta: "Planta Norte", sistema: "Sistema de Mezcla A", maquina: "Mezcladora M-001", estado: "en_proceso", progreso: 65 },
-  { id: "ORD-002", producto: "Producto B-200", cantidad: 3000, fechaInicio: "2024-01-16", horaInicio: "09:30", fechaFin: "2024-01-16", horaFin: "15:30", planta: "Planta Central", sistema: "Línea de Producción 1", maquina: "Robot R-01", estado: "pendiente", progreso: 0 },
-  { id: "ORD-003", producto: "Producto C-300", cantidad: 8000, fechaInicio: "2024-01-14", horaInicio: "07:00", fechaFin: "2024-01-14", horaFin: "19:00", planta: "Planta Sur", sistema: "Sistema Automatizado", maquina: "Brazo Robótico BR-01", estado: "completada", progreso: 100 },
-  { id: "ORD-004", producto: "Producto D-400", cantidad: 2500, fechaInicio: "2024-01-17", horaInicio: "10:00", fechaFin: "2024-01-17", horaFin: "13:00", planta: "Fábrica Este", sistema: "Módulo de Procesamiento", maquina: "Procesador PROC-01", estado: "pendiente", progreso: 0 },
+  { id: "ORD-001", producto: "Producto A-100", cantidad: 5000, unidad: "uds", fechaInicio: "2024-01-15", horaInicio: "08:00", fechaFin: "2024-01-15", horaFin: "14:00", planta: "Planta Norte", sistema: "Sistema de Mezcla A", maquina: "Mezcladora M-001", estado: "en_proceso", progreso: 65 },
+  { id: "ORD-002", producto: "Producto B-200", cantidad: 3000, unidad: "uds", fechaInicio: "2024-01-16", horaInicio: "09:30", fechaFin: "2024-01-16", horaFin: "15:30", planta: "Planta Central", sistema: "Línea de Producción 1", maquina: "Robot R-01", estado: "pendiente", progreso: 0 },
+  { id: "ORD-003", producto: "Producto C-300", cantidad: 8000, unidad: "uds", fechaInicio: "2024-01-14", horaInicio: "07:00", fechaFin: "2024-01-14", horaFin: "19:00", planta: "Planta Sur", sistema: "Sistema Automatizado", maquina: "Brazo Robótico BR-01", estado: "completada", progreso: 100 },
+  { id: "ORD-004", producto: "Producto D-400", cantidad: 2500, unidad: "uds", fechaInicio: "2024-01-17", horaInicio: "10:00", fechaFin: "2024-01-17", horaFin: "13:00", planta: "Fábrica Este", sistema: "Módulo de Procesamiento", maquina: "Procesador PROC-01", estado: "pendiente", progreso: 0 },
 ];
 
 const mantenimientosIniciales: Mantenimiento[] = [
@@ -123,151 +124,207 @@ const PlanificacionProduccion = () => {
   const [ordenes, setOrdenes] = useState<OrdenProduccion[]>(ordenesIniciales);
   const [mantenimientos, setMantenimientos] = useState<Mantenimiento[]>(mantenimientosIniciales);
   const [plantillas, setPlantillas] = useState<Plantilla[]>(plantillasIniciales);
+  
+  // --- NUEVO: ESTADOS PARA LA API ---
+  const [mapaPlantas, setMapaPlantas] = useState<Record<string, number>>({});
+  const [isLoading, setIsLoading] = useState(true);
+
   const [ordenDialogOpen, setOrdenDialogOpen] = useState(false);
   const [plantillaDialogOpen, setPlantillaDialogOpen] = useState(false);
   const [mantenimientoDialogOpen, setMantenimientoDialogOpen] = useState(false);
   const [editingOrden, setEditingOrden] = useState<OrdenProduccion | null>(null);
   const [editingPlantilla, setEditingPlantilla] = useState<Plantilla | null>(null);
 
-  // Mantenimiento form state
   const [mantenimientoForm, setMantenimientoForm] = useState({
-    nombre: "",
-    fechaInicio: "",
-    horaInicio: "",
-    fechaFin: "",
-    horaFin: "",
-    planta: "",
-    sistema: "",
-    maquina: "",
-    descripcion: "",
+    nombre: "", fechaInicio: "", horaInicio: "", fechaFin: "", horaFin: "", planta: "", sistema: "", maquina: "", descripcion: "",
   });
 
-  // Filters for orders
   const [ordenSearch, setOrdenSearch] = useState("");
   const [ordenEstadoFilter, setOrdenEstadoFilter] = useState<string>("todos");
   const [ordenFechaInicio, setOrdenFechaInicio] = useState("");
   const [ordenFechaFin, setOrdenFechaFin] = useState("");
   const [ordenHoraInicio, setOrdenHoraInicio] = useState("");
   const [ordenHoraFin, setOrdenHoraFin] = useState("");
-
-  // Search for templates
   const [plantillaSearch, setPlantillaSearch] = useState("");
-
-  // View mode for production planning
   const [vistaProduccion, setVistaProduccion] = useState<"gantt" | "calendario">("gantt");
 
-  const ordenesFiltradas = useMemo(() => {
-    return ordenes.filter((orden) => {
-      const matchesSearch = orden.producto.toLowerCase().includes(ordenSearch.toLowerCase()) ||
-                           orden.planta.toLowerCase().includes(ordenSearch.toLowerCase()) ||
-                           orden.id.toLowerCase().includes(ordenSearch.toLowerCase()) ||
-                           (orden.sistema && orden.sistema.toLowerCase().includes(ordenSearch.toLowerCase())) ||
-                           (orden.maquina && orden.maquina.toLowerCase().includes(ordenSearch.toLowerCase()));
-      const matchesEstado = ordenEstadoFilter === "todos" || orden.estado === ordenEstadoFilter;
-      
-      // Date range filter
-      const ordenDate = new Date(orden.fechaInicio);
-      const matchesFechaInicio = !ordenFechaInicio || ordenDate >= new Date(ordenFechaInicio);
-      const matchesFechaFin = !ordenFechaFin || ordenDate <= new Date(ordenFechaFin);
-      
-      // Time range filter
-      const matchesHoraInicio = !ordenHoraInicio || orden.horaInicio >= ordenHoraInicio;
-      const matchesHoraFin = !ordenHoraFin || orden.horaFin <= ordenHoraFin;
-      
-      return matchesSearch && matchesEstado && matchesFechaInicio && matchesFechaFin && matchesHoraInicio && matchesHoraFin;
+  // ==========================================================================
+  // CONEXIÓN AL BACKEND (GET)
+  // ==========================================================================
+  useEffect(() => {
+    fetch('http://localhost:8000/polls/api/fabricas/')
+      .then(res => res.json())
+      .then(fabricasData => {
+        const diccionario: Record<string, number> = {};
+        fabricasData.forEach((f: any) => { diccionario[f.nombre] = f.id; });
+        setMapaPlantas(diccionario);
+
+        return fetch('http://localhost:8000/polls/api/ordenes/');
+      })
+      .then(res => res.json())
+      .then(ordenesData => {
+        // --- ACÁ ESTÁ LA CONSTANTE NUEVA ---
+        const ordenesDesdeDB: OrdenProduccion[] = ordenesData.map((item: any) => ({
+          id: item.codigo || String(item.id), // <-- Atrapa el OP-2026-0001
+          producto: item.producto || "Sin especificar",
+          cantidad: item.cantidad || 0,
+          unidad: item.unidad || "uds",
+          fechaInicio: item.fecha_inicio ? item.fecha_inicio.split('T')[0] : new Date().toISOString().split("T")[0],
+          horaInicio: item.hora_inicio ? item.hora_inicio.substring(0, 5) : "08:00", 
+          fechaFin: item.fecha_fin ? item.fecha_fin.split('T')[0] : new Date().toISOString().split("T")[0],
+          horaFin: item.hora_fin ? item.hora_fin.substring(0, 5) : "17:00",
+          planta: item.fabrica_nombre || "Planta Genérica",
+          sistema: "Sistema Principal",
+          maquina: item.fabrica_nombre || "Planta Genérica", // <-- Separa el Gantt por Plantas
+          estado: (item.estado ? item.estado.toLowerCase() : "pendiente") as "pendiente" | "en_proceso" | "completada",
+          progreso: item.progreso || 0
+        }));
+
+        setOrdenes([...ordenesIniciales, ...ordenesDesdeDB]);
+        setIsLoading(false);
+      })
+      .catch(err => {
+        console.error("Error al conectar con la API de Producción:", err);
+        setIsLoading(false);
+      });
+  }, []);
+
+  // ==========================================================================
+  // CREAR O EDITAR ORDEN (POST / PUT)
+  // ==========================================================================
+  const handleSaveOrden = async (data: Omit<OrdenProduccion, "id">) => {
+    // 1. ESCUDO ANTI-CHOQUES DE HORARIO
+    const nuevaApertura = new Date(`${data.fechaInicio}T${data.horaInicio}`);
+    const nuevoCierre = new Date(`${data.fechaFin}T${data.horaFin}`);
+
+    const hayConflicto = ordenes.some((ordenExistente) => {
+      // Si estamos editando, ignoramos chocar contra nosotros mismos
+      if (editingOrden && ordenExistente.id === editingOrden.id) return false;
+      // Solo nos importa si es en la misma planta
+      if (ordenExistente.planta !== data.planta) return false;
+
+      const inicioExistente = new Date(`${ordenExistente.fechaInicio}T${ordenExistente.horaInicio}`);
+      const finExistente = new Date(`${ordenExistente.fechaFin}T${ordenExistente.horaFin}`);
+
+      // Lógica matemática: ¿Se pisan los horarios?
+      return nuevaApertura < finExistente && nuevoCierre > inicioExistente;
     });
-  }, [ordenes, ordenSearch, ordenEstadoFilter, ordenFechaInicio, ordenFechaFin, ordenHoraInicio, ordenHoraFin]);
 
-  const plantillasFiltradas = useMemo(() => {
-    return plantillas.filter((plantilla) =>
-      plantilla.nombre.toLowerCase().includes(plantillaSearch.toLowerCase()) ||
-      plantilla.tipo.toLowerCase().includes(plantillaSearch.toLowerCase()) ||
-      plantilla.ingredientes.toLowerCase().includes(plantillaSearch.toLowerCase())
-    );
-  }, [plantillas, plantillaSearch]);
+    if (hayConflicto) {
+      toast({
+        title: "Turno Ocupado ❌",
+        description: `La planta ${data.planta} ya tiene producción en ese horario.`,
+        variant: "destructive"
+      });
+      return; // Cortamos la ejecución, NO manda nada a la base de datos
+    }
 
-  // Convert to Gantt items
-  const ganttItems: GanttItem[] = useMemo(() => {
-    const orderItems: GanttItem[] = ordenes.map((orden) => ({
-      id: orden.id,
-      nombre: orden.producto,
-      fechaInicio: orden.fechaInicio,
-      horaInicio: orden.horaInicio,
-      fechaFin: orden.fechaFin,
-      horaFin: orden.horaFin,
-      planta: orden.planta,
-      sistema: orden.sistema,
-      maquina: orden.maquina,
-      tipo: "produccion" as const,
-      estado: orden.estado,
-    }));
+    // 2. Si pasó la validación, seguimos normal
+    const idFabricaDestino = mapaPlantas[data.planta] || 1;
 
-    const mantItems: GanttItem[] = mantenimientos.map((mant) => ({
-      id: mant.id,
-      nombre: mant.nombre,
-      fechaInicio: mant.fechaInicio,
-      horaInicio: mant.horaInicio,
-      fechaFin: mant.fechaFin,
-      horaFin: mant.horaFin,
-      planta: mant.planta,
-      sistema: mant.sistema,
-      maquina: mant.maquina,
-      tipo: "mantenimiento" as const,
-    }));
+    const payload = {
+      producto: data.producto,
+      cantidad: data.cantidad,
+      unidad: data.unidad,
+      estado: data.estado.toUpperCase(),
+      progreso: data.progreso || 0,
+      fecha_inicio: data.fechaInicio,
+      hora_inicio: data.horaInicio || "08:00:00",
+      fecha_fin: data.fechaFin,
+      hora_fin: data.horaFin || "17:00:00",
+      fabrica: idFabricaDestino 
+    };
 
-    return [...orderItems, ...mantItems];
-  }, [ordenes, mantenimientos]);
-
-  // Convert to calendar events
-  const calendarEvents: CalendarEvent[] = useMemo(() => {
-    const orderEvents: CalendarEvent[] = ordenes.map((orden) => ({
-      id: orden.id,
-      nombre: orden.producto,
-      fechaInicio: orden.fechaInicio,
-      horaInicio: orden.horaInicio,
-      fechaFin: orden.fechaFin,
-      horaFin: orden.horaFin,
-      planta: orden.planta,
-      sistema: orden.sistema,
-      maquina: orden.maquina,
-      tipo: "produccion" as const,
-      estado: orden.estado,
-    }));
-
-    const mantEvents: CalendarEvent[] = mantenimientos.map((mant) => ({
-      id: mant.id,
-      nombre: mant.nombre,
-      fechaInicio: mant.fechaInicio,
-      horaInicio: mant.horaInicio,
-      fechaFin: mant.fechaFin,
-      horaFin: mant.horaFin,
-      planta: mant.planta,
-      sistema: mant.sistema,
-      maquina: mant.maquina,
-      tipo: "mantenimiento" as const,
-    }));
-
-    return [...orderEvents, ...mantEvents];
-  }, [ordenes, mantenimientos]);
-
-  const handleSaveOrden = (data: Omit<OrdenProduccion, "id">) => {
     if (editingOrden) {
-      setOrdenes(ordenes.map((o) => o.id === editingOrden.id ? { ...o, ...data } : o));
-      toast({ title: "Orden actualizada", description: "Los cambios se han guardado correctamente" });
+      if (editingOrden.id.startsWith("ORD-")) {
+        setOrdenes(ordenes.map(o => o.id === editingOrden.id ? { ...o, ...data } : o));
+        toast({ title: "Orden de prueba actualizada (Local)" });
+        setEditingOrden(null);
+        return;
+      }
+
+      try {
+        const res = await fetch(`http://localhost:8000/polls/api/ordenes/${editingOrden.id}/`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          setOrdenes(ordenes.map(o => o.id === editingOrden.id ? { ...o, ...data } : o));
+          toast({ title: "Orden actualizada en PostgreSQL" });
+        } else {
+          // Capturamos el error exacto de Django para mostrarlo
+          const errorData = await res.json();
+          console.error("Error de Django:", errorData);
+          toast({ title: "Error al guardar", description: JSON.stringify(errorData), variant: "destructive" });
+        }
+      } catch (e) {
+        toast({ title: "Error de conexión con Django", variant: "destructive" });
+      }
     } else {
-      const newOrden: OrdenProduccion = {
-        id: `ORD-${String(ordenes.length + 1).padStart(3, "0")}`,
-        ...data,
-      };
-      setOrdenes([...ordenes, newOrden]);
-      toast({ title: "Orden creada", description: "La orden se ha registrado correctamente" });
+      try {
+        const res = await fetch('http://localhost:8000/polls/api/ordenes/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          const nuevaGuardada = await res.json();
+          // Mapeamos la respuesta de Django devuelta al formato de React
+          const nuevaOrdenReact: OrdenProduccion = {
+            id: String(nuevaGuardada.id),
+            producto: nuevaGuardada.producto,
+            cantidad: nuevaGuardada.cantidad,
+            unidad: nuevaGuardada.unidad || data.unidad,
+            fechaInicio: nuevaGuardada.fecha_inicio,
+            horaInicio: nuevaGuardada.hora_inicio,
+            fechaFin: nuevaGuardada.fecha_fin,
+            horaFin: nuevaGuardada.hora_fin,
+            planta: data.planta, // Mantenemos el nombre visual
+            sistema: "Sistema de Producción",
+            maquina: "Máquina Principal",
+            estado: nuevaGuardada.estado.toLowerCase() as any,
+            progreso: nuevaGuardada.progreso
+          };
+          setOrdenes([...ordenes, nuevaOrdenReact]);
+          toast({ title: "¡Orden despachada a producción!" });
+        } else {
+          // Capturamos el error exacto de Django para mostrarlo
+          const errorData = await res.json();
+          console.error("Error de Django al crear:", errorData);
+          toast({ title: "Error del servidor", description: JSON.stringify(errorData), variant: "destructive" });
+        }
+      } catch (e) {
+        toast({ title: "Error de red al despachar", variant: "destructive" });
+      }
     }
     setEditingOrden(null);
   };
 
-  const handleDeleteOrden = (id: string) => {
-    setOrdenes(ordenes.filter((o) => o.id !== id));
-    toast({ title: "Orden eliminada", description: "La orden ha sido eliminada del sistema" });
+  // ==========================================================================
+  // BORRAR ORDEN (DELETE)
+  // ==========================================================================
+  const handleDeleteOrden = async (id: string) => {
+    if (id.startsWith("ORD-")) {
+      setOrdenes(ordenes.filter((o) => o.id !== id));
+      toast({ title: "Orden de prueba borrada de la vista" });
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:8000/polls/api/ordenes/${id}/`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setOrdenes(ordenes.filter((o) => o.id !== id));
+        toast({ title: "Orden eliminada de PostgreSQL" });
+      } else {
+        toast({ title: "Error al intentar borrar en BD", variant: "destructive" });
+      }
+    } catch (e) {
+      toast({ title: "Sin respuesta del servidor", variant: "destructive" });
+    }
   };
 
   const handleSavePlantilla = (data: Omit<Plantilla, "id">) => {
@@ -303,28 +360,66 @@ const PlanificacionProduccion = () => {
     setMantenimientos([...mantenimientos, newMant]);
     setMantenimientoDialogOpen(false);
     setMantenimientoForm({
-      nombre: "",
-      fechaInicio: "",
-      horaInicio: "",
-      fechaFin: "",
-      horaFin: "",
-      planta: "",
-      sistema: "",
-      maquina: "",
-      descripcion: "",
+      nombre: "", fechaInicio: "", horaInicio: "", fechaFin: "", horaFin: "", planta: "", sistema: "", maquina: "", descripcion: "",
     });
     toast({ title: "Mantenimiento programado", description: "El mantenimiento se ha añadido al calendario" });
   };
 
+  const ordenesFiltradas = useMemo(() => {
+    return ordenes.filter((orden) => {
+      const matchesSearch = orden.producto.toLowerCase().includes(ordenSearch.toLowerCase()) ||
+                            orden.planta.toLowerCase().includes(ordenSearch.toLowerCase()) ||
+                            orden.id.toLowerCase().includes(ordenSearch.toLowerCase()) ||
+                            (orden.sistema && orden.sistema.toLowerCase().includes(ordenSearch.toLowerCase())) ||
+                            (orden.maquina && orden.maquina.toLowerCase().includes(ordenSearch.toLowerCase()));
+      const matchesEstado = ordenEstadoFilter === "todos" || orden.estado === ordenEstadoFilter;
+      
+      const ordenDate = new Date(orden.fechaInicio);
+      const matchesFechaInicio = !ordenFechaInicio || ordenDate >= new Date(ordenFechaInicio);
+      const matchesFechaFin = !ordenFechaFin || ordenDate <= new Date(ordenFechaFin);
+      
+      const matchesHoraInicio = !ordenHoraInicio || orden.horaInicio >= ordenHoraInicio;
+      const matchesHoraFin = !ordenHoraFin || orden.horaFin <= ordenHoraFin;
+      
+      return matchesSearch && matchesEstado && matchesFechaInicio && matchesFechaFin && matchesHoraInicio && matchesHoraFin;
+    });
+  }, [ordenes, ordenSearch, ordenEstadoFilter, ordenFechaInicio, ordenFechaFin, ordenHoraInicio, ordenHoraFin]);
+
+  const plantillasFiltradas = useMemo(() => {
+    return plantillas.filter((plantilla) =>
+      plantilla.nombre.toLowerCase().includes(plantillaSearch.toLowerCase()) ||
+      plantilla.tipo.toLowerCase().includes(plantillaSearch.toLowerCase()) ||
+      plantilla.ingredientes.toLowerCase().includes(plantillaSearch.toLowerCase())
+    );
+  }, [plantillas, plantillaSearch]);
+
+  const ganttItems: GanttItem[] = useMemo(() => {
+    const orderItems: GanttItem[] = ordenes.map((orden) => ({
+      id: orden.id, nombre: orden.producto, fechaInicio: orden.fechaInicio, horaInicio: orden.horaInicio, fechaFin: orden.fechaFin, horaFin: orden.horaFin, planta: orden.planta, sistema: orden.sistema, maquina: orden.maquina, tipo: "produccion" as const, estado: orden.estado,
+    }));
+    const mantItems: GanttItem[] = mantenimientos.map((mant) => ({
+      id: mant.id, nombre: mant.nombre, fechaInicio: mant.fechaInicio, horaInicio: mant.horaInicio, fechaFin: mant.fechaFin, horaFin: mant.horaFin, planta: mant.planta, sistema: mant.sistema, maquina: mant.maquina, tipo: "mantenimiento" as const,
+    }));
+    return [...orderItems, ...mantItems];
+  }, [ordenes, mantenimientos]);
+
+  const calendarEvents: CalendarEvent[] = useMemo(() => {
+    const orderEvents: CalendarEvent[] = ordenes.map((orden) => ({
+      id: orden.id, nombre: orden.producto, fechaInicio: orden.fechaInicio, horaInicio: orden.horaInicio, fechaFin: orden.fechaFin, horaFin: orden.horaFin, planta: orden.planta, sistema: orden.sistema, maquina: orden.maquina, tipo: "produccion" as const, estado: orden.estado,
+    }));
+    const mantEvents: CalendarEvent[] = mantenimientos.map((mant) => ({
+      id: mant.id, nombre: mant.nombre, fechaInicio: mant.fechaInicio, horaInicio: mant.horaInicio, fechaFin: mant.fechaFin, horaFin: mant.horaFin, planta: mant.planta, sistema: mant.sistema, maquina: mant.maquina, tipo: "mantenimiento" as const,
+    }));
+    return [...orderEvents, ...mantEvents];
+  }, [ordenes, mantenimientos]);
+
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Planificación y Recetas</h1>
         <p className="text-muted-foreground mt-1">Gestiona la planificación de producción y las plantillas de recetas</p>
       </div>
 
-      {/* Tabs */}
       <Tabs defaultValue="planificacion" className="w-full">
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="planificacion" className="gap-2">
@@ -337,9 +432,7 @@ const PlanificacionProduccion = () => {
           </TabsTrigger>
         </TabsList>
 
-        {/* Planificación Tab */}
         <TabsContent value="planificacion" className="space-y-6 mt-6">
-          {/* Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <Card className="bg-card border-border">
               <CardContent className="p-4">
@@ -395,17 +488,15 @@ const PlanificacionProduccion = () => {
             </Card>
           </div>
 
-          {/* Orders Table */}
           <Card className="bg-card border-border">
             <CardHeader className="flex flex-row items-center justify-between pb-4">
-              <CardTitle className="text-lg">Órdenes de Producción</CardTitle>
+              <CardTitle className="text-lg">Órdenes de Producción {isLoading && <span className="text-xs text-muted-foreground animate-pulse ml-2">(Sincronizando con BD...)</span>}</CardTitle>
               <Button size="sm" onClick={() => { setEditingOrden(null); setOrdenDialogOpen(true); }}>
                 <Plus className="h-4 w-4 mr-2" />
                 Nueva Orden
               </Button>
             </CardHeader>
             <CardContent>
-              {/* Filters */}
               <div className="flex flex-col gap-4 mb-4">
                 <div className="flex flex-col sm:flex-row gap-4">
                   <div className="relative flex-1 max-w-xs">
@@ -496,7 +587,7 @@ const PlanificacionProduccion = () => {
                       <TableRow key={orden.id}>
                         <TableCell className="font-mono text-foreground">{orden.id}</TableCell>
                         <TableCell className="text-foreground font-medium">{orden.producto}</TableCell>
-                        <TableCell className="text-foreground">{orden.cantidad.toLocaleString()} uds</TableCell>
+                        <TableCell className="text-foreground">{orden.cantidad.toLocaleString()} {orden.unidad}</TableCell>
                         <TableCell className="text-foreground">
                           <div className="text-sm">
                             <div>{orden.planta}</div>
@@ -517,8 +608,8 @@ const PlanificacionProduccion = () => {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={getEstadoConfig(orden.estado).className}>
-                            {getEstadoConfig(orden.estado).label}
+                          <Badge variant="outline" className={getEstadoConfig(orden.estado)?.className}>
+                            {getEstadoConfig(orden.estado)?.label}
                           </Badge>
                         </TableCell>
                         <TableCell className="w-32">
@@ -545,61 +636,34 @@ const PlanificacionProduccion = () => {
             </CardContent>
           </Card>
 
-          {/* View Toggle */}
           <div className="flex items-center gap-2 mb-4">
             <span className="text-sm text-muted-foreground">Vista:</span>
             <div className="flex rounded-lg border border-border overflow-hidden">
-              <Button
-                variant={vistaProduccion === "gantt" ? "default" : "ghost"}
-                size="sm"
-                className="rounded-none gap-2"
-                onClick={() => setVistaProduccion("gantt")}
-              >
-                <BarChart3 className="h-4 w-4" />
-                Gantt
+              <Button variant={vistaProduccion === "gantt" ? "default" : "ghost"} size="sm" className="rounded-none gap-2" onClick={() => setVistaProduccion("gantt")}>
+                <BarChart3 className="h-4 w-4" /> Gantt
               </Button>
-              <Button
-                variant={vistaProduccion === "calendario" ? "default" : "ghost"}
-                size="sm"
-                className="rounded-none gap-2"
-                onClick={() => setVistaProduccion("calendario")}
-              >
-                <CalendarDays className="h-4 w-4" />
-                Calendario
+              <Button variant={vistaProduccion === "calendario" ? "default" : "ghost"} size="sm" className="rounded-none gap-2" onClick={() => setVistaProduccion("calendario")}>
+                <CalendarDays className="h-4 w-4" /> Calendario
               </Button>
             </div>
           </div>
 
-          {/* Gantt Chart or Calendar */}
           {vistaProduccion === "gantt" ? (
             <GanttChart 
               items={ganttItems} 
               onAddMantenimiento={() => setMantenimientoDialogOpen(true)}
               onItemUpdate={(updatedItem) => {
                 if (updatedItem.tipo === "produccion") {
-                  setOrdenes(ordenes.map((o) => 
-                    o.id === updatedItem.id 
-                      ? { 
-                          ...o, 
-                          fechaInicio: updatedItem.fechaInicio,
-                          horaInicio: updatedItem.horaInicio,
-                          fechaFin: updatedItem.fechaFin,
-                          horaFin: updatedItem.horaFin,
-                        } 
-                      : o
-                  ));
+                  setOrdenes(ordenes.map((o) => o.id === updatedItem.id ? { ...o, fechaInicio: updatedItem.fechaInicio, horaInicio: updatedItem.horaInicio, fechaFin: updatedItem.fechaFin, horaFin: updatedItem.horaFin } : o ));
+                  if (!updatedItem.id.startsWith("ORD-")) {
+                    fetch(`http://localhost:8000/polls/api/ordenes/${updatedItem.id}/`, {
+                      method: 'PUT',
+                      headers: {'Content-Type': 'application/json'},
+                      body: JSON.stringify({ fecha_inicio: updatedItem.fechaInicio, fecha_fin: updatedItem.fechaFin })
+                    });
+                  }
                 } else {
-                  setMantenimientos(mantenimientos.map((m) => 
-                    m.id === updatedItem.id 
-                      ? { 
-                          ...m, 
-                          fechaInicio: updatedItem.fechaInicio,
-                          horaInicio: updatedItem.horaInicio,
-                          fechaFin: updatedItem.fechaFin,
-                          horaFin: updatedItem.horaFin,
-                        } 
-                      : m
-                  ));
+                  setMantenimientos(mantenimientos.map((m) => m.id === updatedItem.id ? { ...m, fechaInicio: updatedItem.fechaInicio, horaInicio: updatedItem.horaInicio, fechaFin: updatedItem.fechaFin, horaFin: updatedItem.horaFin } : m ));
                 }
               }}
             />
@@ -609,36 +673,25 @@ const PlanificacionProduccion = () => {
               onEventClick={(evento) => {
                 if (evento.tipo === "produccion") {
                   const orden = ordenes.find((o) => o.id === evento.id);
-                  if (orden) {
-                    setEditingOrden(orden);
-                    setOrdenDialogOpen(true);
-                  }
+                  if (orden) { setEditingOrden(orden); setOrdenDialogOpen(true); }
                 }
               }}
             />
           )}
         </TabsContent>
 
-        {/* Plantillas Tab */}
         <TabsContent value="plantillas" className="space-y-6 mt-6">
           <Card className="bg-card border-border">
             <CardHeader className="flex flex-row items-center justify-between pb-4">
               <CardTitle className="text-lg">Gestión de Plantillas (Recetas)</CardTitle>
               <Button size="sm" onClick={() => { setEditingPlantilla(null); setPlantillaDialogOpen(true); }}>
-                <Plus className="h-4 w-4 mr-2" />
-                Nueva Plantilla
+                <Plus className="h-4 w-4 mr-2" /> Nueva Plantilla
               </Button>
             </CardHeader>
             <CardContent>
-              {/* Search */}
               <div className="relative max-w-xs mb-4">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar plantillas..."
-                  value={plantillaSearch}
-                  onChange={(e) => setPlantillaSearch(e.target.value)}
-                  className="pl-9 bg-background border-border"
-                />
+                <Input placeholder="Buscar plantillas..." value={plantillaSearch} onChange={(e) => setPlantillaSearch(e.target.value)} className="pl-9 bg-background border-border" />
               </div>
 
               <div className="rounded-lg border border-border overflow-hidden">
@@ -659,10 +712,7 @@ const PlanificacionProduccion = () => {
                         <TableCell className="font-mono text-foreground">{plantilla.id}</TableCell>
                         <TableCell className="text-foreground font-medium">{plantilla.nombre}</TableCell>
                         <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={plantilla.tipo === "Producción" ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : "bg-purple-500/20 text-purple-400 border-purple-500/30"}
-                          >
+                          <Badge variant="outline" className={plantilla.tipo === "Producción" ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : "bg-purple-500/20 text-purple-400 border-purple-500/30"}>
                             {plantilla.tipo}
                           </Badge>
                         </TableCell>
@@ -670,12 +720,8 @@ const PlanificacionProduccion = () => {
                         <TableCell className="font-mono text-foreground">{plantilla.tiempoEstimado}</TableCell>
                         <TableCell>
                           <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => { setEditingPlantilla(plantilla); setPlantillaDialogOpen(true); }}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDeletePlantilla(plantilla.id)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => { setEditingPlantilla(plantilla); setPlantillaDialogOpen(true); }}><Edit className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDeletePlantilla(plantilla.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -688,148 +734,61 @@ const PlanificacionProduccion = () => {
         </TabsContent>
       </Tabs>
 
-      <FormularioOrden
-        open={ordenDialogOpen}
-        onOpenChange={setOrdenDialogOpen}
-        orden={editingOrden}
-        onSave={handleSaveOrden}
-      />
+      <FormularioOrden open={ordenDialogOpen} onOpenChange={setOrdenDialogOpen} orden={editingOrden} onSave={handleSaveOrden} />
+      <FormularioPlantilla open={plantillaDialogOpen} onOpenChange={setPlantillaDialogOpen} plantilla={editingPlantilla} onSave={handleSavePlantilla} />
 
-      <FormularioPlantilla
-        open={plantillaDialogOpen}
-        onOpenChange={setPlantillaDialogOpen}
-        plantilla={editingPlantilla}
-        onSave={handleSavePlantilla}
-      />
-
-      {/* Mantenimiento Dialog */}
       <Dialog open={mantenimientoDialogOpen} onOpenChange={setMantenimientoDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Wrench className="h-5 w-5 text-orange-400" />
-              Programar Mantenimiento
+              <Wrench className="h-5 w-5 text-orange-400" /> Programar Mantenimiento
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Nombre del Mantenimiento *</Label>
-              <Input
-                value={mantenimientoForm.nombre}
-                onChange={(e) => setMantenimientoForm({ ...mantenimientoForm, nombre: e.target.value })}
-                placeholder="Ej: Mantenimiento preventivo bomba"
-                className="bg-background border-border"
-              />
+              <Input value={mantenimientoForm.nombre} onChange={(e) => setMantenimientoForm({ ...mantenimientoForm, nombre: e.target.value })} placeholder="Ej: Mantenimiento preventivo bomba" className="bg-background border-border" />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Fecha Inicio *</Label>
-                <Input
-                  type="date"
-                  value={mantenimientoForm.fechaInicio}
-                  onChange={(e) => setMantenimientoForm({ ...mantenimientoForm, fechaInicio: e.target.value })}
-                  className="bg-background border-border"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Hora Inicio *</Label>
-                <Input
-                  type="time"
-                  value={mantenimientoForm.horaInicio}
-                  onChange={(e) => setMantenimientoForm({ ...mantenimientoForm, horaInicio: e.target.value })}
-                  className="bg-background border-border"
-                />
-              </div>
+              <div className="space-y-2"><Label>Fecha Inicio *</Label><Input type="date" value={mantenimientoForm.fechaInicio} onChange={(e) => setMantenimientoForm({ ...mantenimientoForm, fechaInicio: e.target.value })} className="bg-background border-border" /></div>
+              <div className="space-y-2"><Label>Hora Inicio *</Label><Input type="time" value={mantenimientoForm.horaInicio} onChange={(e) => setMantenimientoForm({ ...mantenimientoForm, horaInicio: e.target.value })} className="bg-background border-border" /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Fecha Fin</Label>
-                <Input
-                  type="date"
-                  value={mantenimientoForm.fechaFin}
-                  onChange={(e) => setMantenimientoForm({ ...mantenimientoForm, fechaFin: e.target.value })}
-                  className="bg-background border-border"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Hora Fin</Label>
-                <Input
-                  type="time"
-                  value={mantenimientoForm.horaFin}
-                  onChange={(e) => setMantenimientoForm({ ...mantenimientoForm, horaFin: e.target.value })}
-                  className="bg-background border-border"
-                />
-              </div>
+              <div className="space-y-2"><Label>Fecha Fin</Label><Input type="date" value={mantenimientoForm.fechaFin} onChange={(e) => setMantenimientoForm({ ...mantenimientoForm, fechaFin: e.target.value })} className="bg-background border-border" /></div>
+              <div className="space-y-2"><Label>Hora Fin</Label><Input type="time" value={mantenimientoForm.horaFin} onChange={(e) => setMantenimientoForm({ ...mantenimientoForm, horaFin: e.target.value })} className="bg-background border-border" /></div>
             </div>
             <div className="space-y-2">
               <Label>Planta</Label>
-              <Select
-                value={mantenimientoForm.planta}
-                onValueChange={(v) => setMantenimientoForm({ ...mantenimientoForm, planta: v, sistema: "", maquina: "" })}
-              >
-                <SelectTrigger className="bg-background border-border">
-                  <SelectValue placeholder="Seleccionar planta" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.keys(sistemasPorPlanta).map((planta) => (
-                    <SelectItem key={planta} value={planta}>{planta}</SelectItem>
-                  ))}
-                </SelectContent>
+              <Select value={mantenimientoForm.planta} onValueChange={(v) => setMantenimientoForm({ ...mantenimientoForm, planta: v, sistema: "", maquina: "" })}>
+                <SelectTrigger className="bg-background border-border"><SelectValue placeholder="Seleccionar planta" /></SelectTrigger>
+                <SelectContent>{Object.keys(sistemasPorPlanta).map((planta) => (<SelectItem key={planta} value={planta}>{planta}</SelectItem>))}</SelectContent>
               </Select>
             </div>
             {mantenimientoForm.planta && (
               <div className="space-y-2">
                 <Label>Sistema</Label>
-                <Select
-                  value={mantenimientoForm.sistema}
-                  onValueChange={(v) => setMantenimientoForm({ ...mantenimientoForm, sistema: v, maquina: "" })}
-                >
-                  <SelectTrigger className="bg-background border-border">
-                    <SelectValue placeholder="Seleccionar sistema" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sistemasPorPlanta[mantenimientoForm.planta]?.map((sistema) => (
-                      <SelectItem key={sistema} value={sistema}>{sistema}</SelectItem>
-                    ))}
-                  </SelectContent>
+                <Select value={mantenimientoForm.sistema} onValueChange={(v) => setMantenimientoForm({ ...mantenimientoForm, sistema: v, maquina: "" })}>
+                  <SelectTrigger className="bg-background border-border"><SelectValue placeholder="Seleccionar sistema" /></SelectTrigger>
+                  <SelectContent>{sistemasPorPlanta[mantenimientoForm.planta]?.map((sistema) => (<SelectItem key={sistema} value={sistema}>{sistema}</SelectItem>))}</SelectContent>
                 </Select>
               </div>
             )}
             {mantenimientoForm.sistema && (
               <div className="space-y-2">
                 <Label>Máquina</Label>
-                <Select
-                  value={mantenimientoForm.maquina}
-                  onValueChange={(v) => setMantenimientoForm({ ...mantenimientoForm, maquina: v })}
-                >
-                  <SelectTrigger className="bg-background border-border">
-                    <SelectValue placeholder="Seleccionar máquina" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {maquinasPorSistema[mantenimientoForm.sistema]?.map((maquina) => (
-                      <SelectItem key={maquina} value={maquina}>{maquina}</SelectItem>
-                    ))}
-                  </SelectContent>
+                <Select value={mantenimientoForm.maquina} onValueChange={(v) => setMantenimientoForm({ ...mantenimientoForm, maquina: v })}>
+                  <SelectTrigger className="bg-background border-border"><SelectValue placeholder="Seleccionar máquina" /></SelectTrigger>
+                  <SelectContent>{maquinasPorSistema[mantenimientoForm.sistema]?.map((maquina) => (<SelectItem key={maquina} value={maquina}>{maquina}</SelectItem>))}</SelectContent>
                 </Select>
               </div>
             )}
             <div className="space-y-2">
               <Label>Descripción</Label>
-              <Input
-                value={mantenimientoForm.descripcion}
-                onChange={(e) => setMantenimientoForm({ ...mantenimientoForm, descripcion: e.target.value })}
-                placeholder="Descripción del mantenimiento..."
-                className="bg-background border-border"
-              />
+              <Input value={mantenimientoForm.descripcion} onChange={(e) => setMantenimientoForm({ ...mantenimientoForm, descripcion: e.target.value })} placeholder="Descripción del mantenimiento..." className="bg-background border-border" />
             </div>
             <div className="flex justify-end gap-2 pt-4">
-              <Button variant="outline" onClick={() => setMantenimientoDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleSaveMantenimiento} className="bg-orange-500 hover:bg-orange-600">
-                <Wrench className="h-4 w-4 mr-2" />
-                Programar
-              </Button>
+              <Button variant="outline" onClick={() => setMantenimientoDialogOpen(false)}>Cancelar</Button>
+              <Button onClick={handleSaveMantenimiento} className="bg-orange-500 hover:bg-orange-600"><Wrench className="h-4 w-4 mr-2" />Programar</Button>
             </div>
           </div>
         </DialogContent>

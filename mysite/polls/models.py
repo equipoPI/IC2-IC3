@@ -393,6 +393,7 @@ class OrdenProduccion(models.Model):
     codigo = models.CharField(max_length=50, unique=True, editable=False)
     producto = models.CharField(max_length=100)
     cantidad = models.IntegerField()
+    unidad = models.CharField(max_length=20, default='UN')
     fecha_inicio = models.DateField()
     hora_inicio = models.TimeField(default='08:00')
     fecha_fin = models.DateField()
