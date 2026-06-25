@@ -62,7 +62,7 @@ services:
       - ./scada-ui:/app
       - /app/node_modules
     ports:
-      - "5173:5173"
+      - "5173:8080"
     environment:
       - VITE_API_URL=http://localhost:8000
       - WATCHPACK_POLLING=true

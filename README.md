@@ -156,10 +156,13 @@ IC2-IC3/
 
 ---
 
-## 📚 Documentación
+## 📚 Documentación (consolidada)
 
 - 📘 [**INSTALACION.md**](INSTALACION.md) - Guía completa de instalación (Docker vs Virtual Env)
-- ⚡ [**COMANDOS_RAPIDOS.md**](COMANDOS_RAPIDOS.md) - Comandos útiles para desarrollo
+- 📄 [**Quickstart**](docs/quickstart.md) - Resumen rápido para levantar el sistema
+- 📄 [**MQTT Spec**](docs/mqtt_spec.md) - Especificación del contrato MQTT (gateway)
+- 📄 [**MQTT para dispositivos**](docs/mqtt_for_devices.md) - Guía práctica para Arduino/IoT
+- 📄 [**Comandos útiles**](docs/commands.md) - Comandos consolidados para Docker, gateway y desarrollo
 - 🐍 [**Backend README**](mysite/README_BACKEND.md) - Documentación del backend Django
 - ⚛️ [**Frontend README**](scada-ui/README.md) - Documentación del frontend React
 - 🤖 [**Gateway README**](control/raspberry_gateway/README.md) - Documentación del gateway
