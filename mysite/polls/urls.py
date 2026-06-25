@@ -1,15 +1,13 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-
+from django.urls import path
 from . import views
 
-router = DefaultRouter()
-router.register(r'fabricas', views.FabricaViewSet, basename='fabrica')
-router.register(r'dispositivos', views.DispositivoSCADAViewSet, basename='dispositivoscada')
-router.register(r'lecturas', views.LecturaSensorViewSet, basename='lecturasensor')
-router.register(r'ordenes-produccion', views.OrdenProduccionViewSet, basename='ordenproduccion')
-
 urlpatterns = [
-    path("", views.index, name="index"),
-    path("api/", include(router.urls)),
+    # La vista web clásica por defecto
+    path('', views.index, name='index'),
+    
+    # Puente de datos(API)
+    path('api/fabricas/', views.api_lista_fabricas, name='api_fabricas'),
+    path('api/fabricas/<int:pk>/', views.api_detalle_fabrica, name='api_detalle_fabrica'),
+    path('api/ordenes/', views.api_lista_ordenes, name='api_lista_ordenes'),
+    path('api/ordenes/<int:pk>/', views.api_detalle_orden, name='api_detalle_orden'),
 ]

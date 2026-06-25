@@ -95,6 +95,30 @@ sudo chmod 666 /dev/ttyACM0  # o /dev/ttyUSB0
 sudo cp raspberry_gateway.service /etc/systemd/system/
 sudo systemctl enable raspberry_gateway
 sudo systemctl start raspberry_gateway
+
+## 📁 Base de datos local (data/scada_local.db)
+
+El gateway utiliza una base de datos SQLite local para almacenar mediciones, eventos, alarmas, diagnósticos y comandos cuando se ejecuta en la Raspberry.
+
+- Ruta por defecto (configurable en `config.yaml`): `./data/scada_local.db`.
+- Gestionada por `control/raspberry_gateway/src/data_storage.py` (tablas: `mediciones`, `eventos`, `alarmas`, `diagnostico`, `comandos`).
+
+Recomendaciones:
+
+- No versionar el fichero de base de datos. Está ignorado por `.gitignore` con la regla `data/*.db`.
+- En Raspberry Pi se recomienda ubicar la base de datos en `control/raspberry_gateway/data/` o en `/var/lib/scada_gateway/data/` y actualizar `config.yaml` con la ruta absoluta.
+- Hacer backups periódicos antes de cambios importantes. Ver `control/raspberry_gateway/scripts/backup_db.sh`.
+
+### Backup rápido
+
+Script de ejemplo incluido: `control/raspberry_gateway/scripts/backup_db.sh`.
+
+Ejecutar:
+
+```bash
+bash control/raspberry_gateway/scripts/backup_db.sh
+```
+
 ```
 
 ## ⚙️ Configuración

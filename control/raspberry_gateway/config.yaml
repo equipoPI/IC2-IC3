@@ -70,7 +70,9 @@ mqtt:
 
 # Base de datos local SQLite
 database:
-  path: "./data/scada_local.db"
+  # Ruta por defecto actualizada: apuntar al subdirectorio del gateway
+  # Si el gateway se ejecuta desde su own folder, esta ruta relativa seguirá funcionando.
+  path: "./control/raspberry_gateway/data/scada_local.db"
   retention_days: 7  # Mantener datos de última semana
   backup_enabled: true
   backup_path: "./backups"
