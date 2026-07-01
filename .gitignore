@@ -62,3 +62,7 @@ key.env
 *.bak
 *.backup
 *.tmp
+
+configuracion de IA
+AGENTS.md
+/spec 
