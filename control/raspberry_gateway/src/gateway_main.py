@@ -16,6 +16,7 @@ from control.raspberry_gateway.src.arduino_serial import ArduinoSerial
 from control.raspberry_gateway.src.mqtt_client import MQTTClient
 from control.raspberry_gateway.src.data_storage import DataStorage
 from control.raspberry_gateway.src.system_diagnostics import SystemDiagnostics
+from control.raspberry_gateway.src.gui import start_gui
 
 
 class SCADAGateway:
@@ -51,19 +52,24 @@ class SCADAGateway:
 
         # Estado
         self.running = False
-
+        # Control de procesamiento (pause/resume)
+        self.processing_paused = False
         # Estadísticas
         self.stats = {
             'start_time': time.time(),
             'messages_processed': 0,
             'commands_sent': 0,
-            'errors': 0
+            'errors': 0,
+            'messages_dropped': 0,
         }
 
         # Inicializar componentes
         self._init_components()
 
         logger.success("Gateway inicializado correctamente")
+
+        # GUI thread placeholder
+        self._gui_thread = None
 
     def _resolve_config_path(self, config_path: str) -> Path:
         """
@@ -178,6 +184,17 @@ class SCADAGateway:
             self.storage.save_event('system', 'Gateway iniciado y operativo')
             
             logger.success("Gateway iniciado correctamente")
+
+            # Iniciar GUI Tkinter en hilo separado
+            try:
+                import threading
+
+                self._gui_thread = threading.Thread(target=start_gui, args=(self,), daemon=True)
+                self._gui_thread.start()
+                logger.info("GUI iniciada (Tkinter)")
+            except Exception:
+                logger.exception("No se pudo iniciar GUI")
+
             return True
         
         except Exception as e:
@@ -219,12 +236,18 @@ class SCADAGateway:
             data: Datos parseados del Arduino
         """
         try:
+            # Si está en pausa, no procesamos ni publicamos nada del flujo Python/MQTT
+            if getattr(self, 'processing_paused', False):
+                logger.info("Gateway en pausa: se descarta dato recibido del Arduino (solo hardware sigue activo)")
+                self.stats['messages_dropped'] = self.stats.get('messages_dropped', 0) + 1
+                return
+
             # Guardar en base de datos
             self.storage.save_measurement(data)
-            
+
             # Publicar en MQTT
             self.mqtt.publish_sensor_data(data)
-            
+
             # Actualizar estadísticas
             self.stats['messages_processed'] += 1
             
@@ -291,6 +314,9 @@ class SCADAGateway:
             topic: Topic MQTT de origen
         """
         try:
+            if getattr(self, 'processing_paused', False):
+                logger.info("Gateway en pausa: ignorando comando de reposición recibido por MQTT")
+                return
             bombo = data.get('bombo', 1)
             valor = data.get('valor', 50)
             
@@ -345,6 +371,9 @@ class SCADAGateway:
             topic: Topic MQTT de origen
         """
         try:
+            if getattr(self, 'processing_paused', False):
+                logger.info("Gateway en pausa: ignorando comando de mezcla recibido por MQTT")
+                return
             # Comandos de mezcla
             liquido_1 = data.get('liquido_1')
             liquido_2 = data.get('liquido_2')
@@ -405,6 +434,9 @@ class SCADAGateway:
             topic: Topic MQTT de origen
         """
         try:
+            if getattr(self, 'processing_paused', False):
+                logger.info("Gateway en pausa: ignorando comando de control recibido por MQTT")
+                return
             accion = data.get('accion', '').upper()
             
             command_map = {
@@ -466,6 +498,10 @@ class SCADAGateway:
             data: Datos de configuración
             topic: Topic MQTT de origen
         """
+        if getattr(self, 'processing_paused', False):
+            logger.info("Gateway en pausa: ignorando configuración recibida por MQTT")
+            return
+
         logger.info(f"Configuración recibida: {data}")
         self.storage.save_event('config', 'Configuración actualizada', data, 'mqtt')
         self._publish_command_response(
@@ -485,6 +521,9 @@ class SCADAGateway:
             topic: Topic MQTT de origen
         """
         try:
+            if getattr(self, 'processing_paused', False):
+                logger.info("Gateway en pausa: ignorando consulta histórica recibida por MQTT")
+                return
             from datetime import datetime, timedelta
             
             # Parsear rango de tiempo

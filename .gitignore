@@ -63,6 +63,7 @@ key.env
 *.backup
 *.tmp
 
-configuracion de IA
+# configuracion de IA
 AGENTS.md
 /spec 
+opencode.json
