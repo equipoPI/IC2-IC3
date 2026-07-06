@@ -52,6 +52,8 @@ class SCADAGateway:
 
         # Estado
         self.running = False
+        self._last_mqtt_retry = 0
+        self._mqtt_retry_interval = 30
         # Control de procesamiento (pause/resume)
         self.processing_paused = False
         # Estadísticas
@@ -150,56 +152,93 @@ class SCADAGateway:
     
     def start(self) -> bool:
         """
-        Inicia el gateway y todos sus componentes
+        Inicia el gateway y todos sus componentes.
+        Si MQTT o Arduino no están disponibles, el gateway sigue corriendo en modo degradado.
         
         Returns:
-            True si se inició correctamente
+            True si el gateway quedó preparado para operar, incluso si algunas dependencias no están disponibles.
         """
         try:
             logger.info("Iniciando gateway...")
             
             # Iniciar comunicación serial
-            if not self.arduino.start():
-                logger.error("No se pudo iniciar comunicación con Arduino")
-                return False
+            if self.arduino and not self.arduino.start():
+                logger.warning("No se pudo iniciar comunicación con Arduino; el gateway seguirá en modo degradado")
+            elif self.arduino:
+                logger.info("Comunicación serial con Arduino iniciada")
             
             # Conectar MQTT
-            if not self.mqtt.connect():
-                logger.error("No se pudo conectar a MQTT")
-                return False
+            if self.mqtt and not self.mqtt.connect():
+                logger.warning("No se pudo conectar a MQTT; el gateway seguirá funcionando en modo degradado y reintentará periódicamente")
+            elif self.mqtt:
+                logger.info("Cliente MQTT conectado")
             
             # Iniciar limpieza automática de datos
-            self.storage.start_auto_cleanup()
+            if self.storage:
+                self.storage.start_auto_cleanup()
             
             # Iniciar diagnósticos
-            self.diagnostics.start()
+            if self.diagnostics:
+                self.diagnostics.start()
             
             # Actualizar estado de conexiones en diagnósticos
-            self.diagnostics.set_serial_status(self.arduino.connected)
-            self.diagnostics.set_mqtt_status(self.mqtt.connected)
+            if self.diagnostics:
+                self.diagnostics.set_serial_status(self.arduino.connected if self.arduino else False)
+                self.diagnostics.set_mqtt_status(self.mqtt.connected if self.mqtt else False)
             
             self.running = True
             
             # Guardar evento de inicio
-            self.storage.save_event('system', 'Gateway iniciado y operativo')
+            if self.storage:
+                self.storage.save_event('system', 'Gateway iniciado y operativo')
             
             logger.success("Gateway iniciado correctamente")
 
-            # Iniciar GUI Tkinter en hilo separado
-            try:
-                import threading
-
-                self._gui_thread = threading.Thread(target=start_gui, args=(self,), daemon=True)
-                self._gui_thread.start()
-                logger.info("GUI iniciada (Tkinter)")
-            except Exception:
-                logger.exception("No se pudo iniciar GUI")
+            self._start_gui_if_possible()
 
             return True
         
         except Exception as e:
             logger.critical(f"Error iniciando gateway: {e}")
             return False
+
+    def _start_gui_if_possible(self):
+        """Inicia la UI Tkinter solo si hay un entorno gráfico disponible."""
+        try:
+            import os
+            import threading
+
+            if not self.config.get('gui', {}).get('enabled', True):
+                logger.info("GUI deshabilitada por configuración")
+                return False
+
+            if os.environ.get('DISPLAY') is None and os.name != 'nt':
+                logger.warning("No hay DISPLAY configurado; se omite la GUI Tkinter")
+                return False
+
+            self._gui_thread = threading.Thread(target=start_gui, args=(self,), daemon=True)
+            self._gui_thread.start()
+            logger.info("GUI iniciada (Tkinter)")
+            return True
+        except Exception as e:
+            logger.warning(f"No se pudo iniciar GUI: {e}")
+            return False
+
+    def _try_reconnect_mqtt(self) -> bool:
+        """Reintenta conectar MQTT si está caído y no se está intentando con demasiada frecuencia."""
+        if not self.mqtt or self.mqtt.connected:
+            return self.mqtt.connected if self.mqtt else False
+
+        now = time.time()
+        if now - self._last_mqtt_retry < self._mqtt_retry_interval:
+            return False
+
+        self._last_mqtt_retry = now
+        logger.info("Reintentando conexión MQTT...")
+        connected = self.mqtt.connect()
+        if self.diagnostics:
+            self.diagnostics.set_mqtt_status(self.mqtt.connected)
+        return connected
     
     def stop(self):
         """
@@ -657,8 +696,10 @@ class SCADAGateway:
         print(f"Comandos enviados: {stats['commands_sent']}")
         print(f"Errores: {stats['errors']}")
         print()
-        print(f"Arduino: {'✓' if stats['arduino'].get('connected') else '✗'} Conectado")
-        print(f"MQTT: {'✓' if stats['mqtt'].get('connected') else '✗'} Conectado")
+        arduino_status = '✓ Conectado' if stats['arduino'].get('connected') else '✗ Desconectado'
+        mqtt_status = '✓ Conectado' if stats['mqtt'].get('connected') else '✗ Desconectado'
+        print(f"Arduino: {arduino_status}")
+        print(f"MQTT: {mqtt_status}")
         print("=" * 60 + "\n")
 
 
@@ -697,6 +738,7 @@ def main():
             # Loop principal
             while gateway.running:
                 time.sleep(10)
+                gateway._try_reconnect_mqtt()
                 gateway.print_status()
         else:
             logger.error("No se pudo iniciar el gateway")

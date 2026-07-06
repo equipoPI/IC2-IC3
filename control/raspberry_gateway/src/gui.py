@@ -178,11 +178,12 @@ class GatewayGUI:
 
     def _on_quit(self):
         if messagebox.askokcancel('Salir', 'Detener gateway y salir?'):
+            self._running = False
             try:
                 self.gateway.stop()
             except Exception:
                 pass
-            self._running = False
+            self.root.quit()
             self.root.destroy()
 
     def run(self):

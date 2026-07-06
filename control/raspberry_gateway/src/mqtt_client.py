@@ -334,10 +334,25 @@ class MQTTClient:
                 return True
             else:
                 logger.error("Timeout esperando conexión MQTT")
+                self.connected = False
+                try:
+                    self.client.loop_stop()
+                    self.client.disconnect()
+                except Exception:
+                    pass
+                self.client = None
                 return False
         
         except Exception as e:
             logger.error(f"Error conectando a MQTT: {e}")
+            self.connected = False
+            try:
+                if self.client:
+                    self.client.loop_stop()
+                    self.client.disconnect()
+            except Exception:
+                pass
+            self.client = None
             return False
     
     def disconnect(self):
@@ -516,7 +531,7 @@ class MQTTClient:
         # Publicar estado general
         general_state = {
             "timestamp": sensor_data.get("timestamp"),
-            "conectado": True,
+            "conectado": self.connected,
             "error": sensor_data.get("error", 0),
         }
         self.publish("estado_general", general_state)
