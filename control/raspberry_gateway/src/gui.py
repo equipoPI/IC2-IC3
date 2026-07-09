@@ -45,6 +45,12 @@ class GatewayGUI:
         self.msgs_var = tk.StringVar(value='0')
         ttk.Label(frm, textvariable=self.msgs_var).grid(column=1, row=3, sticky='w')
 
+        # MQTT connection status
+        ttk.Label(frm, text="MQTT:").grid(column=0, row=3, sticky='e')
+        self.mqtt_status_var = tk.StringVar(value='Desconocido')
+        self.mqtt_status_lbl = ttk.Label(frm, textvariable=self.mqtt_status_var, foreground='orange')
+        self.mqtt_status_lbl.grid(column=1, row=3, sticky='w')
+
         ttk.Label(frm, text="Comandos enviados:").grid(column=0, row=4, sticky='w')
         self.cmds_var = tk.StringVar(value='0')
         ttk.Label(frm, textvariable=self.cmds_var).grid(column=1, row=4, sticky='w')
@@ -59,6 +65,9 @@ class GatewayGUI:
 
         self.pause_btn = ttk.Button(btn_frame, text='Pausar', command=self._toggle_pause)
         self.pause_btn.grid(column=0, row=0, padx=4)
+
+        self.reconnect_btn = ttk.Button(btn_frame, text='Reconectar MQTT', command=self._reconnect_mqtt)
+        self.reconnect_btn.grid(column=3, row=0, padx=4)
 
         self.save_btn = ttk.Button(btn_frame, text='Guardar config', command=self._save_config)
         self.save_btn.grid(column=1, row=0, padx=4)
@@ -78,6 +87,16 @@ class GatewayGUI:
         self.mqtt_port = tk.StringVar(value=str(self.gateway.config.get('mqtt', {}).get('port', 1883)))
         ttk.Entry(frm, textvariable=self.mqtt_port, width=10).grid(column=1, row=9, sticky='w')
 
+        # MQTT Username / Password
+        ttk.Label(frm, text='MQTT Username:').grid(column=0, row=12, sticky='w')
+        self.mqtt_username = tk.StringVar(value=self.gateway.config.get('mqtt', {}).get('username', ''))
+        ttk.Entry(frm, textvariable=self.mqtt_username, width=20).grid(column=1, row=12, sticky='w')
+
+        ttk.Label(frm, text='MQTT Password:').grid(column=0, row=13, sticky='w')
+        # Password field masked
+        self.mqtt_password = tk.StringVar(value=self.gateway.config.get('mqtt', {}).get('password', ''))
+        ttk.Entry(frm, textvariable=self.mqtt_password, width=20, show='*').grid(column=1, row=13, sticky='w')
+
         ttk.Label(frm, text='Serial Port:').grid(column=0, row=10, sticky='w')
         self.serial_port = tk.StringVar(value=self.gateway.config.get('serial', {}).get('port', ''))
         ttk.Entry(frm, textvariable=self.serial_port, width=20).grid(column=1, row=10, sticky='w')
@@ -85,6 +104,68 @@ class GatewayGUI:
         ttk.Label(frm, text='Baudrate:').grid(column=0, row=11, sticky='w')
         self.baudrate = tk.StringVar(value=str(self.gateway.config.get('serial', {}).get('baudrate', 115200)))
         ttk.Entry(frm, textvariable=self.baudrate, width=10).grid(column=1, row=11, sticky='w')
+
+        # Button to toggle topics view
+        self.topics_shown = False
+        self.show_topics_btn = ttk.Button(frm, text='Mostrar topics', command=self._toggle_topics)
+        self.show_topics_btn.grid(column=0, row=14, columnspan=2, pady=(8,0))
+
+        # Frame that will contain topics summary (hidden by default)
+        self.topics_frame = ttk.Frame(frm, padding=6, relief='groove')
+        # Use a Text widget to present topics (read-only)
+        try:
+            from tkinter.scrolledtext import ScrolledText
+            self.topics_text = ScrolledText(self.topics_frame, width=60, height=12, wrap='word')
+        except Exception:
+            self.topics_text = tk.Text(self.topics_frame, width=60, height=12, wrap='word')
+        self.topics_text.configure(state='disabled')
+        self.topics_text.grid(column=0, row=0)
+
+    def _toggle_topics(self):
+        if self.topics_shown:
+            self.topics_frame.grid_forget()
+            self.show_topics_btn.config(text='Mostrar topics')
+            self.topics_shown = False
+            return
+
+        # llenar contenido desde config
+        mqtt_cfg = self.gateway.config.get('mqtt', {})
+        topics = mqtt_cfg.get('topics', {})
+        publish = topics.get('publish', {})
+        subscribe = topics.get('subscribe', {})
+        subscribe_filters = topics.get('subscribe_filters', [])
+
+        content_lines = []
+        content_lines.append('Publish (desde gateway):')
+        if publish:
+            for k, v in publish.items():
+                content_lines.append(f"- {k}: {v}")
+        else:
+            content_lines.append('  (ninguno configurado)')
+
+        content_lines.append('')
+        content_lines.append('Subscribe (a los que escucha el gateway):')
+        if subscribe:
+            for k, v in subscribe.items():
+                content_lines.append(f"- {k}: {v}")
+        else:
+            content_lines.append('  (ninguno configurado)')
+
+        if subscribe_filters:
+            content_lines.append('')
+            content_lines.append('Subscribe filters (plantillas):')
+            for f in subscribe_filters:
+                content_lines.append(f"- {f}")
+
+        # mostrar
+        self.topics_text.configure(state='normal')
+        self.topics_text.delete('1.0', tk.END)
+        self.topics_text.insert(tk.END, '\n'.join(content_lines))
+        self.topics_text.configure(state='disabled')
+
+        self.topics_frame.grid(column=0, row=15, columnspan=2, pady=(8,0))
+        self.show_topics_btn.config(text='Ocultar topics')
+        self.topics_shown = True
 
     def _get_mac(self):
         try:
@@ -125,6 +206,11 @@ class GatewayGUI:
             conf = self.gateway.config
             conf.setdefault('mqtt', {})['broker'] = broker
             conf['mqtt']['port'] = port
+            # username / password
+            username = self.mqtt_username.get().strip()
+            password = self.mqtt_password.get()
+            conf['mqtt']['username'] = username
+            conf['mqtt']['password'] = password
             conf.setdefault('serial', {})['port'] = s_port
             conf['serial']['baudrate'] = baud
 
@@ -137,10 +223,23 @@ class GatewayGUI:
                 if self.gateway.mqtt:
                     self.gateway.mqtt.broker = broker
                     self.gateway.mqtt.port = port
-                    # reconnect
+                    # apply username/password if present
+                    try:
+                        self.gateway.mqtt.username = self.mqtt_username.get().strip() or None
+                        self.gateway.mqtt.password = self.mqtt_password.get() or None
+                    except Exception:
+                        pass
+                    # reconnect to apply new credentials
                     if self.gateway.mqtt.connected:
-                        self.gateway.mqtt.disconnect()
-                        self.gateway.mqtt.connect()
+                        try:
+                            self.gateway.mqtt.disconnect()
+                        except Exception:
+                            pass
+                        # small delay then reconnect
+                        try:
+                            self.gateway.mqtt.connect()
+                        except Exception:
+                            pass
                 if self.gateway.arduino:
                     self.gateway.arduino.port = s_port
                     self.gateway.arduino.baudrate = baud
@@ -154,6 +253,26 @@ class GatewayGUI:
         except Exception as e:
             messagebox.showerror('Error', f'Error guardando configuración: {e}')
 
+    def _reconnect_mqtt(self):
+        try:
+            if self.gateway.mqtt:
+                # intentar desconectar y reconectar
+                try:
+                    self.gateway.mqtt.disconnect()
+                except Exception:
+                    pass
+                ok = self.gateway.mqtt.connect()
+                if ok:
+                    messagebox.showinfo('MQTT', 'Reconectado con éxito')
+                else:
+                    rc = getattr(self.gateway.mqtt, 'last_conn_rc', None)
+                    if rc == 4:
+                        messagebox.showerror('MQTT', 'Fallo de autenticación: usuario/contraseña incorrectos')
+                    else:
+                        messagebox.showerror('MQTT', 'No se pudo reconectar al broker MQTT')
+        except Exception as e:
+            messagebox.showerror('MQTT', f'Error reconectando: {e}')
+
     def _update_loop(self):
         if not self._running:
             return
@@ -165,6 +284,28 @@ class GatewayGUI:
             self.msgs_var.set(str(stats.get('messages_processed', 0)))
             self.cmds_var.set(str(stats.get('commands_sent', 0)))
             self.err_var.set(str(stats.get('errors', 0)))
+            # MQTT status
+            try:
+                mqtt_stats = stats.get('mqtt', {})
+                connected = mqtt_stats.get('connected')
+                if connected:
+                    self.mqtt_status_var.set('Conectado')
+                    self.mqtt_status_lbl.configure(foreground='green')
+                else:
+                    # revisar código de rc si existe
+                    rc = None
+                    try:
+                        rc = getattr(self.gateway.mqtt, 'last_conn_rc', None)
+                    except Exception:
+                        rc = None
+                    if rc == 4:
+                        self.mqtt_status_var.set('Auth fallida')
+                        self.mqtt_status_lbl.configure(foreground='red')
+                    else:
+                        self.mqtt_status_var.set('Desconectado')
+                        self.mqtt_status_lbl.configure(foreground='orange')
+            except Exception:
+                pass
             # update pause btn label
             if getattr(self.gateway, 'processing_paused', False):
                 self.pause_btn.config(text='Reanudar')

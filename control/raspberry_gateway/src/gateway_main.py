@@ -169,7 +169,12 @@ class SCADAGateway:
             
             # Conectar MQTT
             if self.mqtt and not self.mqtt.connect():
-                logger.warning("No se pudo conectar a MQTT; el gateway seguirá funcionando en modo degradado y reintentará periódicamente")
+                # Si el cliente MQTT reportó código RC de auth, mostrar mensaje específico
+                rc = getattr(self.mqtt, 'last_conn_rc', None)
+                if rc == 4:
+                    logger.error("Fallo de autenticación MQTT: usuario/contraseña incorrectos. Verifica credenciales en control/raspberry_gateway/config.yaml")
+                else:
+                    logger.warning("No se pudo conectar a MQTT; el gateway seguirá funcionando en modo degradado y reintentará periódicamente")
             elif self.mqtt:
                 logger.info("Cliente MQTT conectado")
             

@@ -127,7 +127,7 @@ mqtt:
   default_system: linea_mezclado_1
   gateway_id: ''
   keepalive: 60
-  password: scada_pass
+  password: admin
   port: 1883
   qos: 1
   tenant: rafaela
@@ -162,7 +162,7 @@ mqtt:
       consultas: consultas/historico
     subscribe_filters:
     - '{tenant}/{gateway_id}/cmd/#'
-  username: scada_user
+  username: admin
 planta:
   capacidades:
     bombo1: 100

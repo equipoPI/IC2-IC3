@@ -255,7 +255,7 @@ sudo systemctl enable mosquitto
 sudo systemctl start mosquitto
 
 # Crear usuario
-sudo mosquitto_passwd -c /etc/mosquitto/passwd scada_user
+sudo mosquitto_passwd -c /etc/mosquitto/passwd admin
 
 # Configurar
 sudo nano /etc/mosquitto/mosquitto.conf
@@ -329,7 +329,7 @@ class MysiteConfig(AppConfig):
     def ready(self):
         from polls.mqtt_service import MQTTService
         mqtt = MQTTService()
-        mqtt.connect('localhost', 1883, 'scada_user', 'password')
+        mqtt.connect('localhost', 1883, 'admin', 'admin')
 ```
 
 ## 📊 Migración de Datos Históricos

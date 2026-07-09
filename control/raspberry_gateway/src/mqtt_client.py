@@ -62,6 +62,8 @@ class MQTTClient:
         # Cliente MQTT
         self.client: Optional[mqtt.Client] = None
         self.connected = False
+        # último código de retorno de conexión (on_connect)
+        self.last_conn_rc: Optional[int] = None
         
         # Cola de mensajes a publicar
         self.publish_queue = Queue()
@@ -173,12 +175,14 @@ class MQTTClient:
         """
         if rc == 0:
             self.connected = True
+            self.last_conn_rc = rc
             logger.success(f"Conectado al broker MQTT: {self.broker}")
 
             # Suscribirse a todos los topics de comandos
             self._subscribe_to_topics()
         else:
             self.connected = False
+            self.last_conn_rc = rc
             error_messages = {
                 1: "Protocolo incorrecto",
                 2: "Client ID rechazado",
@@ -193,6 +197,11 @@ class MQTTClient:
         Callback cuando se desconecta del broker MQTT
         """
         self.connected = False
+        # registrar código de desconexión si aplica
+        try:
+            self.last_conn_rc = rc
+        except Exception:
+            pass
         if rc != 0:
             logger.warning(f"Desconexión inesperada del broker MQTT (rc={rc})")
         else:
@@ -315,7 +324,7 @@ class MQTTClient:
             start_time = time.time()
             while not self.connected and time.time() - start_time < timeout:
                 time.sleep(0.1)
-            
+
             if self.connected:
                 # Publicar estado online
                 self.publish_status(True)
@@ -333,7 +342,11 @@ class MQTTClient:
                 
                 return True
             else:
-                logger.error("Timeout esperando conexión MQTT")
+                # Si hubo un código de retorno específico, loguearlo
+                if self.last_conn_rc is not None:
+                    logger.error(f"Conexión MQTT fallida, rc={self.last_conn_rc}")
+                else:
+                    logger.error("Timeout esperando conexión MQTT")
                 self.connected = False
                 try:
                     self.client.loop_stop()

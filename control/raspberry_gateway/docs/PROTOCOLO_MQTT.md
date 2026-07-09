@@ -317,8 +317,8 @@ mqtt:
 
 ```yaml
 mqtt:
-  username: "scada_user"
-  password: "contraseña_segura"
+  username: "admin"
+  password: "admin"
 ```
 
 ### TLS/SSL (Producción)
@@ -365,7 +365,7 @@ mosquitto_pub -h localhost \
 ### Con autenticación
 ```bash
 mosquitto_sub -h localhost \
-  -u scada_user -P password \
+  -u admin -P admin \
   -t "scada/planta1/#" -v
 ```
 
@@ -376,7 +376,7 @@ mosquitto_sub -h localhost \
 import mqtt from 'mqtt';
 
 const client = mqtt.connect('mqtt://localhost:1883', {
-  username: 'scada_user',
+  username: 'admin',
   password: 'password'
 });
 
