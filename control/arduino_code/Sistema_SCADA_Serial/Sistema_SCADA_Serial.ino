@@ -87,7 +87,6 @@ byte detener = 0;
 int i = 0;
 int x = 25;
 int bandera1 = 0;
-float alpha = 0.5;  // Factor de suavizado, entre 0 y 1 para reducir oscilación sensores
 
 // Pines de control de los sensores ultrasónicos
 int trig = 16;
@@ -112,7 +111,8 @@ byte Fporcentaje3 = 0;
 // VARIABLES GLOBALES - ESTADÍSTICA/FILTRADO
 // ============================================================
 
-#define NUM_READINGS 15  // Número de lecturas a promediar
+#define NUM_READINGS 10  // Número de lecturas a promediar
+#define ALPHA 0.35       // Factor suavizado exponencial (0-1: menor=más suave, más latencia)
 
 float readings1[NUM_READINGS];
 float readings2[NUM_READINGS];
@@ -124,6 +124,14 @@ float total3 = 0;
 float average1 = 0;
 float average2 = 0;
 float average3 = 0;
+
+// Variables para suavizado exponencial complementario
+float smoothed1 = 0;
+float smoothed2 = 0;
+float smoothed3 = 0;
+bool initialized1 = false;
+bool initialized2 = false;
+bool initialized3 = false;
 
 // ============================================================
 // VARIABLES GLOBALES - CONTROL DE CAUDAL
@@ -219,6 +227,14 @@ void setup() {
     readings3[K] = 0;
   }
 
+  // Inicializar valores suavizados
+  smoothed1 = 0;
+  smoothed2 = 0;
+  smoothed3 = 0;
+  initialized1 = false;
+  initialized2 = false;
+  initialized3 = false;
+
   // ============================================================
   // CONFIGURACIÓN TIMER PARA LECTURA DE COMANDOS
   // ============================================================
@@ -267,8 +283,17 @@ void nivel() {
     digitalWrite(trig, HIGH);
     delayMicroseconds(5);
     digitalWrite(trig, LOW);
-    duracion = pulseIn(eco, HIGH);
-    distancia = duracion / 58.2;  // Conversión a cm según datasheet
+    
+    // pulseIn con timeout de 23200 microsegundos (~4 metros máximo)
+    duracion = pulseIn(eco, HIGH, 23200);
+    
+    // Validar que la medición sea válida (2-30 cm = rango de operación)
+    distancia = duracion / 58.2;  // Conversión a cm
+    
+    // Si la medición es inválida (< 1cm o > 40cm), no actualizar
+    if (distancia < 1 || distancia > 40) {
+      distancia = 999;  // Valor inválido que será ignorado por el filtro
+    }
     
     if (i == 0) {
       distancia2 = distancia;
@@ -294,7 +319,7 @@ void nivel() {
 
 // ============================================================
 // FUNCIÓN: filtrado()
-// Descripción: Aplica filtrado estadístico de media móvil
+// Descripción: Aplica filtrado estadístico de media móvil + suavizado exponencial
 // ============================================================
 
 void filtrado() {
@@ -303,10 +328,11 @@ void filtrado() {
   total2 = total2 - readings2[readIndex];
   total3 = total3 - readings3[readIndex];
 
-  // Guardar los valores de distancia
-  readings1[readIndex] = distancia1;
-  readings2[readIndex] = distancia2;
-  readings3[readIndex] = distancia3;
+  // Guardar los valores de distancia (solo si son válidos)
+  // Si son inválidos (999), usar la última lectura válida para mantener estabilidad
+  if (distancia1 != 999) readings1[readIndex] = distancia1;
+  if (distancia2 != 999) readings2[readIndex] = distancia2;
+  if (distancia3 != 999) readings3[readIndex] = distancia3;
 
   // Añadir la nueva lectura a la suma total
   total1 = total1 + readings1[readIndex];
@@ -321,15 +347,42 @@ void filtrado() {
     readIndex = 0;
   }
 
-  // Calcular el promedio
+  // Calcular el promedio (media móvil)
   average1 = total1 / NUM_READINGS;
   average2 = total2 / NUM_READINGS;
   average3 = total3 / NUM_READINGS;
 
-  // Mapear distancia a porcentaje (27cm = vacío, 6cm = lleno)
-  Fporcentaje1 = map(average1, 27, 6, 0, 100);
-  Fporcentaje2 = map(average2, 27, 6, 0, 100);
-  Fporcentaje3 = map(average3, 27, 6, 0, 100);
+  // ========== SUAVIZADO EXPONENCIAL COMPLEMENTARIO ==========
+  // Aplica filtro exponencial al promedio para reducir oscilaciones residuales
+  // Formula: smoothed = smoothed_anterior + ALPHA * (average - smoothed_anterior)
+  
+  // Inicialización robusta con bandera
+  if (!initialized1) {
+    smoothed1 = average1;
+    initialized1 = true;
+  } else {
+    smoothed1 = smoothed1 + ALPHA * (average1 - smoothed1);
+  }
+  
+  if (!initialized2) {
+    smoothed2 = average2;
+    initialized2 = true;
+  } else {
+    smoothed2 = smoothed2 + ALPHA * (average2 - smoothed2);
+  }
+  
+  if (!initialized3) {
+    smoothed3 = average3;
+    initialized3 = true;
+  } else {
+    smoothed3 = smoothed3 + ALPHA * (average3 - smoothed3);
+  }
+
+  // Mapear distancia suavizada a porcentaje (30cm = vacío, 4cm = lleno)
+  // Rango ampliado: 2cm más arriba y 3cm más abajo para margen
+  Fporcentaje1 = map(smoothed1, 30, 4, 0, 100);
+  Fporcentaje2 = map(smoothed2, 30, 4, 0, 100);
+  Fporcentaje3 = map(smoothed3, 30, 4, 0, 100);
 
   // Limitar el valor para que no se pase de 0-100
   constrainedPorcentaje1 = constrain(Fporcentaje1, 0, 100);

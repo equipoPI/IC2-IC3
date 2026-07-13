@@ -22,6 +22,9 @@ class GatewayGUI:
         self.root.title("SCADA Gateway Control")
         self._build()
         self._running = True
+        self._last_data_has_content = False
+        self._last_data_display_cache = None
+        self._last_data_update_time = 0  # Para reducir frecuencia de actualizaciones
         self._update_loop()
 
     def _build(self):
@@ -105,10 +108,19 @@ class GatewayGUI:
         self.baudrate = tk.StringVar(value=str(self.gateway.config.get('serial', {}).get('baudrate', 115200)))
         ttk.Entry(frm, textvariable=self.baudrate, width=10).grid(column=1, row=11, sticky='w')
 
+        # Buttons frame - topics and last data buttons side by side
+        self.btn_frame_toggles = ttk.Frame(frm)
+        self.btn_frame_toggles.grid(column=0, row=14, columnspan=2, pady=(8,0))
+
         # Button to toggle topics view
         self.topics_shown = False
-        self.show_topics_btn = ttk.Button(frm, text='Mostrar topics', command=self._toggle_topics)
-        self.show_topics_btn.grid(column=0, row=14, columnspan=2, pady=(8,0))
+        self.show_topics_btn = ttk.Button(self.btn_frame_toggles, text='Mostrar topics', command=self._toggle_topics)
+        self.show_topics_btn.grid(column=0, row=0, padx=4)
+
+        # Button to toggle last data view
+        self.last_data_shown = False
+        self.show_last_data_btn = ttk.Button(self.btn_frame_toggles, text='Mostrar últimos datos', command=self._toggle_last_data)
+        self.show_last_data_btn.grid(column=1, row=0, padx=4)
 
         # Frame that will contain topics summary (hidden by default)
         self.topics_frame = ttk.Frame(frm, padding=6, relief='groove')
@@ -120,6 +132,17 @@ class GatewayGUI:
             self.topics_text = tk.Text(self.topics_frame, width=60, height=12, wrap='word')
         self.topics_text.configure(state='disabled')
         self.topics_text.grid(column=0, row=0)
+
+        # Frame that will contain last data summary (hidden by default)
+        self.last_data_frame = ttk.Frame(frm, padding=6, relief='groove')
+        # Use a Text widget to present last data (read-only)
+        try:
+            from tkinter.scrolledtext import ScrolledText
+            self.last_data_text = ScrolledText(self.last_data_frame, width=60, height=12, wrap='word')
+        except Exception:
+            self.last_data_text = tk.Text(self.last_data_frame, width=60, height=12, wrap='word')
+        self.last_data_text.configure(state='disabled')
+        self.last_data_text.grid(column=0, row=0)
 
     def _toggle_topics(self):
         if self.topics_shown:
@@ -166,6 +189,117 @@ class GatewayGUI:
         self.topics_frame.grid(column=0, row=15, columnspan=2, pady=(8,0))
         self.show_topics_btn.config(text='Ocultar topics')
         self.topics_shown = True
+
+    def _toggle_last_data(self):
+        if self.last_data_shown:
+            self.last_data_frame.grid_forget()
+            self.show_last_data_btn.config(text='Mostrar últimos datos')
+            self.last_data_shown = False
+            self._last_data_has_content = False
+            return
+
+        # Show the frame initially
+        self.last_data_frame.grid(column=0, row=15, columnspan=2, pady=(8,0))
+        self.show_last_data_btn.config(text='Ocultar últimos datos')
+        self.last_data_shown = True
+        self._last_data_has_content = False
+        self._update_last_data_display()
+
+    def _update_last_data_display(self):
+        """Actualiza el contenido de últimos datos sin mostrar 'Sin datos aún' si ya hay datos"""
+        if not self.last_data_shown:
+            return
+
+        try:
+            last_data = self.gateway.get_last_data()
+        except Exception as e:
+            last_data = {}
+            print(f"Error obteniendo últimos datos: {e}")
+
+        content_lines = []
+        has_any_data = False
+        
+        # Datos enviados a Arduino
+        content_lines.append('=== DATOS ENVIADOS AL ARDUINO ===')
+        if last_data.get('arduino_sent'):
+            has_any_data = True
+            cmd_info = last_data['arduino_sent']
+            content_lines.append(f"Comando: {cmd_info.get('command', 'N/A')}")
+            if cmd_info.get('timestamp'):
+                import datetime
+                ts = datetime.datetime.fromtimestamp(cmd_info['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+                content_lines.append(f"Hora: {ts}")
+        elif not self._last_data_has_content:
+            content_lines.append('(Sin datos aún)')
+
+        # Datos recibidos de Arduino
+        content_lines.append('')
+        content_lines.append('=== DATOS RECIBIDOS DEL ARDUINO ===')
+        if last_data.get('arduino_received'):
+            has_any_data = True
+            recv_data = last_data['arduino_received']
+            if recv_data.get('timestamp'):
+                import datetime
+                ts = datetime.datetime.fromtimestamp(recv_data['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+                content_lines.append(f"Hora: {ts}")
+            # Mostrar los primeros campos importantes
+            if recv_data.get('raw'):
+                content_lines.append(f"Raw: {recv_data['raw'][:80]}")
+            # Mostrar otros campos disponibles (excluyendo timestamp y raw)
+            for key, value in recv_data.items():
+                if key not in ['timestamp', 'raw'] and value is not None:
+                    if isinstance(value, float):
+                        content_lines.append(f"{key}: {value:.2f}")
+                    else:
+                        content_lines.append(f"{key}: {value}")
+        elif not self._last_data_has_content:
+            content_lines.append('(Sin datos aún)')
+
+        # Datos publicados en MQTT
+        content_lines.append('')
+        content_lines.append('=== DATOS PUBLICADOS EN MQTT ===')
+        if last_data.get('mqtt_published'):
+            has_any_data = True
+            pub_info = last_data['mqtt_published']
+            content_lines.append(f"Topic: {pub_info.get('topic', 'N/A')}")
+            content_lines.append(f"Payload: {pub_info.get('payload', 'N/A')[:100]}")
+            if pub_info.get('timestamp'):
+                import datetime
+                ts = datetime.datetime.fromtimestamp(pub_info['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+                content_lines.append(f"Hora: {ts}")
+            content_lines.append(f"Retain: {pub_info.get('retain', False)}")
+        elif not self._last_data_has_content:
+            content_lines.append('(Sin datos aún)')
+
+        # Datos recibidos de MQTT
+        content_lines.append('')
+        content_lines.append('=== DATOS RECIBIDOS DE MQTT ===')
+        if last_data.get('mqtt_received'):
+            has_any_data = True
+            recv_mqtt = last_data['mqtt_received']
+            content_lines.append(f"Topic: {recv_mqtt.get('topic', 'N/A')}")
+            content_lines.append(f"Payload: {recv_mqtt.get('payload', 'N/A')[:100]}")
+            if recv_mqtt.get('timestamp'):
+                import datetime
+                ts = datetime.datetime.fromtimestamp(recv_mqtt['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+                content_lines.append(f"Hora: {ts}")
+        elif not self._last_data_has_content:
+            content_lines.append('(Sin datos aún)')
+
+        # Convertir a texto
+        new_content = '\n'.join(content_lines)
+        
+        # Solo actualizar si el contenido cambió
+        if new_content != self._last_data_display_cache:
+            self.last_data_text.configure(state='normal')
+            self.last_data_text.delete('1.0', tk.END)
+            self.last_data_text.insert(tk.END, new_content)
+            self.last_data_text.configure(state='disabled')
+            self._last_data_display_cache = new_content
+
+        # Marcar que ya tenemos contenido
+        if has_any_data:
+            self._last_data_has_content = True
 
     def _get_mac(self):
         try:
@@ -311,10 +445,17 @@ class GatewayGUI:
                 self.pause_btn.config(text='Reanudar')
             else:
                 self.pause_btn.config(text='Pausar')
+            
+            # Actualizar últimos datos si la sección está visible (reducir a cada 2 segundos para evitar congelamiento)
+            if self.last_data_shown:
+                current_time = time.time()
+                if current_time - self._last_data_update_time >= 2.0:
+                    self._update_last_data_display()
+                    self._last_data_update_time = current_time
         except Exception:
             pass
 
-        # programar siguiente actualización
+        # programar siguiente actualización cada 1 segundo
         self.root.after(1000, self._update_loop)
 
     def _on_quit(self):

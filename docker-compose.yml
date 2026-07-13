@@ -82,7 +82,9 @@ services:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
-      - mosquitto_data:/mosquitto/data
+      # Se elimina el volumen nombrado para evitar conflicto con el bind mount local
+    # Run the init script via shell so it doesn't require the executable bit on the file
+    command: ["sh", "-c", "/mosquitto/config/init_mosquitto.sh"]
     networks:
       - scada_network
     restart: unless-stopped

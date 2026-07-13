@@ -6,6 +6,7 @@ Integra Arduino Serial, MQTT, almacenamiento local y diagnósticos
 import sys
 import signal
 import time
+import threading
 from pathlib import Path
 from typing import Dict, Any, Optional
 from loguru import logger
@@ -64,6 +65,9 @@ class SCADAGateway:
             'errors': 0,
             'messages_dropped': 0,
         }
+
+        # Lock para sincronización de thread-safety en datos compartidos
+        self._data_lock = threading.Lock()
 
         # Inicializar componentes
         self._init_components()
@@ -127,13 +131,13 @@ class SCADAGateway:
             
             # Arduino Serial
             logger.info("Inicializando comunicación con Arduino...")
-            self.arduino = ArduinoSerial(config_path=self.config_path)
+            self.arduino = ArduinoSerial(config_path=self.config_path, data_lock=self._data_lock)
             self.arduino.set_data_callback(self._on_arduino_data)
             self.arduino.set_error_callback(self._on_arduino_error)
             
             # Cliente MQTT
             logger.info("Inicializando cliente MQTT...")
-            self.mqtt = MQTTClient(config_path=self.config_path)
+            self.mqtt = MQTTClient(config_path=self.config_path, data_lock=self._data_lock)
             self.mqtt.register_command_callback('reposicion', self._on_command_reposicion)
             self.mqtt.register_command_callback('mezcla', self._on_command_mezcla)
             self.mqtt.register_command_callback('control', self._on_command_control)
@@ -668,6 +672,21 @@ class SCADAGateway:
         # Publicar en MQTT
         self.mqtt.publish('diagnostico', diagnostic)
     
+    def get_last_data(self) -> Dict[str, Any]:
+        """
+        Obtiene los últimos datos enviados y recibidos de forma thread-safe
+        
+        Returns:
+            Diccionario con los últimos datos del Arduino y MQTT
+        """
+        with self._data_lock:
+            return {
+                'arduino_sent': self.arduino.last_sent_command if self.arduino else None,
+                'arduino_received': self.arduino.last_received_data if self.arduino else None,
+                'mqtt_published': self.mqtt.last_published_message if self.mqtt else None,
+                'mqtt_received': self.mqtt.last_received_message if self.mqtt else None,
+            }
+
     def get_stats(self) -> Dict[str, Any]:
         """
         Obtiene estadísticas del gateway

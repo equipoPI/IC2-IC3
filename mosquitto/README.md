@@ -59,11 +59,19 @@ sudo systemctl restart raspberry_gateway
 
 ### 1. Crear usuario y contraseña
 ```bash
-# Crear usuario 'scada_user' con contraseña
-docker-compose exec mosquitto mosquitto_passwd -c /mosquitto/config/passwd scada_user
+# Crear usuario 'admin' con contraseña (script automatizado):
+chmod +x create_admin.sh
+./create_admin.sh
 
-# Agregar más usuarios (sin -c para no sobrescribir)
-docker-compose exec mosquitto mosquitto_passwd /mosquitto/config/passwd otro_usuario
+# O crear usuario personalizado y actualizar gateway config:
+chmod +x create_user_and_update_gateway.sh
+./create_user_and_update_gateway.sh mi_usuario
+
+# Alternativamente, comandos manuales:
+# Crear usuario (primera vez -c crea archivo):
+docker-compose exec mosquitto mosquitto_passwd -c /mosquitto/config/passwd admin
+# Añadir/actualizar usuario sin sobrescribir:
+docker-compose exec mosquitto mosquitto_passwd /mosquitto/config/passwd admin
 ```
 
 ### 2. Editar mosquitto.conf

@@ -223,7 +223,7 @@ CORS_ALLOWED_ORIGINS=http://localhost:5173
 ```env
 MQTT_BROKER=mqtt.ejemplo.com
 MQTT_PORT=1883
-MQTT_USER=scada_user
+MQTT_USER=admin
 MQTT_PASSWORD=secure_password
 SERIAL_PORT=/dev/ttyACM0
 SERIAL_BAUDRATE=9600
