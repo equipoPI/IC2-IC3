@@ -8,6 +8,7 @@ import json
 import re
 import time
 import uuid
+import threading
 from queue import Queue
 from typing import Optional, Dict, Any, Callable, List
 
@@ -21,12 +22,13 @@ class MQTTClient:
     Cliente MQTT para comunicación bidireccional con la app web
     """
     
-    def __init__(self, config_path: str = "config.yaml"):
+    def __init__(self, config_path: str = "config.yaml", data_lock: Optional[threading.Lock] = None):
         """
         Inicializa el cliente MQTT
         
         Args:
             config_path: Ruta al archivo de configuración
+            data_lock: Lock para sincronización thread-safe (opcional)
         """
         # Cargar configuración
         with open(config_path, 'r') as f:
@@ -68,6 +70,9 @@ class MQTTClient:
         # Cola de mensajes a publicar
         self.publish_queue = Queue()
         
+        # Lock para sincronización con thread-safety
+        self.data_lock = data_lock or threading.Lock()
+        
         # Callbacks personalizados
         self.command_callbacks: Dict[str, Callable] = {}
         
@@ -79,6 +84,10 @@ class MQTTClient:
             "last_publish_time": None,
             "last_receive_time": None,
         }
+        
+        # Historial de últimos datos
+        self.last_published_message: Optional[Dict[str, Any]] = None
+        self.last_received_message: Optional[Dict[str, Any]] = None
 
         logger.info(
             f"MQTTClient inicializado para {self.broker}:{self.port} | "
@@ -226,6 +235,12 @@ class MQTTClient:
             # Actualizar estadísticas
             self.stats["messages_received"] += 1
             self.stats["last_receive_time"] = time.time()
+            with self.data_lock:
+                self.last_received_message = {
+                    "topic": topic,
+                    "payload": payload[:500],
+                    "timestamp": time.time()
+                }
 
             # Intentar parsear estándar y luego legacy
             command_meta = self._extract_command_meta(topic)
@@ -434,6 +449,13 @@ class MQTTClient:
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
                 self.stats["messages_published"] += 1
                 self.stats["last_publish_time"] = time.time()
+                with self.data_lock:
+                    self.last_published_message = {
+                        "topic": full_topic,
+                        "payload": payload[:500],
+                        "timestamp": time.time(),
+                        "retain": retain
+                    }
                 logger.debug(f"Publicado en {full_topic}: {payload[:100]}")
                 return True
             else:

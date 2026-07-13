@@ -18,12 +18,13 @@ class ArduinoSerial:
     Clase para gestionar la comunicación serial con Arduino
     """
     
-    def __init__(self, config_path: str = "config.yaml"):
+    def __init__(self, config_path: str = "config.yaml", data_lock: Optional[threading.Lock] = None):
         """
         Inicializa la conexión serial con Arduino
         
         Args:
             config_path: Ruta al archivo de configuración
+            data_lock: Lock para sincronización thread-safe (opcional)
         """
         # Cargar configuración
         with open(config_path, 'r') as f:
@@ -54,6 +55,9 @@ class ArduinoSerial:
         self.read_thread: Optional[threading.Thread] = None
         self.write_thread: Optional[threading.Thread] = None
         
+        # Lock para sincronización con thread-safety
+        self.data_lock = data_lock or threading.Lock()
+        
         # Estadísticas
         self.stats = {
             'messages_sent': 0,
@@ -61,6 +65,10 @@ class ArduinoSerial:
             'errors': 0,
             'last_message_time': None
         }
+        
+        # Historial de últimos datos
+        self.last_sent_command: Optional[Dict[str, Any]] = None
+        self.last_received_data: Optional[Dict[str, Any]] = None
         
         logger.info(f"ArduinoSerial inicializado para puerto {self.port} @ {self.baudrate}")
     
@@ -178,6 +186,8 @@ class ArduinoSerial:
                             if data:
                                 self.stats['messages_received'] += 1
                                 self.stats['last_message_time'] = time.time()
+                                with self.data_lock:
+                                    self.last_received_data = data
                                 
                                 # Poner en cola para procesar
                                 self.receive_queue.put(data)
@@ -223,6 +233,11 @@ class ArduinoSerial:
                         self.serial_conn.flush()
                         
                         self.stats['messages_sent'] += 1
+                        with self.data_lock:
+                            self.last_sent_command = {
+                                'command': command,
+                                'timestamp': time.time()
+                            }
                         logger.debug(f"Comando enviado: {command}")
                     else:
                         logger.warning(f"No conectado, comando descartado: {command}")
