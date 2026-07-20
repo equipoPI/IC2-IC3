@@ -16,6 +16,17 @@ from .serializers import (
     OrdenProduccionListSerializer,
     RecetaSerializer
 ) 
+from rest_framework import viewsets
+from rest_framework.permissions import IsAdminUser, IsAuthenticatedOrReadOnly
+from .models import ConfiguracionMQTT
+from .serializers import ConfiguracionMQTTSerializer
+
+
+class ConfiguracionMQTTViewSet(viewsets.ModelViewSet):
+    """CRUD para configuraciones MQTT"""
+    queryset = ConfiguracionMQTT.objects.all().order_by('-id')
+    serializer_class = ConfiguracionMQTTSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
 # =============================================================================
 # Vistas tradicionales

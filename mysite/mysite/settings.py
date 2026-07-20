@@ -20,12 +20,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-=*@ohky+4vufd*m$fl$c--n)xfod^4xpik)dw8!l+vhswbw28g'
+# Use environment variable `DJANGO_SECRET_KEY` in production. Fallback keeps
+# current dev key for local convenience.
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-=*@ohky+4vufd*m$fl$c--n)xfod^4xpik)dw8!l+vhswbw28g',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Control via env var when deploying.
+DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+# Hosts allowed to serve the app. Can be overridden via env: DJANGO_ALLOWED_HOSTS
+ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,host.docker.internal').split(',')
 
 
 # Application definition
@@ -129,6 +136,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
 STATIC_URL = 'static/'
+# Directory where `collectstatic` will gather files
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field

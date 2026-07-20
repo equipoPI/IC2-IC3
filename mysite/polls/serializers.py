@@ -24,6 +24,7 @@ from .models import (
     # Producción
     #Receta, DetalleReceta, EjecucionReceta, Produccion,
 )
+from .models import ConfiguracionMQTT
 
 
 # =============================================================================
@@ -222,6 +223,16 @@ class EjecucionRecetaSerializer(serializers.ModelSerializer):
 #         extra_kwargs = {
 #             'password': {'write_only': True}  # No exponer password en lectura
 #         }
+
+
+class ConfiguracionMQTTSerializer(serializers.ModelSerializer):
+    """Serializer para configuración MQTT"""
+    class Meta:
+        model = ConfiguracionMQTT
+        fields = '__all__'
+        extra_kwargs = {
+            'password': {'write_only': True}
+        }
 
 
 # # =============================================================================

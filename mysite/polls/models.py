@@ -398,6 +398,7 @@ class OrdenProduccion(models.Model):
     hora_inicio = models.TimeField(default='08:00')
     fecha_fin = models.DateField()
     hora_fin = models.TimeField(default='17:00')
+    
     fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='ordenes_produccion')
     sistema = models.ForeignKey(Sistema, on_delete=models.SET_NULL, null=True, blank=True, related_name='ordenes')
     dispositivo = models.ForeignKey(DispositivoSCADA, on_delete=models.SET_NULL, null=True, blank=True, related_name='ordenes')
