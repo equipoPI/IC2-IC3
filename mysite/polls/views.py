@@ -24,6 +24,23 @@ from .models import ConfiguracionMQTT
 from .serializers import ConfiguracionMQTTSerializer
 from .models import TopicMQTT
 from .serializers import TopicMQTTSerializer
+from .serializers import (
+    SeccionSerializer,
+    EmpleadoSerializer,
+    InventarioSerializer,
+    ItemInventarioSerializer,
+    HistorialMovimientosSerializer,
+    CronogramaSeccionSerializer,
+    ProduccionSerializer,
+    RegistroMantenimientoSerializer,
+    SistemaSerializer,
+    PlantillaProduccionSerializer,
+    IngredienteAlmacenamientoSerializer,
+    MantenimientoProgramadoSerializer,
+    UnidadAlmacenamientoSerializer,
+    HistorialProduccionSerializerBasic,
+    ComunicacionMQTTSerializer,
+)
 
 
 class ConfiguracionMQTTViewSet(viewsets.ModelViewSet):
@@ -79,3 +96,124 @@ class OrdenProduccionViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             return OrdenProduccionListSerializer
         return OrdenProduccionSerializer
+
+
+# -----------------------------------------------------------------------------
+# ViewSets adicionales: Exponer manualmente los modelos restantes para CRUD
+# Permisos: `IsAuthenticatedOrReadOnly` permite desarrollo SPA sin login
+# pero protege cambios cuando se requiera cambiar por `IsAdminUser`.
+# -----------------------------------------------------------------------------
+
+
+class SeccionViewSet(viewsets.ModelViewSet):
+    queryset = models.Seccion.objects.all().order_by('nombre')
+    serializer_class = SeccionSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class EmpleadoViewSet(viewsets.ModelViewSet):
+    queryset = models.Empleado.objects.all().order_by('apellido')
+    serializer_class = EmpleadoSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class InventarioViewSet(viewsets.ModelViewSet):
+    queryset = models.Inventario.objects.all().order_by('id')
+    serializer_class = InventarioSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class ItemInventarioViewSet(viewsets.ModelViewSet):
+    queryset = models.ItemInventario.objects.all().order_by('numero_serie')
+    serializer_class = ItemInventarioSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class HistorialMovimientosViewSet(viewsets.ModelViewSet):
+    queryset = models.HistorialMovimientos.objects.all().order_by('-fecha_hora')
+    serializer_class = HistorialMovimientosSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class CronogramaSeccionViewSet(viewsets.ModelViewSet):
+    queryset = models.CronogramaSeccion.objects.all().order_by('fecha_inicio')
+    serializer_class = CronogramaSeccionSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class ProduccionViewSet(viewsets.ModelViewSet):
+    queryset = models.Produccion.objects.all().order_by('-fecha_inicio')
+    serializer_class = ProduccionSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class RegistroMantenimientoViewSet(viewsets.ModelViewSet):
+    queryset = models.RegistroMantenimiento.objects.all().order_by('-fecha_inicio')
+    serializer_class = RegistroMantenimientoSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class SistemaViewSet(viewsets.ModelViewSet):
+    queryset = models.Sistema.objects.all().order_by('nombre')
+    serializer_class = SistemaSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class PlantillaProduccionViewSet(viewsets.ModelViewSet):
+    queryset = models.PlantillaProduccion.objects.all().order_by('-fecha_creacion')
+    serializer_class = PlantillaProduccionSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class IngredienteAlmacenamientoViewSet(viewsets.ModelViewSet):
+    queryset = models.IngredienteAlmacenamiento.objects.all().order_by('nombre')
+    serializer_class = IngredienteAlmacenamientoSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class MantenimientoProgramadoViewSet(viewsets.ModelViewSet):
+    queryset = models.MantenimientoProgramado.objects.all().order_by('fecha_inicio')
+    serializer_class = MantenimientoProgramadoSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class UnidadAlmacenamientoViewSet(viewsets.ModelViewSet):
+    queryset = models.UnidadAlmacenamiento.objects.all().order_by('nombre')
+    serializer_class = UnidadAlmacenamientoSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class HistorialProduccionViewSet(viewsets.ModelViewSet):
+    queryset = models.HistorialProduccion.objects.all().order_by('-fecha_registro')
+    serializer_class = HistorialProduccionSerializerBasic
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class ComunicacionMQTTViewSet(viewsets.ModelViewSet):
+    queryset = models.ComunicacionMQTT.objects.all().order_by('-timestamp')
+    serializer_class = ComunicacionMQTTSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+@api_view(['GET','POST','PUT','PATCH','DELETE','OPTIONS'])
+@permission_classes([AllowAny])
+def api_root(request, format=None):
+    """API root que acepta todos los métodos para facilitar pruebas desde UI.
+
+    Dev: este endpoint devuelve un resumen simple de rutas registradas.
+    En producción se recomienda limitar métodos y autenticar.
+    """
+    # Construimos manualmente un índice simple (nombre => url) para inspección
+    base = request.build_absolute_uri('/')
+    return Response({
+        'fabricas': base + 'api/v1/fabricas/',
+        'secciones': base + 'api/v1/secciones/',
+        'empleados': base + 'api/v1/empleados/',
+        'dispositivos': base + 'api/v1/dispositivos/',
+        'lecturas': base + 'api/v1/lecturas/',
+        'configuraciones_mqtt': base + 'api/v1/configuraciones-mqtt/',
+        'mqtt_topics': base + 'api/v1/mqtt-topics/',
+        'ordenes': base + 'api/v1/ordenes/',
+        'recetas': base + 'api/v1/recetas/',
+        'producciones': base + 'api/v1/producciones/',
+    })

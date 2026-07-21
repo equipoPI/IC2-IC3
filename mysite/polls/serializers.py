@@ -193,6 +193,129 @@ class OrdenProduccionListSerializer(serializers.ModelSerializer):
                    'fecha_inicio', 'fecha_fin', 'fabrica_nombre']
 
 
+# -----------------------------------------------------------------------------
+# Serializers adicionales (exponer manualmente modelos restantes)
+# Comentarios: mantener explícito y sencillo para facilitar pruebas desde el
+# frontend; marcamos campos sensibles como `write_only` cuando corresponda.
+# -----------------------------------------------------------------------------
+
+
+class SeccionSerializer(serializers.ModelSerializer):
+    """Serializer para `Seccion` con nombre de fábrica incluido"""
+    fabrica_nombre = serializers.CharField(source='fabrica.nombre', read_only=True)
+
+    class Meta:
+        model = models.Seccion
+        fields = '__all__'
+
+
+class EmpleadoSerializer(serializers.ModelSerializer):
+    """Serializer para `Empleado` incluyendo referencias legibles"""
+    fabrica_nombre = serializers.CharField(source='fabrica.nombre', read_only=True)
+    seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
+
+    class Meta:
+        model = models.Empleado
+        # No exponer `clave` en lecturas
+        exclude = ['clave']
+
+
+class InventarioSerializer(serializers.ModelSerializer):
+    fabrica_nombre = serializers.CharField(source='fabrica.nombre', read_only=True)
+
+    class Meta:
+        model = models.Inventario
+        fields = '__all__'
+
+
+class ItemInventarioSerializer(serializers.ModelSerializer):
+    inventario_nombre = serializers.CharField(source='inventario.nombre', read_only=True)
+    seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
+
+    class Meta:
+        model = models.ItemInventario
+        fields = '__all__'
+
+
+class HistorialMovimientosSerializer(serializers.ModelSerializer):
+    usuario_nombre = serializers.CharField(source='usuario.username', read_only=True)
+    item_nombre = serializers.CharField(source='item.nombre', read_only=True)
+
+    class Meta:
+        model = models.HistorialMovimientos
+        fields = '__all__'
+
+
+class CronogramaSeccionSerializer(serializers.ModelSerializer):
+    seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
+    item_nombre = serializers.CharField(source='item.nombre', read_only=True)
+
+    class Meta:
+        model = models.CronogramaSeccion
+        fields = '__all__'
+
+
+class ProduccionSerializer(serializers.ModelSerializer):
+    receta_nombre = serializers.CharField(source='receta.nombre', read_only=True)
+    seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
+
+    class Meta:
+        model = models.Produccion
+        fields = '__all__'
+
+
+class RegistroMantenimientoSerializer(serializers.ModelSerializer):
+    componente_nombre = serializers.CharField(source='componente.nombre', read_only=True)
+
+    class Meta:
+        model = models.RegistroMantenimiento
+        fields = '__all__'
+
+
+class SistemaSerializer(serializers.ModelSerializer):
+    fabrica_nombre = serializers.CharField(source='fabrica.nombre', read_only=True)
+
+    class Meta:
+        model = models.Sistema
+        fields = '__all__'
+
+
+class PlantillaProduccionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.PlantillaProduccion
+        fields = '__all__'
+
+
+class IngredienteAlmacenamientoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.IngredienteAlmacenamiento
+        fields = '__all__'
+
+
+class MantenimientoProgramadoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.MantenimientoProgramado
+        fields = '__all__'
+
+
+class UnidadAlmacenamientoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.UnidadAlmacenamiento
+        fields = '__all__'
+
+
+class HistorialProduccionSerializerBasic(serializers.ModelSerializer):
+    class Meta:
+        model = models.HistorialProduccion
+        fields = '__all__'
+
+
+class ComunicacionMQTTSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.ComunicacionMQTT
+        fields = '__all__'
+
+
 class EjecucionRecetaSerializer(serializers.ModelSerializer):
     """Serializer para el seguimiento de la ejecución en tiempo real"""
     receta_nombre = serializers.CharField(source='receta.nombre', read_only=True)

@@ -10,14 +10,27 @@ router.register(r'lecturas', views.LecturaSensorViewSet, basename='lectura')
 router.register(r'mqtt-topics', views.TopicMQTTViewSet, basename='mqtttopic')
 router.register(r'fabricas', views.FabricaViewSet, basename='fabrica')
 router.register(r'ordenes', views.OrdenProduccionViewSet, basename='ordenproduccion')
-
-# Registrar dinámicamente el resto de modelos (serializers y viewsets básicos)
-from .auto_register import register_all_models
-register_all_models(router)
+router.register(r'secciones', views.SeccionViewSet, basename='seccion')
+router.register(r'empleados', views.EmpleadoViewSet, basename='empleado')
+router.register(r'inventarios', views.InventarioViewSet, basename='inventario')
+router.register(r'items-inventario', views.ItemInventarioViewSet, basename='iteminventario')
+router.register(r'movimientos', views.HistorialMovimientosViewSet, basename='movimientos')
+router.register(r'cronogramas', views.CronogramaSeccionViewSet, basename='cronogramas')
+router.register(r'producciones', views.ProduccionViewSet, basename='producciones')
+router.register(r'registros-mantenimiento', views.RegistroMantenimientoViewSet, basename='registros_mantenimiento')
+router.register(r'sistemas', views.SistemaViewSet, basename='sistema')
+router.register(r'plantillas', views.PlantillaProduccionViewSet, basename='plantillas')
+router.register(r'ingredientes', views.IngredienteAlmacenamientoViewSet, basename='ingredientes')
+router.register(r'mantenimientos-programados', views.MantenimientoProgramadoViewSet, basename='mantenimientos')
+router.register(r'unidades-almacenamiento', views.UnidadAlmacenamientoViewSet, basename='unidades')
+router.register(r'historial-produccion', views.HistorialProduccionViewSet, basename='historial_produccion')
+router.register(r'comunicaciones-mqtt', views.ComunicacionMQTTViewSet, basename='comunicaciones_mqtt')
 
 urlpatterns = [
     # Rutas automáticas de DRF (registradas en router) — raíz de la API de la app
     path('', include((router.urls, 'polls'), namespace='polls')),
+    # API root que acepta varios métodos para facilitar pruebas desde UI
+    path('root/', views.api_root, name='api_root'),
 
     # Endpoints CRUD expuestos por DRF router
 
