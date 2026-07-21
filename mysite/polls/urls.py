@@ -11,6 +11,10 @@ router.register(r'mqtt-topics', views.TopicMQTTViewSet, basename='mqtttopic')
 router.register(r'fabricas', views.FabricaViewSet, basename='fabrica')
 router.register(r'ordenes', views.OrdenProduccionViewSet, basename='ordenproduccion')
 
+# Registrar dinámicamente el resto de modelos (serializers y viewsets básicos)
+from .auto_register import register_all_models
+register_all_models(router)
+
 urlpatterns = [
     # Rutas automáticas de DRF (registradas en router) — raíz de la API de la app
     path('', include((router.urls, 'polls'), namespace='polls')),
