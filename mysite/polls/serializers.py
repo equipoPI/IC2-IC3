@@ -24,7 +24,8 @@ from .models import (
     # Producción
     #Receta, DetalleReceta, EjecucionReceta, Produccion,
 )
-from .models import ConfiguracionMQTT
+from .models import ConfiguracionMQTT, DispositivoSCADA, LecturaSensor
+from . import models
 
 
 # =============================================================================
@@ -81,38 +82,38 @@ class FabricaSerializer(serializers.ModelSerializer):
 #         fields = '__all__'
 
 
-# class DispositivoSCADASerializer(serializers.ModelSerializer):
-#     """Serializer para Dispositivos SCADA (sensores, actuadores, máquinas)"""
-#     sistema_nombre = serializers.CharField(source='sistema.nombre', read_only=True)
-#     seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
-#     inventario_nombre = serializers.CharField(source='inventario.nombre', read_only=True)
-    
-#     class Meta:
-#         model = DispositivoSCADA
-#         fields = '__all__'
+class DispositivoSCADASerializer(serializers.ModelSerializer):
+    """Serializer para Dispositivos SCADA (sensores, actuadores, máquinas)"""
+    sistema_nombre = serializers.CharField(source='sistema.nombre', read_only=True)
+    seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
+    inventario_nombre = serializers.CharField(source='inventario.nombre', read_only=True)
+
+    class Meta:
+        model = models.DispositivoSCADA
+        fields = '__all__'
 
 
-# class DispositivoSCADAListSerializer(serializers.ModelSerializer):
-#     """Serializer reducido para listado de dispositivos"""
-#     class Meta:
-#         model = DispositivoSCADA
-#         fields = ['numero_serie', 'nombre', 'categoria', 'estado', 'ultima_lectura']
+class DispositivoSCADAListSerializer(serializers.ModelSerializer):
+    """Serializer reducido para listado de dispositivos"""
+    class Meta:
+        model = models.DispositivoSCADA
+        fields = ['numero_serie', 'nombre', 'categoria', 'estado', 'ultima_lectura']
 
 
-# class LecturaSensorSerializer(serializers.ModelSerializer):
-#     """Serializer para lecturas de sensores"""
-#     dispositivo_nombre = serializers.CharField(source='dispositivo.nombre', read_only=True)
-    
-#     class Meta:
-#         model = LecturaSensor
-#         fields = '__all__'
+class LecturaSensorSerializer(serializers.ModelSerializer):
+    """Serializer para lecturas de sensores"""
+    dispositivo_nombre = serializers.CharField(source='dispositivo.nombre', read_only=True)
+
+    class Meta:
+        model = models.LecturaSensor
+        fields = '__all__'
 
 
-# class LecturaSensorCreateSerializer(serializers.ModelSerializer):
-#     """Serializer para crear lecturas (simplificado)"""
-#     class Meta:
-#         model = LecturaSensor
-#         fields = ['dispositivo', 'valor', 'unidad', 'calidad']
+class LecturaSensorCreateSerializer(serializers.ModelSerializer):
+    """Serializer para crear lecturas (simplificado)"""
+    class Meta:
+        model = models.LecturaSensor
+        fields = ['dispositivo', 'valor', 'unidad', 'calidad']
 
 
 # class AlarmaSerializer(serializers.ModelSerializer):
@@ -233,6 +234,15 @@ class ConfiguracionMQTTSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'password': {'write_only': True}
         }
+
+
+class TopicMQTTSerializer(serializers.ModelSerializer):
+    """Serializer para Topics MQTT vinculados a una configuración"""
+    configuracion_nombre = serializers.CharField(source='configuracion.nombre', read_only=True)
+
+    class Meta:
+        model = models.TopicMQTT
+        fields = ['id', 'configuracion', 'configuracion_nombre', 'topic', 'tipo', 'tipo_dato', 'descripcion', 'activo']
 
 
 # # =============================================================================

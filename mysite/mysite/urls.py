@@ -21,17 +21,11 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
-    # tus rutas existentes
     path('admin/', admin.site.urls),
-    # otras rutas de tu proyecto...
+    # Montar la API de la app `polls` bajo /api/v1/
+    path('api/v1/', include('polls.urls')),
 ]
 
 # Añadir soporte para archivos de medios en modo DEBUG
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-
-
-urlpatterns = [
-    path("polls/", include("polls.urls")),
-    path("admin/", admin.site.urls),
-]

@@ -44,7 +44,7 @@ class MQTTClient:
         self.keepalive = self.mqtt_config.get("keepalive", 60)
         self.qos = self.mqtt_config.get("qos", 1)
 
-        # Identidad estándar
+        # Identidad estándar (el usuario usará `tenant` para indicar la fábrica)
         self.tenant = self._sanitize_token(self.mqtt_config.get("tenant", "planta"))
         self.gateway_id = self._resolve_gateway_id()
         self.client_id = self.mqtt_config.get("client_id") or f"rpi_{self.gateway_id}"

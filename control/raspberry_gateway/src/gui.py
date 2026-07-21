@@ -151,15 +151,16 @@ class GatewayGUI:
             self.topics_shown = False
             return
 
-        # llenar contenido desde config
+        # llenar contenido desde config; el usuario pondrá la fábrica en 'tenant'
         mqtt_cfg = self.gateway.config.get('mqtt', {})
+        tenant = mqtt_cfg.get('tenant', '')
         topics = mqtt_cfg.get('topics', {})
         publish = topics.get('publish', {})
         subscribe = topics.get('subscribe', {})
         subscribe_filters = topics.get('subscribe_filters', [])
 
         content_lines = []
-        content_lines.append('Publish (desde gateway):')
+        content_lines.append(f"Publish (desde gateway) — fábrica: {tenant}")
         if publish:
             for k, v in publish.items():
                 content_lines.append(f"- {k}: {v}")

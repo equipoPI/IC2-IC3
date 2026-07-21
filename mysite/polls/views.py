@@ -9,23 +9,48 @@ from rest_framework import status
 
 # --- Importaciones de Modelos y Serializers ---
 # ACÁ AGREGAMOS ORDENPRODUCCION
-from .models import Fabrica, OrdenProduccion, Receta, HistorialProduccion
+from .models import Fabrica, OrdenProduccion, Receta, HistorialProduccion, DispositivoSCADA, LecturaSensor
 from .serializers import (
     FabricaSerializer,
     OrdenProduccionSerializer, 
     OrdenProduccionListSerializer,
-    RecetaSerializer
+    RecetaSerializer,
+    DispositivoSCADASerializer,
+    LecturaSensorSerializer,
 ) 
 from rest_framework import viewsets
 from rest_framework.permissions import IsAdminUser, IsAuthenticatedOrReadOnly
 from .models import ConfiguracionMQTT
 from .serializers import ConfiguracionMQTTSerializer
+from .models import TopicMQTT
+from .serializers import TopicMQTTSerializer
 
 
 class ConfiguracionMQTTViewSet(viewsets.ModelViewSet):
     """CRUD para configuraciones MQTT"""
     queryset = ConfiguracionMQTT.objects.all().order_by('-id')
     serializer_class = ConfiguracionMQTTSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class DispositivoSCADAViewSet(viewsets.ModelViewSet):
+    """CRUD para dispositivos SCADA"""
+    queryset = DispositivoSCADA.objects.all().order_by('numero_serie')
+    serializer_class = DispositivoSCADASerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class LecturaSensorViewSet(viewsets.ModelViewSet):
+    """CRUD para lecturas de sensores"""
+    queryset = LecturaSensor.objects.all().order_by('-timestamp')
+    serializer_class = LecturaSensorSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class TopicMQTTViewSet(viewsets.ModelViewSet):
+    """CRUD para topics MQTT"""
+    queryset = TopicMQTT.objects.all().order_by('id')
+    serializer_class = TopicMQTTSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
 
 # =============================================================================
@@ -38,88 +63,19 @@ def index(request):
 # =============================================================================
 # Vistas de la API - MÓDULO DE FÁBRICAS
 # =============================================================================
-
-@api_view(['GET', 'POST'])
-@permission_classes([AllowAny])
-def api_lista_fabricas(request):
-    """
-    Endpoint para listar todas las fábricas o crear una nueva.
-    """
-    if request.method == 'GET':
-        fabricas = Fabrica.objects.all()
-        serializer = FabricaSerializer(fabricas, many=True)
-        return Response(serializer.data)
-    
-    elif request.method == 'POST':
-        serializer = FabricaSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['PUT', 'DELETE'])
-@permission_classes([AllowAny])
-def api_detalle_fabrica(request, pk):
-    """
-    Endpoint para editar o borrar una fábrica específica usando su ID.
-    """
-    try:
-        fabrica = Fabrica.objects.get(pk=pk)
-    except Fabrica.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-
-    if request.method == 'PUT':
-        serializer = FabricaSerializer(fabrica, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    elif request.method == 'DELETE':
-        fabrica.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+class FabricaViewSet(viewsets.ModelViewSet):
+    """CRUD para Fabricas/Plantas"""
+    queryset = Fabrica.objects.all()
+    serializer_class = FabricaSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
 
-# =============================================================================
-# Vistas de la API - MÓDULO DE PRODUCCIÓN
-# =============================================================================
+class OrdenProduccionViewSet(viewsets.ModelViewSet):
+    """CRUD para Ordenes de Producción. Usa serializer reducido en list."""
+    queryset = OrdenProduccion.objects.all().order_by('-fecha_creacion')
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
-@api_view(['GET', 'POST'])
-@permission_classes([AllowAny])
-def api_lista_ordenes(request):
-    """Listar todas las órdenes (formato resumido) o crear una nueva"""
-    if request.method == 'GET':
-        ordenes = OrdenProduccion.objects.all().order_by('-fecha_creacion')
-        serializer = OrdenProduccionListSerializer(ordenes, many=True)
-        return Response(serializer.data)
-    
-    elif request.method == 'POST':
-        serializer = OrdenProduccionSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-@api_view(['GET', 'PUT', 'DELETE'])
-@permission_classes([AllowAny])
-def api_detalle_orden(request, pk):
-    """Ver detalles completos, editar progreso/estado o borrar una orden específica"""
-    try:
-        orden = OrdenProduccion.objects.get(pk=pk)
-    except OrdenProduccion.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
-
-    if request.method == 'GET':
-        serializer = OrdenProduccionSerializer(orden)
-        return Response(serializer.data)
-
-    elif request.method == 'PUT':
-        serializer = OrdenProduccionSerializer(orden, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    elif request.method == 'DELETE':
-        orden.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return OrdenProduccionListSerializer
+        return OrdenProduccionSerializer

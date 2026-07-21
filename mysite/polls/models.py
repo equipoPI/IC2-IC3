@@ -479,6 +479,31 @@ class ConfiguracionMQTT(models.Model):
         return f"{self.nombre} ({self.broker_url}:{self.puerto})"
 
 
+class TopicMQTT(models.Model):
+    TIPOS = [
+        ('SUSCRIPCION', 'Suscripción'),
+        ('PUBLICACION', 'Publicación'),
+    ]
+
+    configuracion = models.ForeignKey(ConfiguracionMQTT, on_delete=models.CASCADE, related_name='topics')
+    topic = models.CharField(max_length=255, db_index=True)
+    tipo = models.CharField(max_length=20, choices=TIPOS, default='SUSCRIPCION')
+    tipo_dato = models.CharField(max_length=50, blank=True, null=True)
+    descripcion = models.TextField(blank=True, null=True)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Topic MQTT'
+        verbose_name_plural = 'Topics MQTT'
+        indexes = [
+            models.Index(fields=['topic']),
+            models.Index(fields=['configuracion']),
+        ]
+
+    def __str__(self):
+        return f"{self.topic} ({self.configuracion.nombre})"
+
+
 class IngredienteAlmacenamiento(models.Model):
     CATEGORIAS = [
         ('RAW_MATERIAL', 'Materia Prima'),

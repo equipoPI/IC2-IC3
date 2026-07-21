@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Wifi, Plus, Edit, Trash2, Save, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -34,44 +34,31 @@ interface ConexionMQTT {
   nombre: string;
   ip: string;
   puerto: number;
-  estado: "conectado" | "desconectado" | "error";
+  estado?: "conectado" | "desconectado" | "error";
 }
 
 interface TopicMQTT {
   id: string;
-  conexionId: string;
+  configuracion: string; // FK to ConfiguracionMQTT
   topic: string;
   tipo: "suscripcion" | "publicacion";
-  tipoDato: string;
-  descripcion: string;
+  tipoDato?: string;
+  descripcion?: string;
+  activo?: boolean;
 }
-
-const conexionesIniciales: ConexionMQTT[] = [
-  { id: "CON-001", nombre: "Broker Principal", ip: "192.168.1.100", puerto: 1883, estado: "conectado" },
-  { id: "CON-002", nombre: "Broker Backup", ip: "192.168.1.101", puerto: 1883, estado: "desconectado" },
-  { id: "CON-003", nombre: "Broker Producción", ip: "10.0.0.50", puerto: 8883, estado: "conectado" },
-];
-
-const topicsIniciales: TopicMQTT[] = [
-  { id: "TOP-001", conexionId: "CON-001", topic: "planta/norte/temperatura", tipo: "suscripcion", tipoDato: "float", descripcion: "Temperatura Planta Norte" },
-  { id: "TOP-002", conexionId: "CON-001", topic: "planta/norte/presion", tipo: "suscripcion", tipoDato: "float", descripcion: "Presión Planta Norte" },
-  { id: "TOP-003", conexionId: "CON-001", topic: "planta/norte/control/valvula", tipo: "publicacion", tipoDato: "boolean", descripcion: "Control Válvula Norte" },
-  { id: "TOP-004", conexionId: "CON-003", topic: "produccion/linea1/estado", tipo: "suscripcion", tipoDato: "integer", descripcion: "Estado Línea 1" },
-  { id: "TOP-005", conexionId: "CON-003", topic: "produccion/linea1/setpoint", tipo: "publicacion", tipoDato: "float", descripcion: "Setpoint Línea 1" },
-];
 
 const tiposDato = ["string", "integer", "float", "boolean", "json"];
 
 const ConfiguracionMQTT = () => {
-  const [conexiones, setConexiones] = useState<ConexionMQTT[]>(conexionesIniciales);
-  const [topics, setTopics] = useState<TopicMQTT[]>(topicsIniciales);
+  const [conexiones, setConexiones] = useState<ConexionMQTT[]>([]);
+  const [topics, setTopics] = useState<TopicMQTT[]>([]);
   const [dialogConexion, setDialogConexion] = useState(false);
   const [dialogTopic, setDialogTopic] = useState(false);
   const [editingConexion, setEditingConexion] = useState<ConexionMQTT | null>(null);
   const [editingTopic, setEditingTopic] = useState<TopicMQTT | null>(null);
 
   const [formConexion, setFormConexion] = useState({ nombre: "", ip: "", puerto: "1883" });
-  const [formTopic, setFormTopic] = useState({ conexionId: "", topic: "", tipo: "suscripcion" as "suscripcion" | "publicacion", tipoDato: "string", descripcion: "" });
+  const [formTopic, setFormTopic] = useState({ configuracion: "", topic: "", tipo: "suscripcion" as "suscripcion" | "publicacion", tipoDato: "string", descripcion: "" });
 
   const handleSaveConexion = () => {
     if (!formConexion.nombre || !formConexion.ip || !formConexion.puerto) {
@@ -79,23 +66,21 @@ const ConfiguracionMQTT = () => {
       return;
     }
 
-    if (editingConexion) {
-      setConexiones(conexiones.map(c => 
-        c.id === editingConexion.id 
-          ? { ...c, nombre: formConexion.nombre, ip: formConexion.ip, puerto: parseInt(formConexion.puerto) }
-          : c
-      ));
-      toast({ title: "Conexión actualizada", description: "La conexión se ha actualizado correctamente" });
+    const payload = { nombre: formConexion.nombre, broker_url: formConexion.ip, puerto: parseInt(formConexion.puerto) };
+    if (editingConexion && editingConexion.id) {
+      fetch(`/api/v1/configuraciones-mqtt/${editingConexion.id}/`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(r => r.json())
+        .then((data) => {
+          setConexiones(conexiones.map(c => c.id === String(data.id) ? { ...c, nombre: data.nombre, ip: data.broker_url, puerto: data.puerto } : c));
+          toast({ title: 'Conexión actualizada', description: 'La conexión se ha actualizado correctamente' });
+        });
     } else {
-      const newConexion: ConexionMQTT = {
-        id: `CON-${String(conexiones.length + 1).padStart(3, "0")}`,
-        nombre: formConexion.nombre,
-        ip: formConexion.ip,
-        puerto: parseInt(formConexion.puerto),
-        estado: "desconectado",
-      };
-      setConexiones([...conexiones, newConexion]);
-      toast({ title: "Conexión creada", description: "La conexión se ha creado correctamente" });
+      fetch('/api/v1/configuraciones-mqtt/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(r => r.json())
+        .then((data) => {
+          setConexiones([...conexiones, { id: String(data.id), nombre: data.nombre, ip: data.broker_url, puerto: data.puerto, estado: 'desconectado' }]);
+          toast({ title: 'Conexión creada', description: 'La conexión se ha creado correctamente' });
+        });
     }
     setDialogConexion(false);
     setEditingConexion(null);
@@ -103,29 +88,30 @@ const ConfiguracionMQTT = () => {
   };
 
   const handleSaveTopic = () => {
-    if (!formTopic.conexionId || !formTopic.topic || !formTopic.tipoDato) {
+    if (!formTopic.configuracion || !formTopic.topic || !formTopic.tipoDato) {
       toast({ title: "Error", description: "Complete todos los campos", variant: "destructive" });
       return;
     }
 
-    if (editingTopic) {
-      setTopics(topics.map(t => 
-        t.id === editingTopic.id 
-          ? { ...t, ...formTopic }
-          : t
-      ));
-      toast({ title: "Topic actualizado", description: "El topic se ha actualizado correctamente" });
+    const payload: any = { configuracion: formTopic.configuracion, topic: formTopic.topic, tipo: formTopic.tipo === 'suscripcion' ? 'SUSCRIPCION' : 'PUBLICACION', tipo_dato: formTopic.tipoDato, descripcion: formTopic.descripcion };
+    if (editingTopic && editingTopic.id) {
+      fetch(`/api/v1/mqtt-topics/${editingTopic.id}/`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(r => r.json())
+        .then((data) => {
+          setTopics(topics.map(t => t.id === String(data.id) ? { id: String(data.id), configuracion: String(data.configuracion), topic: data.topic, tipo: (data.tipo || '').toString().toLowerCase(), tipoDato: data.tipo_dato, descripcion: data.descripcion } : t));
+          toast({ title: 'Topic actualizado', description: 'El topic se ha actualizado correctamente' });
+        });
     } else {
-      const newTopic: TopicMQTT = {
-        id: `TOP-${String(topics.length + 1).padStart(3, "0")}`,
-        ...formTopic,
-      };
-      setTopics([...topics, newTopic]);
-      toast({ title: "Topic creado", description: "El topic se ha creado correctamente" });
+      fetch('/api/v1/mqtt-topics/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(r => r.json())
+        .then((data) => {
+          setTopics([...topics, { id: String(data.id), configuracion: String(data.configuracion), topic: data.topic, tipo: (data.tipo || '').toString().toLowerCase(), tipoDato: data.tipo_dato, descripcion: data.descripcion }]);
+          toast({ title: 'Topic creado', description: 'El topic se ha creado correctamente' });
+        });
     }
     setDialogTopic(false);
     setEditingTopic(null);
-    setFormTopic({ conexionId: "", topic: "", tipo: "suscripcion", tipoDato: "string", descripcion: "" });
+    setFormTopic({ configuracion: "", topic: "", tipo: "suscripcion", tipoDato: "string", descripcion: "" });
   };
 
   const handleEditConexion = (conexion: ConexionMQTT) => {
@@ -136,26 +122,42 @@ const ConfiguracionMQTT = () => {
 
   const handleEditTopic = (topic: TopicMQTT) => {
     setEditingTopic(topic);
-    setFormTopic({ conexionId: topic.conexionId, topic: topic.topic, tipo: topic.tipo, tipoDato: topic.tipoDato, descripcion: topic.descripcion });
+    setFormTopic({ configuracion: String(topic.configuracion), topic: topic.topic, tipo: topic.tipo, tipoDato: topic.tipoDato || 'string', descripcion: topic.descripcion || '' });
     setDialogTopic(true);
   };
 
   const handleDeleteConexion = (id: string) => {
-    setConexiones(conexiones.filter(c => c.id !== id));
-    setTopics(topics.filter(t => t.conexionId !== id));
-    toast({ title: "Conexión eliminada", description: "La conexión y sus topics han sido eliminados" });
+    fetch(`/api/v1/configuraciones-mqtt/${id}/`, { method: 'DELETE' }).then(() => {
+      setConexiones(conexiones.filter(c => c.id !== id));
+      setTopics(topics.filter(t => t.configuracion !== id));
+      toast({ title: 'Conexión eliminada', description: 'La conexión y sus topics han sido eliminados' });
+    });
   };
 
   const handleDeleteTopic = (id: string) => {
-    setTopics(topics.filter(t => t.id !== id));
-    toast({ title: "Topic eliminado", description: "El topic ha sido eliminado" });
+    fetch(`/api/v1/mqtt-topics/${id}/`, { method: 'DELETE' }).then(() => {
+      setTopics(topics.filter(t => t.id !== id));
+      toast({ title: 'Topic eliminado', description: 'El topic ha sido eliminado' });
+    });
   };
 
-  const getEstadoConfig = (estado: ConexionMQTT["estado"]) => {
+  // cargar desde backend
+  useEffect(() => {
+    fetch('/api/v1/configuraciones-mqtt/')
+      .then(r => r.json())
+      .then((data) => setConexiones(data.map((c: any) => ({ id: String(c.id), nombre: c.nombre, ip: c.broker_url, puerto: c.puerto, estado: c.activo ? 'conectado' : 'desconectado' }))));
+
+    fetch('/api/v1/mqtt-topics/')
+      .then(r => r.json())
+      .then((data) => setTopics(data.map((t: any) => ({ id: String(t.id), configuracion: String(t.configuracion), topic: t.topic, tipo: (t.tipo || '').toString().toLowerCase(), tipoDato: t.tipo_dato, descripcion: t.descripcion }))));
+  }, []);
+
+  const getEstadoConfig = (estado: ConexionMQTT["estado"]): { label: string; className: string } => {
     switch (estado) {
       case "conectado": return { label: "Conectado", className: "bg-success/20 text-success border-success/30" };
       case "desconectado": return { label: "Desconectado", className: "bg-muted text-muted-foreground border-muted" };
       case "error": return { label: "Error", className: "bg-destructive/20 text-destructive border-destructive/30" };
+      default: return { label: "Desconocido", className: "bg-muted text-muted-foreground border-muted" };
     }
   };
 
@@ -261,7 +263,7 @@ const ConfiguracionMQTT = () => {
                         <Button variant="ghost" size="icon" onClick={() => handleEditConexion(conexion)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteConexion(conexion.id)}>
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteConexion(String(conexion.id))}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -278,7 +280,7 @@ const ConfiguracionMQTT = () => {
       <Card className="bg-card border-border">
         <CardHeader className="flex flex-row items-center justify-between pb-4">
           <CardTitle className="text-lg">Topics MQTT</CardTitle>
-          <Button size="sm" onClick={() => { setEditingTopic(null); setFormTopic({ conexionId: "", topic: "", tipo: "suscripcion", tipoDato: "string", descripcion: "" }); setDialogTopic(true); }}>
+          <Button size="sm" onClick={() => { setEditingTopic(null); setFormTopic({ configuracion: "", topic: "", tipo: "suscripcion", tipoDato: "string", descripcion: "" }); setDialogTopic(true); }}>
             <Plus className="h-4 w-4 mr-2" />
             Nuevo Topic
           </Button>
@@ -301,7 +303,7 @@ const ConfiguracionMQTT = () => {
                 {topics.map((topic) => (
                   <TableRow key={topic.id}>
                     <TableCell className="font-mono text-foreground">{topic.id}</TableCell>
-                    <TableCell className="text-foreground">{conexiones.find(c => c.id === topic.conexionId)?.nombre || "-"}</TableCell>
+                    <TableCell className="text-foreground">{conexiones.find(c => c.id === topic.configuracion)?.nombre || "-"}</TableCell>
                     <TableCell className="font-mono text-foreground">{topic.topic}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className={topic.tipo === "suscripcion" ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : "bg-warning/20 text-warning border-warning/30"}>
@@ -315,7 +317,7 @@ const ConfiguracionMQTT = () => {
                         <Button variant="ghost" size="icon" onClick={() => handleEditTopic(topic)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteTopic(topic.id)}>
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteTopic(String(topic.id))}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -364,10 +366,10 @@ const ConfiguracionMQTT = () => {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Conexión</Label>
-              <Select value={formTopic.conexionId} onValueChange={(v) => setFormTopic({...formTopic, conexionId: v})}>
+              <Select value={formTopic.configuracion} onValueChange={(v) => setFormTopic({...formTopic, configuracion: v})}>
                 <SelectTrigger className="bg-background border-border"><SelectValue placeholder="Seleccionar conexión" /></SelectTrigger>
                 <SelectContent>
-                  {conexiones.map(c => <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>)}
+                  {conexiones.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nombre}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
