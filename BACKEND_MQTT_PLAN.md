@@ -219,6 +219,30 @@ Este bloque es un registro de decisiones/pendientes y debe mantenerse sincroniza
 	- Instalar/configurar `djangorestframework-simplejwt` y añadir rutas `token/` y `token/refresh/` en `mysite/urls.py`.
 	- Decidir permiso por defecto (`IsAuthenticated`) y declarar endpoints públicos con `AllowAny` donde convenga.
 
+Autenticación, roles y flujos de cuenta (registro, confirmación y recuperación)
+
+	- Recomendación: implementar gestión de cuentas y roles desde el inicio para soportar niveles de acceso (superuser, jefe, empleado).
+	- Roles mínimos propuestos:
+		- `Superuser`: control total (panel admin, gestión de usuarios, creación/edición de recetas y sistemas).
+		- `Jefe` (role `manager`): permisos para crear/editar `Receta`, `Sistema`, `PlantillaProduccion`, `ConfiguracionMQTT` y aprobar/gestionar `OrdenProduccion`.
+		- `Empleado` (role `operator`): permisos limitados a operar objetos existentes (consultar y ejecutar órdenes, crear lecturas si corresponde).
+	- Implementación recomendada:
+		- Añadir un `Profile` o `Role` model relacionado con `django.contrib.auth.User` si se necesitan metadatos de usuario.
+		- Usar `django-guardian` (per-object) o permisos por grupo/role estándar de Django para mapear capacidades.
+		- Definir permisos a nivel de ViewSet con clases personalizadas que verifiquen `request.user.groups` o `request.user.profile.role`.
+	- Flujo de cuenta (recomendado):
+		1. Registro desde frontend: POST a `auth/register/` (datos básicos: email, password, nombre).
+		2. Backend crea usuario inactivo y envía email de confirmación con token (link con `uid` + `token`).
+		3. Usuario confirma y backend activa la cuenta; opcionalmente asigna role por defecto (`Empleado`).
+		4. Login: obtener `access`/`refresh` (SimpleJWT) o session auth según elección.
+		5. Recuperación de contraseña: endpoint `password/reset/` que envía email con token y `password/reset/confirm/` para cambiar contraseña.
+	- Librerías recomendadas para acelerar: `dj-rest-auth` + `django-allauth` (registro+confirmación+social), o `django-rest-registration` si prefieres menos acoplamiento. Todas soportan envío de emails y endpoints de confirmación/recovery; con SimpleJWT se puede integrar el login/token.
+	- Email: configurar backend SMTP mediante variables de entorno (`EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`). Para desarrollo puede usarse `console.EmailBackend`.
+	- Seguridad y UX:
+		- `password` siempre `write_only` en serializers.
+		- Verificar confirmación por email antes de permitir acciones sensibles.
+		- Opcional: MFA o verificación adicional para `Jefe`/`Superuser`.
+
 - Serializers / ViewSets / Migrations:
 	- Implementar/activar serializers para `ConfiguracionMQTT`, `TopicMQTT`, `DispositivoSCADA`, `LecturaSensor`, `Fabrica`, `OrdenProduccion`, `Receta`.
 	- Registrar todos los ViewSets en `polls/urls.py` (router) y probar `makemigrations` / `migrate`.

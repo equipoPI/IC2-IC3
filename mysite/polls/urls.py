@@ -28,9 +28,10 @@ router.register(r'comunicaciones-mqtt', views.ComunicacionMQTTViewSet, basename=
 
 urlpatterns = [
     # Rutas automáticas de DRF (registradas en router) — raíz de la API de la app
+    # API root personalizado: mostrar un índice ampliado en la raíz /api/v1/
+    # Colocado antes del include para que `/api/v1/` muestre `api_root`.
+    path('', views.api_root, name='api_root'),
     path('', include((router.urls, 'polls'), namespace='polls')),
-    # API root que acepta varios métodos para facilitar pruebas desde UI
-    path('root/', views.api_root, name='api_root'),
 
     # Endpoints CRUD expuestos por DRF router
 

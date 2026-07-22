@@ -24,6 +24,7 @@ from .models import ConfiguracionMQTT
 from .serializers import ConfiguracionMQTTSerializer
 from .models import TopicMQTT
 from .serializers import TopicMQTTSerializer
+from . import models
 from .serializers import (
     SeccionSerializer,
     EmpleadoSerializer,
@@ -216,4 +217,16 @@ def api_root(request, format=None):
         'ordenes': base + 'api/v1/ordenes/',
         'recetas': base + 'api/v1/recetas/',
         'producciones': base + 'api/v1/producciones/',
+        'inventarios': base + 'api/v1/inventarios/',
+        'items_inventario': base + 'api/v1/items-inventario/',
+        'movimientos': base + 'api/v1/movimientos/',
+        'cronogramas': base + 'api/v1/cronogramas/',
+        'registros_mantenimiento': base + 'api/v1/registros-mantenimiento/',
+        'sistemas': base + 'api/v1/sistemas/',
+        'plantillas': base + 'api/v1/plantillas/',
+        'ingredientes': base + 'api/v1/ingredientes/',
+        'mantenimientos_programados': base + 'api/v1/mantenimientos-programados/',
+        'unidades_almacenamiento': base + 'api/v1/unidades-almacenamiento/',
+        'historial_produccion': base + 'api/v1/historial-produccion/',
+        'comunicaciones_mqtt': base + 'api/v1/comunicaciones-mqtt/',
     })
