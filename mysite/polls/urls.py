@@ -25,6 +25,8 @@ router.register(r'mantenimientos-programados', views.MantenimientoProgramadoView
 router.register(r'unidades-almacenamiento', views.UnidadAlmacenamientoViewSet, basename='unidades')
 router.register(r'historial-produccion', views.HistorialProduccionViewSet, basename='historial_produccion')
 router.register(r'comunicaciones-mqtt', views.ComunicacionMQTTViewSet, basename='comunicaciones_mqtt')
+router.register(r'users', views.UserViewSet, basename='user')
+router.register(r'profiles', views.ProfileViewSet, basename='profile')
 
 urlpatterns = [
     # Rutas automáticas de DRF (registradas en router) — raíz de la API de la app
@@ -37,4 +39,6 @@ urlpatterns = [
 
     # La vista web clásica queda en 'web/' para no interferir con la raíz de la API
     path('web/', views.index, name='index'),
+    # Registro público
+    path('auth/register/', views.RegisterAPIView.as_view(), name='auth_register'),
 ]

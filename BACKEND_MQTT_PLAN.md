@@ -269,6 +269,36 @@ Orden recomendado de trabajo:
 4. MQTT worker + endpoints de control + pruebas end-to-end.
 5. Observabilidad, tests y documentación (Swagger).
 
+Estado: SMTP y pruebas de correo
+--------------------------------
+
+- **Configuración aplicada:** Se añadió un fichero local de variables de entorno de ejemplo `.env.smtp.example` y se creó un `.env.smtp` (ignorado por git) con las credenciales de `scadav1.3@gmail.com`.
+- **Carga en Docker Compose:** `docker-compose.yml` fue actualizado para incluir `.env.smtp` en `env_file`, de modo que el servicio `backend` carga las variables SMTP al arrancar.
+- **Ajustes en Django:** `mysite/mysite/settings.py` ya lee las variables de entorno para `EMAIL_BACKEND`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` y `DJANGO_DEFAULT_FROM`.
+- **Prueba realizada:** Ejecuté un script de prueba dentro del contenedor (`scripts/send_email_test.py`) y el backend reportó `emails_sent=1`. Se verificó que las variables se cargaron correctamente en el contenedor.
+
+Dónde está la configuración (archivos relevantes)
+- `.env.smtp` — archivo local con credenciales SMTP (no versionado). Ejemplo: [IC2-IC3/.env.smtp.example](IC2-IC3/.env.smtp.example)
+- `docker-compose.yml` — incluye `.env.smtp` vía `env_file` para el servicio `backend`: [IC2-IC3/docker-compose.yml](IC2-IC3/docker-compose.yml)
+- `settings.py` — Django lee las variables y configura `EMAIL_BACKEND` y demás parámetros: [mysite/mysite/settings.py](mysite/mysite/settings.py)
+
+Cómo se integraría en los flujos de usuario (resumen técnico)
+- **Registro / confirmación de cuenta:** el `RegisterAPIView` debe crear el `User` con `is_active=False`, generar un token de activación (ej. `uid`+`token` o JWT de propósito único) y enviar un email con un enlace de activación que apunte al endpoint de confirmación. El envío se realiza con `django.core.mail.send_mail` o con `EmailMultiAlternatives` para HTML.
+- **Recuperación de contraseña:** usar los endpoints de Django (`PasswordResetView`/`PasswordResetConfirmView`) o librerías como `dj-rest-auth`/`django-rest-registration` que construyen los emails automáticamente. Estos endpoints envían un correo con token/uid y permiten confirmar y cambiar la contraseña.
+- **Notificaciones operativas y administración:** cualquier acción que requiera notificación (aprobación de orden, alertas de alarma) puede usar el mismo `send_mail`/plantillas y obtener `From` de `DJANGO_DEFAULT_FROM`.
+- **Recomendaciones de implementación:** usar librerías probadas (`dj-rest-auth` + `django-allauth` o `django-rest-registration`) para ahorrar tiempo; usar tokens con expiración; enviar emails en background (Celery/RQ) en producción; mantener plantillas de correo en `templates/`.
+
+Próximos pasos sugeridos (corto plazo)
+- Confirmar plantillas de email (texto y HTML) y ubicación (`templates/emails/`).
+- Implementar endpoint de confirmación y enlazarlo con el `RegisterAPIView` existente (`polls/views.py`).
+- Implementar endpoints de password reset (o integrar `dj-rest-auth`) y probar el flujo end-to-end usando la cuenta `peladocrack19@gmail.com` como destino.
+- Pasar el envío de mails a una tarea asíncrona antes de producción (Celery + broker) para no bloquear peticiones.
+
+Notas de seguridad
+- Nunca versionar `.env.smtp` ni credenciales en el repositorio. Usar `.env.smtp` local (ya está en `.gitignore`).
+- Para Gmail en producción usar App Passwords y revisar el panel de seguridad de la cuenta.
+
+
 
 
 

@@ -7,6 +7,8 @@ from django.utils.timezone import now
 from django.core.exceptions import ValidationError
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 
 class Fabrica(models.Model):
@@ -157,6 +159,47 @@ class EmpleadoSeccion(models.Model):
 
     def __str__(self):
         return f"{self.empleado} en {self.seccion} desde {self.fecha_union}"
+
+
+# Perfil/Role para usuarios del sistema
+ROLE_CHOICES = [
+    ('operator', 'Empleado'),
+    ('manager', 'Jefe'),
+    ('admin', 'Administrador'),
+]
+
+
+class Profile(models.Model):
+    """Perfil extendido para `User` con rol y metadatos adicionales.
+
+    - `role` define capacidades (operator/manager/admin).
+    - `email_confirmed` se usa para bloqueo hasta verificación por email.
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='operator')
+    telefono = models.CharField(max_length=30, blank=True, null=True)
+    email_confirmed = models.BooleanField(default=False)
+    last_seen = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Profile'
+        verbose_name_plural = 'Profiles'
+
+    def __str__(self):
+        return f"{self.user.username} ({self.get_role_display()})"
+
+
+# Señal para crear/actualizar Profile automáticamente
+@receiver(post_save, sender=User)
+def create_or_update_user_profile(sender, instance, created, **kwargs):
+    if created:
+        Profile.objects.create(user=instance)
+    else:
+        try:
+            instance.profile.save()
+        except Profile.DoesNotExist:
+            Profile.objects.create(user=instance)
 
 
 class Inventario(models.Model):

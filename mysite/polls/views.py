@@ -42,6 +42,39 @@ from .serializers import (
     HistorialProduccionSerializerBasic,
     ComunicacionMQTTSerializer,
 )
+from django.contrib.auth.models import User
+from rest_framework import generics
+from rest_framework.permissions import AllowAny
+from .serializers import UserSerializer, ProfileSerializer
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    """Exponer usuarios (solo admins pueden listar/editar)."""
+    queryset = User.objects.all().order_by('username')
+    serializer_class = UserSerializer
+    permission_classes = [IsAdminUser]
+
+
+class ProfileViewSet(viewsets.ModelViewSet):
+    """Exponer profiles (admins o self-view)."""
+    queryset = models.Profile.objects.all().order_by('-created_at')
+    serializer_class = ProfileSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class RegisterAPIView(generics.CreateAPIView):
+    """Endpoint público para registrar cuentas. Crea usuario inactivo.
+
+    POST payload: `username`, `email`, `password`, `first_name`, `last_name`
+    """
+    serializer_class = UserSerializer
+    permission_classes = [AllowAny]
+
+    def perform_create(self, serializer):
+        user = serializer.save()
+        # Profile se crea automáticamente por la señal post_save
+        # Aquí podríamos enviar email de confirmación (pendiente SMTP)
+        return user
 
 
 class ConfiguracionMQTTViewSet(viewsets.ModelViewSet):

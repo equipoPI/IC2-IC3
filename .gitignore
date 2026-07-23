@@ -1,6 +1,30 @@
 # Python
 __pycache__/
 *.py[cod]
+*.so
+
+# Virtual env
+venv/
+env/
+myenv/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+
+# Tests and local scripts (ignored to avoid committing credentials or transient tests)
+mysite/scripts/test_*.py
+scripts/send_email_test.py
+
+# Local env file for SMTP credentials (keep out of VCS)
+.env.smtp
+
+# VSCode
+.vscode/
+# Python
+__pycache__/
+*.py[cod]
 *$py.class
 *.so
 .Python
@@ -70,3 +94,5 @@ opencode.json
 
 # contraseñas 
 KeysRaspberry.txt
+# Local tests folder (do not commit)
+local_tests/

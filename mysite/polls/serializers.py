@@ -28,6 +28,44 @@ from .models import ConfiguracionMQTT, DispositivoSCADA, LecturaSensor
 from . import models
 
 
+# =========================
+# Serializers para usuarios
+# =========================
+
+
+class ProfileSerializer(serializers.ModelSerializer):
+    user_username = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = models.Profile
+        fields = ['id', 'user', 'user_username', 'role', 'telefono', 'email_confirmed', 'last_seen', 'created_at']
+        read_only_fields = ['created_at', 'last_seen']
+
+
+class UserSerializer(serializers.ModelSerializer):
+    profile = ProfileSerializer(read_only=True)
+    password = serializers.CharField(write_only=True, required=True)
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'password', 'is_active', 'profile']
+        extra_kwargs = {'is_active': {'read_only': True}}
+
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        username = validated_data.get('username')
+        email = validated_data.get('email')
+        # Crear usuario inactivo por defecto; se activará tras confirmación por email
+        user = User(**validated_data)
+        user.username = username
+        user.email = email
+        user.is_active = False
+        user.set_password(password)
+        user.save()
+        return user
+
+
+
 # =============================================================================
 # Serializers Básicos
 # =============================================================================

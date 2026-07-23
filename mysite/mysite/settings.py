@@ -139,6 +139,28 @@ STATIC_URL = 'static/'
 # Directory where `collectstatic` will gather files
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# -----------------------------------------------------------------------------
+# Email / SMTP configuration
+# - By default use console email backend for development (prints emails to logs)
+# - To use real SMTP configure the environment variables below.
+# -----------------------------------------------------------------------------
+DEFAULT_FROM_EMAIL = os.environ.get('DJANGO_DEFAULT_FROM', 'no-reply@localhost')
+
+# Choose backend via env var. Default prints to console which is safe for dev.
+EMAIL_BACKEND = os.environ.get('DJANGO_EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+
+# SMTP settings (used when EMAIL_BACKEND is set to django.core.mail.backends.smtp.EmailBackend)
+EMAIL_HOST = os.environ.get('DJANGO_EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.environ.get('DJANGO_EMAIL_PORT', 587))
+EMAIL_HOST_USER = os.environ.get('DJANGO_EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('DJANGO_EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = os.environ.get('DJANGO_EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_USE_SSL = os.environ.get('DJANGO_EMAIL_USE_SSL', 'False') == 'True'
+
+# When using console backend, emails are printed to stdout/logs. In production,
+# set DJANGO_EMAIL_BACKEND to 'django.core.mail.backends.smtp.EmailBackend' and
+# configure the host/user/password via env variables (do not store secrets in repo).
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
