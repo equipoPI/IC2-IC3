@@ -237,29 +237,124 @@ def api_root(request, format=None):
     Dev: este endpoint devuelve un resumen simple de rutas registradas.
     En producción se recomienda limitar métodos y autenticar.
     """
-    # Construimos manualmente un índice simple (nombre => url) para inspección
+    # Construimos manualmente un índice enriquecido (nombre => {url, description})
     base = request.build_absolute_uri('/')
     return Response({
-        'fabricas': base + 'api/v1/fabricas/',
-        'secciones': base + 'api/v1/secciones/',
-        'empleados': base + 'api/v1/empleados/',
-        'dispositivos': base + 'api/v1/dispositivos/',
-        'lecturas': base + 'api/v1/lecturas/',
-        'configuraciones_mqtt': base + 'api/v1/configuraciones-mqtt/',
-        'mqtt_topics': base + 'api/v1/mqtt-topics/',
-        'ordenes': base + 'api/v1/ordenes/',
-        'recetas': base + 'api/v1/recetas/',
-        'producciones': base + 'api/v1/producciones/',
-        'inventarios': base + 'api/v1/inventarios/',
-        'items_inventario': base + 'api/v1/items-inventario/',
-        'movimientos': base + 'api/v1/movimientos/',
-        'cronogramas': base + 'api/v1/cronogramas/',
-        'registros_mantenimiento': base + 'api/v1/registros-mantenimiento/',
-        'sistemas': base + 'api/v1/sistemas/',
-        'plantillas': base + 'api/v1/plantillas/',
-        'ingredientes': base + 'api/v1/ingredientes/',
-        'mantenimientos_programados': base + 'api/v1/mantenimientos-programados/',
-        'unidades_almacenamiento': base + 'api/v1/unidades-almacenamiento/',
-        'historial_produccion': base + 'api/v1/historial-produccion/',
-        'comunicaciones_mqtt': base + 'api/v1/comunicaciones-mqtt/',
+        'fabricas': {
+            'url': base + 'api/v1/fabricas/',
+            'description': 'CRUD de fábricas/plantas',
+        },
+        'secciones': {
+            'url': base + 'api/v1/secciones/',
+            'description': 'Secciones dentro de una fábrica',
+        },
+        'empleados': {
+            'url': base + 'api/v1/empleados/',
+            'description': 'Gestión de empleados',
+        },
+        'dispositivos': {
+            'url': base + 'api/v1/dispositivos/',
+            'description': 'Dispositivos SCADA registrados',
+        },
+        'lecturas': {
+            'url': base + 'api/v1/lecturas/',
+            'description': 'Lecturas de sensores (time series)',
+        },
+        'configuraciones_mqtt': {
+            'url': base + 'api/v1/configuraciones-mqtt/',
+            'description': 'Credenciales y prefijos MQTT',
+        },
+        'mqtt_topics': {
+            'url': base + 'api/v1/mqtt-topics/',
+            'description': 'Listado y reglas para topics MQTT',
+        },
+        'ordenes': {
+            'url': base + 'api/v1/ordenes/',
+            'description': 'Órdenes de producción (CRUD)',
+        },
+        'recetas': {
+            'url': base + 'api/v1/recetas/',
+            'description': 'Recetas y fórmulas de producción',
+        },
+        'producciones': {
+            'url': base + 'api/v1/producciones/',
+            'description': 'Registros de producción',
+        },
+        'inventarios': {
+            'url': base + 'api/v1/inventarios/',
+            'description': 'Inventarios por almacén',
+        },
+        'items_inventario': {
+            'url': base + 'api/v1/items-inventario/',
+            'description': 'Items individuales en inventario',
+        },
+        'movimientos': {
+            'url': base + 'api/v1/movimientos/',
+            'description': 'Movimientos de stock',
+        },
+        'cronogramas': {
+            'url': base + 'api/v1/cronogramas/',
+            'description': 'Cronogramas por sección',
+        },
+        'registros_mantenimiento': {
+            'url': base + 'api/v1/registros-mantenimiento/',
+            'description': 'Historial de mantenimiento',
+        },
+        'sistemas': {
+            'url': base + 'api/v1/sistemas/',
+            'description': 'Sistemas y subsistemas gestionados',
+        },
+        'plantillas': {
+            'url': base + 'api/v1/plantillas/',
+            'description': 'Plantillas de producción',
+        },
+        'ingredientes': {
+            'url': base + 'api/v1/ingredientes/',
+            'description': 'Ingredientes y materias primas',
+        },
+        'mantenimientos_programados': {
+            'url': base + 'api/v1/mantenimientos-programados/',
+            'description': 'Tareas de mantenimiento programadas',
+        },
+        'unidades_almacenamiento': {
+            'url': base + 'api/v1/unidades-almacenamiento/',
+            'description': 'Unidades físicas de almacenamiento',
+        },
+        'historial_produccion': {
+            'url': base + 'api/v1/historial-produccion/',
+            'description': 'Historial agregado de producción',
+        },
+        'comunicaciones_mqtt': {
+            'url': base + 'api/v1/comunicaciones-mqtt/',
+            'description': 'Mensajes y eventos MQTT registrados',
+        },
+        # Auth endpoints (dj-rest-auth / allauth)
+        'auth_login': {
+            'url': base + 'api/v1/auth/login/',
+            'description': 'Inicio de sesión (email + password)',
+        },
+        'auth_logout': {
+            'url': base + 'api/v1/auth/logout/',
+            'description': 'Cerrar sesión (token/session)',
+        },
+        'auth_user': {
+            'url': base + 'api/v1/auth/user/',
+            'description': 'Detalle del usuario autenticado',
+        },
+        'auth_registration': {
+            'url': base + 'api/v1/auth/registration/',
+            'description': 'Registro de usuario y solicitud de verificación',
+        },
+        'auth_verify_email': {
+            'url': base + 'api/v1/auth/registration/verify-email/',
+            'description': 'Verificación de email (POST con key)',
+        },
+        'auth_password_reset': {
+            'url': base + 'api/v1/auth/password/reset/',
+            'description': 'Solicitud de reseteo de contraseña (envía email)',
+        },
+        'auth_password_reset_confirm': {
+            'url': base + 'api/v1/auth/password/reset/confirm/',
+            'description': 'Confirmación de reseteo (token + new password)',
+        },
     })

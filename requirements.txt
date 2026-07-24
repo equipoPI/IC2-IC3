@@ -49,6 +49,9 @@ django-extensions>=3.2.3
 # APIs y documentación
 drf-spectacular>=0.26.0  # OpenAPI/Swagger
 
+# Auth / registration
+django-allauth>=0.58.0
+dj-rest-auth>=3.6.0
 # ============================================================================
 # NOTA: Raspberry Pi Gateway tiene su propio requirements.txt
 # Ver: control/raspberry_gateway/requirements.txt

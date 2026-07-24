@@ -24,6 +24,11 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     # Montar la API de la app `polls` bajo /api/v1/
     path('api/v1/', include('polls.urls')),
+    # Auth: dj-rest-auth + registration (usa django-allauth internamente)
+    path('api/v1/auth/', include('dj_rest_auth.urls')),
+    path('api/v1/auth/registration/', include('dj_rest_auth.registration.urls')),
+    # Endpoints web de allauth (útiles para confirmación por email)
+    path('accounts/', include('allauth.urls')),
 ]
 
 # Añadir soporte para archivos de medios en modo DEBUG

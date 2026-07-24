@@ -277,6 +277,31 @@ Estado: SMTP y pruebas de correo
 - **Ajustes en Django:** `mysite/mysite/settings.py` ya lee las variables de entorno para `EMAIL_BACKEND`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` y `DJANGO_DEFAULT_FROM`.
 - **Prueba realizada:** Ejecuté un script de prueba dentro del contenedor (`scripts/send_email_test.py`) y el backend reportó `emails_sent=1`. Se verificó que las variables se cargaron correctamente en el contenedor.
 
+Estado actual (actualizado 2026-07-24)
+------------------------------------
+
+- Soporte SMTP: implementado y verificado dentro del contenedor. `.env.smtp` es cargado por `docker-compose` y `settings.py` usa las variables para `EMAIL_BACKEND` y credenciales.
+- Integración de registro/confirmación: instalé e integré `django-allauth` + `dj-rest-auth`, aplicaron migraciones y creé el `Site` (id=1). El endpoint de registro `/api/v1/auth/registration/` y confirmación `/api/v1/auth/registration/verify-email/` están disponibles y envían el email de verificación.
+- `api_root` actualizado: añadí las rutas de auth y descripciones en `/api/v1/` (ahora devuelve `url` + `description` por recurso).
+- Ajustes menores ya aplicados: `collectstatic` se ejecutó (archivos estáticos recogidos), el backend fue reiniciado y funciona (logs muestran arranque y respuestas 200 para `/api/v1/`).
+
+Pendientes importantes
+----------------------
+
+- Recuperación de contraseña (reset): los endpoints existen vía `dj-rest-auth`, pero falta comprobar/ajustar plantillas de email y flujos front-end para completar la UX.
+- Verificar/ajustar plantillas de email y URLs de redirección (`ACCOUNT_EMAIL_CONFIRMATION_*`) para que apunten al front-end (opcional, recomendado).
+- Frontend (`scada-ui`): falta implementar componentes/páginas para registro, verificación automática por `key`, login y recuperación de contraseña.
+- Commit de cambios: todavía no se ha registrado un commit que agrupe estas modificaciones (lo crearé ahora según indicaste).
+
+Siguientes pasos acordados
+-------------------------
+
+1. Crear commit con mensaje corto indicando que se añadió soporte SMTP y flujo de registro/confirmación.
+2. Opción C: Normalizar `tenant` → `fabrica` en `control/raspberry_gateway/config.yaml` y actualizar documentación en la UI/README (esta acción se ejecutará a continuación).
+3. Opción A: Aplicar cambios mínimos en `settings.py` si quedan (confirmar `STATIC_ROOT`, `ALLOWED_HOSTS`, mover `SECRET_KEY` a env si aún es necesario), ejecutar `collectstatic` y reiniciar backend.
+
+Marcaré estas tareas en el TODO y luego procederé con C seguido de A.
+
 Dónde está la configuración (archivos relevantes)
 - `.env.smtp` — archivo local con credenciales SMTP (no versionado). Ejemplo: [IC2-IC3/.env.smtp.example](IC2-IC3/.env.smtp.example)
 - `docker-compose.yml` — incluye `.env.smtp` vía `env_file` para el servicio `backend`: [IC2-IC3/docker-compose.yml](IC2-IC3/docker-compose.yml)
