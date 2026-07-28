@@ -19,6 +19,10 @@ import AdministracionAlmacenamiento from "@/pages/AdministracionAlmacenamiento";
 import AuditoriaAdmin from "@/pages/AuditoriaAdmin";
 import NotFound from "@/pages/NotFound";
 import Login from "@/pages/Login";
+import Register from "@/pages/Register";
+import VerifyEmail from "@/pages/VerifyEmail";
+import PasswordReset from "@/pages/PasswordReset";
+import PasswordResetConfirm from "@/pages/PasswordResetConfirm";
 import LandingPage from "@/pages/LandingPage";
 import { StorageProvider } from "@/contexts/StorageContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -34,6 +38,10 @@ const ProtectedRoutes = () => {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="/password-reset" element={<PasswordReset />} />
+        <Route path="/password-reset-confirm" element={<PasswordResetConfirm />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );

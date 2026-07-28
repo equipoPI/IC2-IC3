@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,8 @@ import {
 const Login = () => {
   const [usuario, setUsuario] = useState("");
   const [contrasena, setContrasena] = useState("");
-  const [rol, setRol] = useState<RolUsuario>("Operador");
+  // El rol es interno y lo asigna el admin; por defecto local usamos 'Operador'
+  const [rol] = useState<RolUsuario>("Operador");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -67,7 +68,7 @@ const Login = () => {
                 Sistema de Gestión SCADA
               </CardTitle>
               <CardDescription className="text-muted-foreground mt-1">
-                Ingrese sus credenciales para acceder
+                Utilice su correo electrónico y contraseña para iniciar sesión
               </CardDescription>
             </div>
           </div>
@@ -76,13 +77,13 @@ const Login = () => {
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="usuario" className="text-sm font-medium text-foreground">Usuario</Label>
+              <Label htmlFor="email" className="text-sm font-medium text-foreground">Correo electrónico (usuario)</Label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  id="usuario"
-                  type="text"
-                  placeholder="Ingrese su usuario"
+                  id="email"
+                  type="email"
+                  placeholder="Ingrese su correo electrónico"
                   value={usuario}
                   onChange={(e) => setUsuario(e.target.value)}
                   className="pl-10 bg-background/50 border-border/50 focus:border-primary"
@@ -105,19 +106,7 @@ const Login = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="rol" className="text-sm font-medium text-foreground">Rol</Label>
-              <Select value={rol} onValueChange={(v) => setRol(v as RolUsuario)}>
-                <SelectTrigger className="bg-background/50 border-border/50">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Operador">Operador</SelectItem>
-                  <SelectItem value="Jefe de Sector">Jefe de Sector</SelectItem>
-                  <SelectItem value="Administrador">Administrador</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {/* El rol se asigna desde el backend por un admin; no permitir selección en el login */}
 
             <Button
               type="submit"
@@ -135,10 +124,9 @@ const Login = () => {
             </Button>
           </form>
 
-          <div className="mt-6 pt-4 border-t border-border/50 text-center">
-            <p className="text-xs text-muted-foreground">
-              Sistema protegido. Acceso solo para personal autorizado.
-            </p>
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <Link to="/password-reset" className="text-primary hover:underline">¿Olvidaste la contraseña?</Link>
+            <Link to="/register" className="text-primary hover:underline">¿No tenés cuenta? Registrate</Link>
           </div>
         </CardContent>
       </Card>

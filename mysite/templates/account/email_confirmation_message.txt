@@ -1,0 +1,14 @@
+Hola,
+
+Para activar tu cuenta en el Sistema SCADA, haz clic en el siguiente enlace:
+
+{{ activate_url }}
+
+Si el enlace anterior no funciona, copia y pega el siguiente código en la aplicación:
+
+Código: {{ key }}
+
+Si no solicitaste este correo, ignóralo.
+
+Saludos,
+Equipo SCADA

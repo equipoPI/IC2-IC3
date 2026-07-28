@@ -41,4 +41,6 @@ urlpatterns = [
     path('web/', views.index, name='index'),
     # Registro público
     path('auth/register/', views.RegisterAPIView.as_view(), name='auth_register'),
+    # Fallback para confirmación de email desde SPA (GET, sin CSRF)
+    path('auth/registration/verify-email-get/', views.verify_email_get, name='auth_verify_email_get'),
 ]

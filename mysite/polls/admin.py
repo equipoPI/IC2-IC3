@@ -4,6 +4,7 @@ from .models import (
     Fabrica, Seccion, Empleado, DispositivoSCADA,
 )
 from .models import ConfiguracionMQTT
+from .models import RegistrationConfig
 
 
 @admin.register(Fabrica)
@@ -52,3 +53,13 @@ class ConfiguracionMQTTAdmin(admin.ModelAdmin):
 # Registrar solo si no fue registrado por el registro automático anterior
 if ConfiguracionMQTT not in admin.site._registry:
     admin.site.register(ConfiguracionMQTT, ConfiguracionMQTTAdmin)
+
+
+# Registrar RegistrationConfig para permitir cambiar la clave desde admin
+class RegistrationConfigAdmin(admin.ModelAdmin):
+    list_display = ('clave', 'activo', 'actualizado_en')
+    list_filter = ('activo',)
+    search_fields = ('clave',)
+
+if RegistrationConfig not in admin.site._registry:
+    admin.site.register(RegistrationConfig, RegistrationConfigAdmin)

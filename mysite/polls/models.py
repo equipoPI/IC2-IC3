@@ -190,6 +190,30 @@ class Profile(models.Model):
         return f"{self.user.username} ({self.get_role_display()})"
 
 
+class RegistrationConfig(models.Model):
+    """Configuración editable por admin para la clave de registro.
+
+    - `clave` es la clave que los usuarios deben introducir para registrarse.
+    - `activo` permite desactivar temporalmente registros basados en DB.
+    """
+    clave = models.CharField(max_length=128, help_text="Clave de acceso/clave de registro")
+    activo = models.BooleanField(default=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Registro Config'
+        verbose_name_plural = 'Configuración de Registro'
+
+    def __str__(self):
+        status = 'activo' if self.activo else 'inactivo'
+        return f"Clave registro ({status}) - actualizado: {self.actualizado_en}"
+
+    @classmethod
+    def get_current_key(cls):
+        obj = cls.objects.filter(activo=True).order_by('-actualizado_en').first()
+        return obj.clave if obj else None
+
+
 # Señal para crear/actualizar Profile automáticamente
 @receiver(post_save, sender=User)
 def create_or_update_user_profile(sender, instance, created, **kwargs):

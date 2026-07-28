@@ -130,7 +130,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'es'
 
 TIME_ZONE = 'UTC'
 
@@ -153,6 +153,12 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # -----------------------------------------------------------------------------
 DEFAULT_FROM_EMAIL = os.environ.get('DJANGO_DEFAULT_FROM', 'no-reply@localhost')
 
+# Frontend URL (used to build redirects in emails)
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+
+# Clave de registro (puede venir desde `key.env` o similar)
+REGISTRATION_KEY = os.environ.get('REGISTRATION_KEY', None)
+
 # Choose backend via env var. Default prints to console which is safe for dev.
 EMAIL_BACKEND = os.environ.get('DJANGO_EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
 
@@ -167,6 +173,19 @@ EMAIL_USE_SSL = os.environ.get('DJANGO_EMAIL_USE_SSL', 'False') == 'True'
 # When using console backend, emails are printed to stdout/logs. In production,
 # set DJANGO_EMAIL_BACKEND to 'django.core.mail.backends.smtp.EmailBackend' and
 # configure the host/user/password via env variables (do not store secrets in repo).
+
+# Redirects y URLs usados por las plantillas y endpoints de registro/recupero.
+ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = os.environ.get(
+    'ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL', f"{FRONTEND_URL}/auth/verify-email"
+)
+ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = os.environ.get(
+    'ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL', f"{FRONTEND_URL}/"
+)
+# URL base que usará el frontend para abrir la confirmación/reset (format strings
+# pueden contener placeholders como {uid} y {token} según la implementación)
+PASSWORD_RESET_CONFIRM_URL = os.environ.get(
+    'PASSWORD_RESET_CONFIRM_URL', f"{FRONTEND_URL}/auth/reset-password-confirm?uid={{uid}}&token={{token}}"
+)
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
@@ -193,6 +212,9 @@ REST_FRAMEWORK = {
     'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S',
     'DATE_FORMAT': '%Y-%m-%d',
 }
+
+# Usar manejador de excepciones personalizado para traducir mensajes al español
+REST_FRAMEWORK['EXCEPTION_HANDLER'] = 'mysite.utils.exception_handler.custom_exception_handler'
 
 # =============================================================================
 # CONFIGURACIÓN DE CORS - Para permitir peticiones desde React frontend
@@ -226,6 +248,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # django-allauth site id (can be overridden via env)
 SITE_ID = int(os.environ.get('DJANGO_SITE_ID', 1))
 
+# Orígenes confiables para peticiones CSRF desde el frontend (Vite dev server)
+CSRF_TRUSTED_ORIGINS = os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
+
+# Personalizar la vista de fallo CSRF para devolver mensajes en español
+CSRF_FAILURE_VIEW = 'mysite.utils.csrf.csrf_failure'
+
 # Authentication backends: include allauth
 AUTHENTICATION_BACKENDS = (
     'django.contrib.auth.backends.ModelBackend',
@@ -238,6 +266,13 @@ ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
 ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_UNIQUE_EMAIL = True
+
+# Use custom serializer for registration to enforce registration_key
+REST_AUTH_REGISTER_SERIALIZER = 'polls.serializers.CustomRegisterSerializer'
+
+# Usar adaptador personalizado para construir correctamente el enlace de
+# confirmación (apunta al frontend SPA con ?key=...)
+ACCOUNT_ADAPTER = 'polls.adapters.CustomAccountAdapter'
 
 
 

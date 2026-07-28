@@ -189,6 +189,25 @@ Anotá cuál opción preferís y la implemento: A / B / C / D / E.
 Estado actual (actualizado):
 - Normalización `tenant` aplicada en el gateway: `control/raspberry_gateway` usa ahora exclusivamente `tenant` (la GUI muestra el valor de `tenant` como nombre de fábrica).
 
+## Resumen de estado — Hecho y Pendiente (actualizado 2026-07-24)
+
+- Hecho:
+	- Soporte SMTP configurado y probado dentro del contenedor (variables en `.env.smtp`, `docker-compose` y `settings.py`).
+	- Integración de registro/confirmación por email con `django-allauth` + `dj-rest-auth` (endpoints `/api/v1/auth/registration/` y `/api/v1/auth/registration/verify-email/`).
+	- `api_root` actualizado para exponer rutas de autenticación y descripciones cortas por recurso.
+	- Migraciones aplicadas y `Site` creado (fixture `initial_site.json` cargada).
+	- `collectstatic` ejecutado y backend reiniciado con respuestas 200 en `/api/v1/`.
+
+- Pendiente / Por verificar:
+	- Crear commit que agrupe estos cambios (recomendado antes de refactorizaciones mayores).
+	- Flujo de recuperación de contraseña: endpoints existen pero falta ajustar plantillas de email y UX en frontend.
+	- Plantillas y URLs de redirección (`ACCOUNT_EMAIL_CONFIRMATION_*`) deben apuntar al frontend (configurar valores definitivos).
+	- Mover `SECRET_KEY` a variable de entorno y revisar `ALLOWED_HOSTS` (producción) si no está hecho.
+	- Revisar y confirmar `STATIC_ROOT` en `settings.py` y volver a ejecutar `collectstatic` en despliegue final si se modifica.
+	- Implementar formularios/páginas en `scada-ui` para registro, verificación y recuperación.
+	- Pruebas E2E (registro → email → confirmación → login) pendientes.
+	- Normalización definitiva `tenant`→`fabrica` en `control/raspberry_gateway/config.yaml` (en progreso) y sincronizar docs/UI.
+
 Siguiente recomendación: proceder con la opción (A) para estabilizar configuración del backend (`STATIC_ROOT`, `ALLOWED_HOSTS`, mover `SECRET_KEY` a env`) antes de exponer APIs.
 
 ## Registro - elementos añadidos tras revisar video de CRUD
@@ -318,6 +337,7 @@ Próximos pasos sugeridos (corto plazo)
 - Implementar endpoint de confirmación y enlazarlo con el `RegisterAPIView` existente (`polls/views.py`).
 - Implementar endpoints de password reset (o integrar `dj-rest-auth`) y probar el flujo end-to-end usando la cuenta `peladocrack19@gmail.com` como destino.
 - Pasar el envío de mails a una tarea asíncrona antes de producción (Celery + broker) para no bloquear peticiones.
+ - Añadir endpoint administrativo para modificar el `role`/`profile` de un usuario (ej. `PATCH /api/v1/users/{id}/role/`) y UI para que admins puedan elevar/restringir privilegios.
 
 Notas de seguridad
 - Nunca versionar `.env.smtp` ni credenciales en el repositorio. Usar `.env.smtp` local (ya está en `.gitignore`).

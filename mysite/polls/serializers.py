@@ -1,3 +1,45 @@
+from django.conf import settings
+import time
+from dj_rest_auth.registration.serializers import RegisterSerializer as DefaultRegisterSerializer
+from rest_framework import serializers
+from django.contrib.auth.models import User
+from .models import RegistrationConfig
+
+
+class CustomRegisterSerializer(DefaultRegisterSerializer):
+    registration_key = serializers.CharField(write_only=True, required=True)
+
+    def validate_registration_key(self, value):
+        # Primero, intentar obtener la clave activa desde la base de datos (editable por admin)
+        db_key = RegistrationConfig.get_current_key()
+        if db_key:
+            expected = db_key
+        else:
+            expected = getattr(settings, 'REGISTRATION_KEY', None)
+
+        if expected is None:
+            raise serializers.ValidationError('El sistema no permite registros en este momento.')
+
+        if value != expected:
+            raise serializers.ValidationError('Clave de registro incorrecta.')
+        return value
+
+    def validate_email(self, value):
+        # Mensaje claro en español si el correo ya está registrado
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError('Correo ya existente.')
+        return value
+
+    def get_cleaned_data(self):
+        data = super().get_cleaned_data()
+        # registration_key is only used for validation, not stored
+        data.pop('registration_key', None)
+        # Asegurar que exista `username` — usar la parte local del email si falta
+        if not data.get('username'):
+            email = data.get('email', '')
+            username = email.split('@')[0] if email else f'user_{int(time.time())}'
+            data['username'] = username
+        return data
 """
 Serializers para Django REST Framework - Sistema SCADA
 """

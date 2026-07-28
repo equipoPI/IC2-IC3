@@ -46,6 +46,23 @@ from django.contrib.auth.models import User
 from rest_framework import generics
 from rest_framework.permissions import AllowAny
 from .serializers import UserSerializer, ProfileSerializer
+from django.http import JsonResponse
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.middleware.csrf import get_token
+from django.views.decorators.csrf import csrf_exempt
+from allauth.account.models import EmailConfirmation
+from django.utils import timezone
+
+
+@ensure_csrf_cookie
+def api_csrf_token(request):
+    """Devuelve el token CSRF actual en JSON para que la SPA lo use en headers.
+
+    Esto evita problemas donde la cookie CSRF no es legible desde JS
+    (SameSite/Secure) y permite al frontend obtener el token explícitamente.
+    """
+    token = get_token(request)
+    return JsonResponse({'csrfToken': token})
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -109,6 +126,42 @@ class TopicMQTTViewSet(viewsets.ModelViewSet):
 # =============================================================================
 def index(request):
     return HttpResponse("Hello, world. You're at the polls index.")
+
+
+@ensure_csrf_cookie
+def api_csrf(request):
+    """Endpoint simple para poner la cookie CSRF (GET).
+
+    Útil para SPAs que necesitan que el proxy (`/api`) solicite primero
+    este endpoint y así obtener la cookie `csrftoken` del backend.
+    """
+    return JsonResponse({'ok': True})
+
+
+
+@csrf_exempt
+def verify_email_get(request):
+    """Confirmar email vía GET con parámetro `key`.
+
+    Útil como fallback cuando la verificación por POST falla por CSRF
+    en SPAs de desarrollo. Devuelve 200 {'detail':'ok'} o 404.
+    """
+    key = request.GET.get('key')
+    if not key:
+        return JsonResponse({'detail': 'No encontrado.'}, status=404)
+    conf = EmailConfirmation.from_key(key)
+    if not conf:
+        return JsonResponse({'detail': 'No encontrado.'}, status=404)
+    try:
+        # Algunos objetos EmailConfirmation creados por pruebas no tienen
+        # el campo `sent` inicializado; Confirm requiere `sent` no-null.
+        if getattr(conf, 'sent', None) is None:
+            conf.sent = timezone.now()
+            conf.save()
+        conf.confirm(request)
+        return JsonResponse({'detail': 'ok'})
+    except Exception as e:
+        return JsonResponse({'detail': str(e)}, status=500)
 
 
 # =============================================================================
