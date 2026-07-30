@@ -16,17 +16,43 @@ const PasswordReset = () => {
     e.preventDefault();
     setIsLoading(true);
     try {
+      // Obtener cookie CSRF (y forzar que el backend la emita vía endpoint auxiliar)
+      const getCookie = (name: string) => {
+        const matches = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+        return matches ? decodeURIComponent(matches[1]) : null;
+      };
+      // Solicitar token al backend para asegurarnos de que la cookie `csrftoken` está presente
+      await fetch('/api/csrf/', { credentials: 'include' }).catch(() => null);
+      const csrftoken = getCookie('csrftoken');
+
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (csrftoken) headers['X-CSRFToken'] = csrftoken;
+
       const res = await fetch(`/api/v1/auth/password/reset/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        credentials: 'include',
+        headers,
         body: JSON.stringify({ email }),
       });
       if (res.ok) {
         toast({ title: "Enviado", description: "Revise su correo para instrucciones" });
         navigate("/login");
       } else {
-        const data = await res.json();
-        toast({ title: "Error", description: JSON.stringify(data), variant: "destructive" });
+        // La respuesta podría ser HTML (página de error) o JSON. Manejar ambos casos.
+        let description: string;
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          try {
+            const data = await res.json();
+            description = JSON.stringify(data);
+          } catch (e) {
+            description = await res.text().catch(() => `Error ${res.status}`);
+          }
+        } else {
+          // Probablemente HTML de error (ej. página de debug/CSRF); mostrar texto
+          description = await res.text().catch(() => `Error ${res.status}`);
+        }
+        toast({ title: "Error", description, variant: "destructive" });
       }
     } catch (err) {
       toast({ title: "Error", description: String(err), variant: "destructive" });

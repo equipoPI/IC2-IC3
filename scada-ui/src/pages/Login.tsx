@@ -28,28 +28,50 @@ const Login = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    try {
+      // Obtener csrf si existe
+      const getCookie = (name: string) => {
+        const matches = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+        return matches ? decodeURIComponent(matches[1]) : null;
+      };
+      const csrftoken = getCookie('csrftoken');
 
-    setTimeout(() => {
-      if (usuario && contrasena) {
-        login({
-          id: `USR-${Date.now()}`,
-          nombre: usuario,
-          rol,
-        });
-        toast({
-          title: "Bienvenido",
-          description: `Sesión iniciada como ${rol}`,
-        });
-        navigate("/dashboard");
-      } else {
-        toast({
-          title: "Error de autenticación",
-          description: "Por favor, complete todos los campos",
-          variant: "destructive",
-        });
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (csrftoken) headers['X-CSRFToken'] = csrftoken;
+
+      const payload: any = { password: contrasena };
+      // Enviar como `email` si el campo parece un correo, sino como `username`
+      if (/^.+@.+\..+$/.test(usuario)) payload.email = usuario;
+      else payload.username = usuario;
+
+      const resp = await fetch('/api/v1/auth/login/', {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => null);
+        const msg = err?.detail || (err && JSON.stringify(err)) || 'Credenciales inválidas';
+        toast({ title: 'Error de autenticación', description: String(msg), variant: 'destructive' });
+        setIsLoading(false);
+        return;
       }
+
+      // Obtener datos del usuario autenticado
+      const userResp = await fetch('/api/v1/auth/user/', { credentials: 'include' });
+      const userData = userResp.ok ? await userResp.json() : null;
+      const nombre = userData ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.username : usuario;
+
+      login({ id: String(userData?.id || Date.now()), nombre, rol });
+      toast({ title: 'Bienvenido', description: `Sesión iniciada como ${rol}` });
+      navigate('/dashboard');
+    } catch (err) {
+      toast({ title: 'Error', description: String(err), variant: 'destructive' });
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (

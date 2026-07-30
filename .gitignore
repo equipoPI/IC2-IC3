@@ -91,8 +91,31 @@ key.env
 AGENTS.md
 /spec 
 opencode.json
+BACKEND_MQTT_PLAN.md
+checklist.md
 
 # contraseñas 
 KeysRaspberry.txt
 # Local tests folder (do not commit)
 local_tests/
+
+# Python/test artifacts
+.pytest_cache/
+coverage.xml
+htmlcov/
+.mypy_cache/
+.cache/
+
+# Frontend build outputs
+scada-ui/dist/
+scada-ui/.cache/
+scada-ui/node_modules/
+
+# Local test scripts and temp helpers
+test_scripts/
+scripts/reset_*.py
+
+# Editor backups
+*~
+.project
+.classpath

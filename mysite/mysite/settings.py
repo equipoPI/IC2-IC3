@@ -61,6 +61,8 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',  # Debe estar antes de CommonMiddleware
     'django.middleware.common.CommonMiddleware',
+    # DebugCSRFMiddleware (temporal) removido — usar solo en diagnóstico
+    # 'polls.middleware.DebugCSRFMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'allauth.account.middleware.AccountMiddleware',
@@ -184,7 +186,7 @@ ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = os.environ.get(
 # URL base que usará el frontend para abrir la confirmación/reset (format strings
 # pueden contener placeholders como {uid} y {token} según la implementación)
 PASSWORD_RESET_CONFIRM_URL = os.environ.get(
-    'PASSWORD_RESET_CONFIRM_URL', f"{FRONTEND_URL}/auth/reset-password-confirm?uid={{uid}}&token={{token}}"
+    'PASSWORD_RESET_CONFIRM_URL', f"{FRONTEND_URL}/password-reset-confirm?uid={{uid}}&token={{token}}"
 )
 
 # Default primary key field type
@@ -249,7 +251,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 SITE_ID = int(os.environ.get('DJANGO_SITE_ID', 1))
 
 # Orígenes confiables para peticiones CSRF desde el frontend (Vite dev server)
-CSRF_TRUSTED_ORIGINS = os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
+CSRF_TRUSTED_ORIGINS = os.environ.get(
+    'DJANGO_CSRF_TRUSTED_ORIGINS',
+    'http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://localhost:8081,http://127.0.0.1:8081'
+).split(',')
+
+# Ajustes de cookies CSRF/Session para desarrollo local (ajustar en producción)
+CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', 'False') == 'True'
+SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
+SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False') == 'True'
 
 # Personalizar la vista de fallo CSRF para devolver mensajes en español
 CSRF_FAILURE_VIEW = 'mysite.utils.csrf.csrf_failure'
@@ -299,7 +310,7 @@ LOGGING = {
     },
     'handlers': {
         'console': {
-            'level': 'INFO',
+            'level': 'DEBUG',
             'class': 'logging.StreamHandler',
             'formatter': 'simple'
         },

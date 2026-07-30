@@ -28,17 +28,66 @@ const PasswordResetConfirm = () => {
     }
     setIsLoading(true);
     try {
+      // Obtener token CSRF (intenta endpoint y luego fallback a cookie)
+      const getCsrfToken = async () => {
+        try {
+          const r = await fetch(`/api/csrf-token/`, { credentials: 'include', mode: 'cors' });
+          if (r.ok) {
+            try {
+              const j = await r.json();
+              if (j && j.csrfToken) return j.csrfToken;
+            } catch (e) {
+              // fall through to cookie fallback
+            }
+          }
+        } catch (e) {
+          // ignore and try cookie
+        }
+        // Fallback: leer cookie `csrftoken` desde document.cookie
+        if (typeof document !== 'undefined') {
+          const m = document.cookie.match(/(^|; )csrftoken=([^;]+)/);
+          if (m) return decodeURIComponent(m[2]);
+        }
+        return '';
+      };
+
+      const csrfToken = await getCsrfToken();
+      // DEBUG: mostrar cookie y token para identificar problemas de visibility
+      try {
+        // console log para debug en DevTools
+        // eslint-disable-next-line no-console
+        console.log('document.cookie before POST:', typeof document !== 'undefined' ? document.cookie : '<no-document>');
+        // eslint-disable-next-line no-console
+        console.log('csrfToken resolved:', csrfToken);
+        toast({ title: 'Depuración CSRF', description: `Cookie length ${typeof document !== 'undefined' ? document.cookie.length : 0}, token ${csrfToken ? 'present' : 'missing'}` });
+      } catch (e) {
+        // ignore
+      }
+
+      if (!csrfToken) {
+        toast({ title: 'Error CSRF', description: 'No se obtuvo token CSRF. Recarga la página e inténtalo de nuevo.', variant: 'destructive' });
+        setIsLoading(false);
+        return;
+      }
+
       const res = await fetch(`/api/v1/auth/password/reset/confirm/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: 'include',
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
         body: JSON.stringify({ uid, token, new_password1: password1, new_password2: password2 }),
       });
       if (res.ok) {
         toast({ title: "Contraseña actualizada", description: "Ya puede iniciar sesión" });
         navigate("/login");
       } else {
-        const data = await res.json();
-        toast({ title: "Error", description: JSON.stringify(data), variant: "destructive" });
+        // intentar parsear JSON, si falla mostrar texto
+        try {
+          const data = await res.json();
+          toast({ title: "Error", description: JSON.stringify(data), variant: "destructive" });
+        } catch (e) {
+          const txt = await res.text();
+          toast({ title: "Error", description: txt, variant: "destructive" });
+        }
       }
     } catch (err) {
       toast({ title: "Error", description: String(err), variant: "destructive" });

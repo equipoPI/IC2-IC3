@@ -8,6 +8,8 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    // Permitir peticiones desde contenedores (host.docker.internal)
+    allowedHosts: ['host.docker.internal'],
     proxy: {
       '/api': {
         target: process.env.VITE_API_URL || 'http://localhost:8000',

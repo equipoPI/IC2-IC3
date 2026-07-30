@@ -8,6 +8,8 @@ from .models import RegistrationConfig
 
 class CustomRegisterSerializer(DefaultRegisterSerializer):
     registration_key = serializers.CharField(write_only=True, required=True)
+    first_name = serializers.CharField(write_only=True, required=True)
+    last_name = serializers.CharField(write_only=True, required=True)
 
     def validate_registration_key(self, value):
         # Primero, intentar obtener la clave activa desde la base de datos (editable por admin)
@@ -34,6 +36,9 @@ class CustomRegisterSerializer(DefaultRegisterSerializer):
         data = super().get_cleaned_data()
         # registration_key is only used for validation, not stored
         data.pop('registration_key', None)
+        # Asegurar que se incluyan nombres y apellidos en los datos limpios
+        data['first_name'] = self.validated_data.get('first_name', '')
+        data['last_name'] = self.validated_data.get('last_name', '')
         # Asegurar que exista `username` — usar la parte local del email si falta
         if not data.get('username'):
             email = data.get('email', '')
