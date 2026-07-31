@@ -7,6 +7,8 @@ from django.utils.timezone import now
 from django.core.exceptions import ValidationError
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 
 class Fabrica(models.Model):
@@ -157,6 +159,71 @@ class EmpleadoSeccion(models.Model):
 
     def __str__(self):
         return f"{self.empleado} en {self.seccion} desde {self.fecha_union}"
+
+
+# Perfil/Role para usuarios del sistema
+ROLE_CHOICES = [
+    ('operator', 'Empleado'),
+    ('manager', 'Jefe'),
+    ('admin', 'Administrador'),
+]
+
+
+class Profile(models.Model):
+    """Perfil extendido para `User` con rol y metadatos adicionales.
+
+    - `role` define capacidades (operator/manager/admin).
+    - `email_confirmed` se usa para bloqueo hasta verificación por email.
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='operator')
+    telefono = models.CharField(max_length=30, blank=True, null=True)
+    email_confirmed = models.BooleanField(default=False)
+    last_seen = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Profile'
+        verbose_name_plural = 'Profiles'
+
+    def __str__(self):
+        return f"{self.user.username} ({self.get_role_display()})"
+
+
+class RegistrationConfig(models.Model):
+    """Configuración editable por admin para la clave de registro.
+
+    - `clave` es la clave que los usuarios deben introducir para registrarse.
+    - `activo` permite desactivar temporalmente registros basados en DB.
+    """
+    clave = models.CharField(max_length=128, help_text="Clave de acceso/clave de registro")
+    activo = models.BooleanField(default=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Registro Config'
+        verbose_name_plural = 'Configuración de Registro'
+
+    def __str__(self):
+        status = 'activo' if self.activo else 'inactivo'
+        return f"Clave registro ({status}) - actualizado: {self.actualizado_en}"
+
+    @classmethod
+    def get_current_key(cls):
+        obj = cls.objects.filter(activo=True).order_by('-actualizado_en').first()
+        return obj.clave if obj else None
+
+
+# Señal para crear/actualizar Profile automáticamente
+@receiver(post_save, sender=User)
+def create_or_update_user_profile(sender, instance, created, **kwargs):
+    if created:
+        Profile.objects.create(user=instance)
+    else:
+        try:
+            instance.profile.save()
+        except Profile.DoesNotExist:
+            Profile.objects.create(user=instance)
 
 
 class Inventario(models.Model):
@@ -476,6 +543,31 @@ class ConfiguracionMQTT(models.Model):
 
     def __str__(self):
         return f"{self.nombre} ({self.broker_url}:{self.puerto})"
+
+
+class TopicMQTT(models.Model):
+    TIPOS = [
+        ('SUSCRIPCION', 'Suscripción'),
+        ('PUBLICACION', 'Publicación'),
+    ]
+
+    configuracion = models.ForeignKey(ConfiguracionMQTT, on_delete=models.CASCADE, related_name='topics')
+    topic = models.CharField(max_length=255, db_index=True)
+    tipo = models.CharField(max_length=20, choices=TIPOS, default='SUSCRIPCION')
+    tipo_dato = models.CharField(max_length=50, blank=True, null=True)
+    descripcion = models.TextField(blank=True, null=True)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Topic MQTT'
+        verbose_name_plural = 'Topics MQTT'
+        indexes = [
+            models.Index(fields=['topic']),
+            models.Index(fields=['configuracion']),
+        ]
+
+    def __str__(self):
+        return f"{self.topic} ({self.configuracion.nombre})"
 
 
 class IngredienteAlmacenamiento(models.Model):

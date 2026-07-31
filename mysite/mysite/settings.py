@@ -20,12 +20,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-=*@ohky+4vufd*m$fl$c--n)xfod^4xpik)dw8!l+vhswbw28g'
+# Use environment variable `DJANGO_SECRET_KEY` in production. Fallback keeps
+# current dev key for local convenience.
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-=*@ohky+4vufd*m$fl$c--n)xfod^4xpik)dw8!l+vhswbw28g',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Control via env var when deploying.
+DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+# Hosts allowed to serve the app. Can be overridden via env: DJANGO_ALLOWED_HOSTS
+ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,host.docker.internal').split(',')
 
 
 # Application definition
@@ -41,6 +48,12 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'corsheaders',#para conectar con el frontend React
+    'django.contrib.sites',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'dj_rest_auth',
+    'dj_rest_auth.registration',
 ]
 
 MIDDLEWARE = [
@@ -48,8 +61,11 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',  # Debe estar antes de CommonMiddleware
     'django.middleware.common.CommonMiddleware',
+    # DebugCSRFMiddleware (temporal) removido — usar solo en diagnóstico
+    # 'polls.middleware.DebugCSRFMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'allauth.account.middleware.AccountMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -116,7 +132,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'es'
 
 TIME_ZONE = 'UTC'
 
@@ -129,6 +145,49 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
 STATIC_URL = 'static/'
+# Directory where `collectstatic` will gather files
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# -----------------------------------------------------------------------------
+# Email / SMTP configuration
+# - By default use console email backend for development (prints emails to logs)
+# - To use real SMTP configure the environment variables below.
+# -----------------------------------------------------------------------------
+DEFAULT_FROM_EMAIL = os.environ.get('DJANGO_DEFAULT_FROM', 'no-reply@localhost')
+
+# Frontend URL (used to build redirects in emails)
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+
+# Clave de registro (puede venir desde `key.env` o similar)
+REGISTRATION_KEY = os.environ.get('REGISTRATION_KEY', None)
+
+# Choose backend via env var. Default prints to console which is safe for dev.
+EMAIL_BACKEND = os.environ.get('DJANGO_EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+
+# SMTP settings (used when EMAIL_BACKEND is set to django.core.mail.backends.smtp.EmailBackend)
+EMAIL_HOST = os.environ.get('DJANGO_EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.environ.get('DJANGO_EMAIL_PORT', 587))
+EMAIL_HOST_USER = os.environ.get('DJANGO_EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('DJANGO_EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = os.environ.get('DJANGO_EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_USE_SSL = os.environ.get('DJANGO_EMAIL_USE_SSL', 'False') == 'True'
+
+# When using console backend, emails are printed to stdout/logs. In production,
+# set DJANGO_EMAIL_BACKEND to 'django.core.mail.backends.smtp.EmailBackend' and
+# configure the host/user/password via env variables (do not store secrets in repo).
+
+# Redirects y URLs usados por las plantillas y endpoints de registro/recupero.
+ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = os.environ.get(
+    'ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL', f"{FRONTEND_URL}/auth/verify-email"
+)
+ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = os.environ.get(
+    'ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL', f"{FRONTEND_URL}/"
+)
+# URL base que usará el frontend para abrir la confirmación/reset (format strings
+# pueden contener placeholders como {uid} y {token} según la implementación)
+PASSWORD_RESET_CONFIRM_URL = os.environ.get(
+    'PASSWORD_RESET_CONFIRM_URL', f"{FRONTEND_URL}/password-reset-confirm?uid={{uid}}&token={{token}}"
+)
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
@@ -142,9 +201,12 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
     ],
+    # Cambiar permiso por defecto a `IsAuthenticated` protege toda la API
+    # por defecto; marcar explícitamente `AllowAny` en vistas públicas.
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
+        'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,
@@ -155,6 +217,9 @@ REST_FRAMEWORK = {
     'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S',
     'DATE_FORMAT': '%Y-%m-%d',
 }
+
+# Usar manejador de excepciones personalizado para traducir mensajes al español
+REST_FRAMEWORK['EXCEPTION_HANDLER'] = 'mysite.utils.exception_handler.custom_exception_handler'
 
 # =============================================================================
 # CONFIGURACIÓN DE CORS - Para permitir peticiones desde React frontend
@@ -185,6 +250,45 @@ CORS_ALLOW_HEADERS = [
 ]
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# django-allauth site id (can be overridden via env)
+SITE_ID = int(os.environ.get('DJANGO_SITE_ID', 1))
+
+# Orígenes confiables para peticiones CSRF desde el frontend (Vite dev server)
+CSRF_TRUSTED_ORIGINS = os.environ.get(
+    'DJANGO_CSRF_TRUSTED_ORIGINS',
+    'http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://localhost:8081,http://127.0.0.1:8081'
+).split(',')
+
+# Ajustes de cookies CSRF/Session para desarrollo local (ajustar en producción)
+CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', 'False') == 'True'
+SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
+SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False') == 'True'
+
+# Personalizar la vista de fallo CSRF para devolver mensajes en español
+CSRF_FAILURE_VIEW = 'mysite.utils.csrf.csrf_failure'
+
+# Authentication backends: include allauth
+AUTHENTICATION_BACKENDS = (
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
+)
+
+# allauth / registration settings
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_UNIQUE_EMAIL = True
+
+# Use custom serializer for registration to enforce registration_key
+REST_AUTH_REGISTER_SERIALIZER = 'polls.serializers.CustomRegisterSerializer'
+
+# Usar adaptador personalizado para construir correctamente el enlace de
+# confirmación (apunta al frontend SPA con ?key=...)
+ACCOUNT_ADAPTER = 'polls.adapters.CustomAccountAdapter'
+
+
 
 # =============================================================================
 # CONFIGURACIÓN DE LOGGING - Sistema de logs del sistema
@@ -209,7 +313,7 @@ LOGGING = {
     },
     'handlers': {
         'console': {
-            'level': 'INFO',
+            'level': 'DEBUG',
             'class': 'logging.StreamHandler',
             'formatter': 'simple'
         },

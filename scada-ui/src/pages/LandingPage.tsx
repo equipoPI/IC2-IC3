@@ -66,7 +66,7 @@ const LandingPage = () => {
                 Iniciar Sesión
               </Button>
             </Link>
-            <Link to="/login">
+            <Link to="/register">
               <Button className="bg-primary hover:bg-primary/90">
                 Registrarse
               </Button>

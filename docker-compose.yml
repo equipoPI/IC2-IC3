@@ -1,8 +1,10 @@
 version: '3.8'
 
 services:
+  # Base de datos PostgreSQL
   db:
     image: postgres:15
+    container_name: scada_postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     environment:
@@ -11,31 +13,93 @@ services:
       - POSTGRES_PASSWORD=postgres
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - scada_network
 
+  # Backend Django + DRF
   backend:
     build:
       context: ./mysite
       dockerfile: Dockerfile
-    command: python manage.py runserver 0.0.0.0:8000
+    container_name: scada_backend
+    entrypoint: ["/app/entrypoint.sh"]
+    command: ["python","manage.py","runserver","0.0.0.0:8000"]
     volumes:
       - ./mysite:/app
     ports:
       - "8000:8000"
+    env_file:
+      - key.env
+      - .env.smtp
+    environment:
+      - DEBUG=1
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ic3_db
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,backend
+      - DB_HOST=db
+      - DB_PORT=5432
+      # Prototype credentials (replace/remove before publishing)
+      - DJANGO_SUPERUSER_USERNAME=admin
+      - DJANGO_SUPERUSER_EMAIL=admin@example.com
+      - DJANGO_SUPERUSER_PASSWORD=admin
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    networks:
+      - scada_network
 
+  # Frontend React + Vite
   frontend:
     build:
       context: ./scada-ui
       dockerfile: Dockerfile
-    command: npm run dev -- --host 0.0.0.0
+    container_name: scada_frontend
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
     volumes:
-      - ./scada-ui:/app
-      - /app/node_modules
+      - ./scada-ui:/app:delegated
+      - scada_ui_node_modules:/app/node_modules
     ports:
-      - "5173:5173"
+      - "5173:8080"
     environment:
+      - VITE_API_URL=http://backend:8000
       - WATCHPACK_POLLING=true
+    depends_on:
+      - backend
+    networks:
+      - scada_network
+
+  # Broker MQTT - Mosquitto
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: scada_mqtt_broker
+    ports:
+      - "1883:1883"      # Puerto MQTT
+      - "9001:9001"      # Puerto WebSocket (opcional para MQTT sobre WS)
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+      # Se elimina el volumen nombrado para evitar conflicto con el bind mount local
+    # Run the init script via shell so it doesn't require the executable bit on the file
+    command: ["sh", "-c", "/mosquitto/config/init_mosquitto.sh"]
+    networks:
+      - scada_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 | grep -v Error || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   postgres_data:
+  mosquitto_data:
+  scada_ui_node_modules:
+
+networks:
+  scada_network:
+    driver: bridge

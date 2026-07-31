@@ -1,0 +1,197 @@
+api:
+  auth:
+    api_key: cambiar-esta-clave-secreta
+    enabled: false
+  enabled: true
+  host: 0.0.0.0
+  log_level: info
+  port: 8000
+  reload: false
+arduino_protocol:
+  receive_format:
+  - index: 0
+    name: nivel_bombo1
+    type: float
+  - index: 1
+    name: porcentaje_bombo1
+    type: int
+  - index: 2
+    name: nivel_bombo2
+    type: float
+  - index: 3
+    name: porcentaje_bombo2
+    type: int
+  - index: 4
+    name: nivel_mezcla
+    type: float
+  - index: 5
+    name: porcentaje_mezcla
+    type: int
+  - index: 6
+    name: caudal_1
+    type: float
+  - index: 7
+    name: caudal_2
+    type: float
+  - index: 8
+    name: estado_bomba1
+    type: bool
+  - index: 9
+    name: estado_bomba2
+    type: bool
+  - index: 10
+    name: estado_bomba_mezcla
+    type: bool
+  - index: 11
+    name: estado_mezclador
+    type: bool
+  - index: 12
+    name: estado_bomba_repo
+    type: bool
+  - index: 13
+    name: error
+    type: int
+  - index: 14
+    name: hora_restante
+    type: int
+  - index: 15
+    name: min_restante
+    type: int
+  - index: 16
+    name: estado_proceso
+    type: int
+  send_commands:
+    continuar: A
+    detener: D
+    frenar: F
+    hora: H{valor}
+    liquido_1: L1{valor}
+    liquido_2: L2{valor}
+    minuto: M{valor}
+    reposicion: R{bombo}{valor}
+    vaciar: V
+database:
+  auto_vacuum: true
+  backup_enabled: true
+  backup_interval_hours: 24
+  backup_path: ./backups
+  cleanup:
+    enabled: true
+    interval_hours: 6
+    keep_critical_events: 30
+  path: ./control/raspberry_gateway/data/scada_local.db
+  retention_days: 7
+development:
+  enabled: false
+  mock_data_interval: 2
+  simulate_arduino: false
+  verbose_logging: true
+diagnostics:
+  check_interval: 60
+  enabled: true
+  publish_interval: 300
+  thresholds:
+    cpu_critical: 95
+    cpu_warning: 80
+    disk_critical: 95
+    disk_warning: 85
+    memory_critical: 95
+    memory_warning: 85
+    temperature_critical: 80
+    temperature_warning: 70
+logging:
+  format: '{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}'
+  level: INFO
+  main:
+    compression: zip
+    file: ./logs/gateway.log
+    retention: 30 days
+    rotation: 100 MB
+  modules:
+    database:
+      file: ./logs/database.log
+      level: INFO
+    diagnostics:
+      file: ./logs/diagnostics.log
+      level: INFO
+    mqtt:
+      file: ./logs/mqtt.log
+      level: INFO
+    serial:
+      file: ./logs/serial.log
+      level: DEBUG
+mqtt:
+  broker: 192.168.137.1
+  client_id: ''
+  default_sector: ala_este
+  default_system: linea_mezclado_1
+  gateway_id: ''
+  keepalive: 60
+  password: admin
+  port: 1883
+  qos: 1
+  tenant: rafaela
+  tls:
+    ca_certs: /etc/ssl/certs/ca-certificates.crt
+    certfile: null
+    enabled: false
+    keyfile: null
+  topics:
+    base: scada/planta1
+    enable_legacy_topics: true
+    publish:
+      alarmas: alarmas
+      bomba1: actuadores/bomba1
+      bomba2: actuadores/bomba2
+      bomba_mezcla: actuadores/bomba_mezcla
+      bomba_repo: actuadores/bomba_reposicion
+      caudal_1: sensores/caudal/1
+      caudal_2: sensores/caudal/2
+      diagnostico: diagnostico
+      estado_general: estado/general
+      mezclador: actuadores/mezclador
+      nivel_bombo1: sensores/nivel/bombo1
+      nivel_bombo2: sensores/nivel/bombo2
+      nivel_mezcla: sensores/nivel/mezcla
+      tiempo_restante: proceso/tiempo_restante
+    subscribe:
+      comandos_control: comandos/control
+      comandos_mezcla: comandos/mezcla
+      comandos_repo: comandos/reposicion
+      configuracion: configuracion
+      consultas: consultas/historico
+    subscribe_filters:
+    - '{tenant}/{gateway_id}/cmd/#'
+  username: admin
+planta:
+  capacidades:
+    bombo1: 100
+    bombo2: 100
+    bombo_mezcla: 200
+  descripcion: Sistema SCADA de control de mezclas con 2 bombos de ingredientes y
+    1 bombo de mezcla
+  id: planta1
+  nombre: Planta de Mezclas - Prototipo IC1
+  ubicacion: Laboratorio
+recovery:
+  database:
+    backoff_factor: 1.5
+    enabled: true
+    max_attempts: 5
+  mqtt:
+    backoff_factor: 2
+    enabled: true
+    max_attempts: -1
+    max_delay: 60
+  serial:
+    backoff_factor: 2
+    enabled: true
+    max_attempts: -1
+    max_delay: 60
+serial:
+  baudrate: 115200
+  max_reconnect_attempts: 10
+  port: /dev/ttyACM0
+  read_interval: 0.1
+  reconnect_delay: 5
+  timeout: 1.0

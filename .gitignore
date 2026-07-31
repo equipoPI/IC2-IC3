@@ -1,0 +1,121 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual env
+venv/
+env/
+myenv/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+
+# Tests and local scripts (ignored to avoid committing credentials or transient tests)
+mysite/scripts/test_*.py
+scripts/send_email_test.py
+
+# Local env file for SMTP credentials (keep out of VCS)
+.env.smtp
+
+# VSCode
+.vscode/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Docker
+.docker/
+
+data/*.db
+control/raspberry_gateway/data/*.db
+# Mosquitto MQTT
+mosquitto/data/
+mosquitto/log/
+mosquitto/config/passwd
+mosquitto/config/passwd.tmp
+mosquitto/config/*.local.conf
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Local key file with prototype credentials (should not be committed)
+key.env
+
+# Backups
+*.bak
+*.backup
+*.tmp
+
+# configuracion de IA
+AGENTS.md
+/spec 
+opencode.json
+BACKEND_MQTT_PLAN.md
+checklist.md
+
+# contraseñas 
+KeysRaspberry.txt
+# Local tests folder (do not commit)
+local_tests/
+
+# Python/test artifacts
+.pytest_cache/
+coverage.xml
+htmlcov/
+.mypy_cache/
+.cache/
+
+# Frontend build outputs
+scada-ui/dist/
+scada-ui/.cache/
+scada-ui/node_modules/
+
+# Local test scripts and temp helpers
+test_scripts/
+scripts/reset_*.py
+
+# Editor backups
+*~
+.project
+.classpath
