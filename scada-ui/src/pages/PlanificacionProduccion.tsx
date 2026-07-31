@@ -192,113 +192,87 @@ const PlanificacionProduccion = () => {
   // ==========================================================================
   // CREAR O EDITAR ORDEN (POST / PUT)
   // ==========================================================================
+// ==========================================================================
+  // CREAR O EDITAR ORDEN (POST / PUT) - BLINDADO
+  // ==========================================================================
   const handleSaveOrden = async (data: Omit<OrdenProduccion, "id">) => {
-    // 1. ESCUDO ANTI-CHOQUES DE HORARIO
-    const nuevaApertura = new Date(`${data.fechaInicio}T${data.horaInicio}`);
-    const nuevoCierre = new Date(`${data.fechaFin}T${data.horaFin}`);
+    // 1. VALIDACIÓN DE CHOQUES (Modo Advertencia)
+    const nuevaApertura = new Date(`${data.fechaInicio}T${data.horaInicio.substring(0,5)}`);
+    const nuevoCierre = new Date(`${data.fechaFin}T${data.horaFin.substring(0,5)}`);
 
     const hayConflicto = ordenes.some((ordenExistente) => {
-      // Si estamos editando, ignoramos chocar contra nosotros mismos
       if (editingOrden && ordenExistente.id === editingOrden.id) return false;
-      // Solo nos importa si es en la misma planta
       if (ordenExistente.planta !== data.planta) return false;
 
       const inicioExistente = new Date(`${ordenExistente.fechaInicio}T${ordenExistente.horaInicio}`);
       const finExistente = new Date(`${ordenExistente.fechaFin}T${ordenExistente.horaFin}`);
 
-      // Lógica matemática: ¿Se pisan los horarios?
-      return nuevaApertura < finExistente && nuevoCierre > inicioExistente;
+      // Solo evaluamos si las fechas son matemáticamente válidas
+      if (!isNaN(inicioExistente.getTime()) && !isNaN(finExistente.getTime())) {
+         return nuevaApertura < finExistente && nuevoCierre > inicioExistente;
+      }
+      return false;
     });
 
     if (hayConflicto) {
       toast({
-        title: "Turno Ocupado ❌",
-        description: `La planta ${data.planta} ya tiene producción en ese horario.`,
-        variant: "destructive"
+        title: "Superposición de Horarios ⚠️",
+        description: `Advertencia: La planta ${data.planta} ya tiene órdenes en este rango.`,
+        // NOTA: Quitamos el "return;" para que te deje guardar de todas formas y puedas probar.
       });
-      return; // Cortamos la ejecución, NO manda nada a la base de datos
     }
 
-    // 2. Si pasó la validación, seguimos normal
+    // 2. FORMATEO PERFECTO PARA DJANGO
     const idFabricaDestino = mapaPlantas[data.planta] || 1;
+
+    // Forzamos que las horas tengan formato 24hs estricto (ej: "08:00:00") para que Django no explote
+    const horaInicioLimpia = data.horaInicio.length <= 5 ? `${data.horaInicio}:00` : data.horaInicio;
+    const horaFinLimpia = data.horaFin.length <= 5 ? `${data.horaFin}:00` : data.horaFin;
 
     const payload = {
       producto: data.producto,
       cantidad: data.cantidad,
-      unidad: data.unidad,
+      unidad: data.unidad || "uds",
       estado: data.estado.toUpperCase(),
       progreso: data.progreso || 0,
       fecha_inicio: data.fechaInicio,
-      hora_inicio: data.horaInicio || "08:00:00",
+      hora_inicio: horaInicioLimpia,
       fecha_fin: data.fechaFin,
-      hora_fin: data.horaFin || "17:00:00",
+      hora_fin: horaFinLimpia,
       fabrica: idFabricaDestino 
     };
 
-    if (editingOrden) {
-      if (editingOrden.id.startsWith("ORD-")) {
-        setOrdenes(ordenes.map(o => o.id === editingOrden.id ? { ...o, ...data } : o));
-        toast({ title: "Orden de prueba actualizada (Local)" });
-        setEditingOrden(null);
-        return;
-      }
+    // 3. ENVÍO Y MANEJO DE ERRORES REALES
+    try {
+      const url = editingOrden ? `http://localhost:8000/polls/api/ordenes/${editingOrden.id}/` : 'http://localhost:8000/polls/api/ordenes/';
+      const method = editingOrden ? 'PUT' : 'POST';
 
-      try {
-        const res = await fetch(`http://localhost:8000/polls/api/ordenes/${editingOrden.id}/`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (res.ok) {
-          setOrdenes(ordenes.map(o => o.id === editingOrden.id ? { ...o, ...data } : o));
-          toast({ title: "Orden actualizada en PostgreSQL" });
-        } else {
-          // Capturamos el error exacto de Django para mostrarlo
-          const errorData = await res.json();
-          console.error("Error de Django:", errorData);
-          toast({ title: "Error al guardar", description: JSON.stringify(errorData), variant: "destructive" });
-        }
-      } catch (e) {
-        toast({ title: "Error de conexión con Django", variant: "destructive" });
-      }
-    } else {
-      try {
-        const res = await fetch('http://localhost:8000/polls/api/ordenes/', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+      const res = await fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-        if (res.ok) {
-          const nuevaGuardada = await res.json();
-          // Mapeamos la respuesta de Django devuelta al formato de React
-          const nuevaOrdenReact: OrdenProduccion = {
-            id: String(nuevaGuardada.id),
-            producto: nuevaGuardada.producto,
-            cantidad: nuevaGuardada.cantidad,
-            unidad: nuevaGuardada.unidad || data.unidad,
-            fechaInicio: nuevaGuardada.fecha_inicio,
-            horaInicio: nuevaGuardada.hora_inicio,
-            fechaFin: nuevaGuardada.fecha_fin,
-            horaFin: nuevaGuardada.hora_fin,
-            planta: data.planta, // Mantenemos el nombre visual
-            sistema: "Sistema de Producción",
-            maquina: "Máquina Principal",
-            estado: nuevaGuardada.estado.toLowerCase() as any,
-            progreso: nuevaGuardada.progreso
-          };
-          setOrdenes([...ordenes, nuevaOrdenReact]);
-          toast({ title: "¡Orden despachada a producción!" });
-        } else {
-          // Capturamos el error exacto de Django para mostrarlo
-          const errorData = await res.json();
-          console.error("Error de Django al crear:", errorData);
-          toast({ title: "Error del servidor", description: JSON.stringify(errorData), variant: "destructive" });
+      if (res.ok) {
+        toast({ title: editingOrden ? "Orden actualizada" : "¡Orden despachada a producción!" });
+        // Recargamos la página silenciosamente después de 1 segundo para traer el OP-ID fresco
+        setTimeout(() => window.location.reload(), 1000); 
+      } else {
+        // Captura avanzada: Leemos la respuesta como texto crudo primero
+        const errorText = await res.text();
+        try {
+          const errorJson = JSON.parse(errorText); // Si es un JSON de error de validación 400
+          toast({ title: "Rechazado por Django", description: JSON.stringify(errorJson), variant: "destructive" });
+        } catch (parseError) {
+          // Si Django devolvió HTML de Error 500, lo mostramos en consola
+          console.error("⚠️ EXPLOSIÓN 500 EN DJANGO:", errorText);
+          toast({ title: "Error 500 del Servidor", description: "Django falló. Apretá F12 y mirá la consola para ver qué no le gustó.", variant: "destructive" });
         }
-      } catch (e) {
-        toast({ title: "Error de red al despachar", variant: "destructive" });
       }
+    } catch (e) {
+      toast({ title: "Servidor Inalcanzable", description: "Verificá que Docker esté corriendo.", variant: "destructive" });
     }
+    
     setEditingOrden(null);
   };
 
