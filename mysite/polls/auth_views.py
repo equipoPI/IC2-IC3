@@ -1,6 +1,7 @@
 from dj_rest_auth.views import LoginView as _LoginView, LogoutView as _LogoutView
 from dj_rest_auth.views import UserDetailsView as _UserDetailsView
 from dj_rest_auth.registration.views import RegisterView as _RegisterView
+from rest_framework.permissions import AllowAny
 from .serializers import CustomRegisterSerializer
 
 
@@ -11,7 +12,7 @@ class LoginView(_LoginView):
     Parámetros POST aceptados: `username` o `email` y `password`.
     Respuesta: objeto token con la clave para autenticar futuras llamadas.
     """
-    pass
+    permission_classes = [AllowAny]
 
 
 class LogoutView(_LogoutView):
@@ -39,3 +40,4 @@ class RegisterView(_RegisterView):
     """
     # Forzar el uso del serializer personalizado que valida `registration_key`.
     serializer_class = CustomRegisterSerializer
+    permission_classes = [AllowAny]

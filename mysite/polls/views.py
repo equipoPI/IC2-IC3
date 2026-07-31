@@ -19,7 +19,7 @@ from .serializers import (
     LecturaSensorSerializer,
 ) 
 from rest_framework import viewsets
-from rest_framework.permissions import IsAdminUser, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from .models import ConfiguracionMQTT
 from .serializers import ConfiguracionMQTTSerializer
 from .models import TopicMQTT
@@ -76,7 +76,7 @@ class ProfileViewSet(viewsets.ModelViewSet):
     """Exponer profiles (admins o self-view)."""
     queryset = models.Profile.objects.all().order_by('-created_at')
     serializer_class = ProfileSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class RegisterAPIView(generics.CreateAPIView):
@@ -98,28 +98,28 @@ class ConfiguracionMQTTViewSet(viewsets.ModelViewSet):
     """CRUD para configuraciones MQTT"""
     queryset = ConfiguracionMQTT.objects.all().order_by('-id')
     serializer_class = ConfiguracionMQTTSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class DispositivoSCADAViewSet(viewsets.ModelViewSet):
     """CRUD para dispositivos SCADA"""
     queryset = DispositivoSCADA.objects.all().order_by('numero_serie')
     serializer_class = DispositivoSCADASerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class LecturaSensorViewSet(viewsets.ModelViewSet):
     """CRUD para lecturas de sensores"""
     queryset = LecturaSensor.objects.all().order_by('-timestamp')
     serializer_class = LecturaSensorSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class TopicMQTTViewSet(viewsets.ModelViewSet):
     """CRUD para topics MQTT"""
     queryset = TopicMQTT.objects.all().order_by('id')
     serializer_class = TopicMQTTSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 # =============================================================================
 # Vistas tradicionales
@@ -171,13 +171,13 @@ class FabricaViewSet(viewsets.ModelViewSet):
     """CRUD para Fabricas/Plantas"""
     queryset = Fabrica.objects.all()
     serializer_class = FabricaSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class OrdenProduccionViewSet(viewsets.ModelViewSet):
     """CRUD para Ordenes de Producción. Usa serializer reducido en list."""
     queryset = OrdenProduccion.objects.all().order_by('-fecha_creacion')
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -195,91 +195,91 @@ class OrdenProduccionViewSet(viewsets.ModelViewSet):
 class SeccionViewSet(viewsets.ModelViewSet):
     queryset = models.Seccion.objects.all().order_by('nombre')
     serializer_class = SeccionSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class EmpleadoViewSet(viewsets.ModelViewSet):
     queryset = models.Empleado.objects.all().order_by('apellido')
     serializer_class = EmpleadoSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class InventarioViewSet(viewsets.ModelViewSet):
     queryset = models.Inventario.objects.all().order_by('id')
     serializer_class = InventarioSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class ItemInventarioViewSet(viewsets.ModelViewSet):
     queryset = models.ItemInventario.objects.all().order_by('numero_serie')
     serializer_class = ItemInventarioSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class HistorialMovimientosViewSet(viewsets.ModelViewSet):
     queryset = models.HistorialMovimientos.objects.all().order_by('-fecha_hora')
     serializer_class = HistorialMovimientosSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class CronogramaSeccionViewSet(viewsets.ModelViewSet):
     queryset = models.CronogramaSeccion.objects.all().order_by('fecha_inicio')
     serializer_class = CronogramaSeccionSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class ProduccionViewSet(viewsets.ModelViewSet):
     queryset = models.Produccion.objects.all().order_by('-fecha_inicio')
     serializer_class = ProduccionSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class RegistroMantenimientoViewSet(viewsets.ModelViewSet):
     queryset = models.RegistroMantenimiento.objects.all().order_by('-fecha_inicio')
     serializer_class = RegistroMantenimientoSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class SistemaViewSet(viewsets.ModelViewSet):
     queryset = models.Sistema.objects.all().order_by('nombre')
     serializer_class = SistemaSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class PlantillaProduccionViewSet(viewsets.ModelViewSet):
     queryset = models.PlantillaProduccion.objects.all().order_by('-fecha_creacion')
     serializer_class = PlantillaProduccionSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class IngredienteAlmacenamientoViewSet(viewsets.ModelViewSet):
     queryset = models.IngredienteAlmacenamiento.objects.all().order_by('nombre')
     serializer_class = IngredienteAlmacenamientoSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class MantenimientoProgramadoViewSet(viewsets.ModelViewSet):
     queryset = models.MantenimientoProgramado.objects.all().order_by('fecha_inicio')
     serializer_class = MantenimientoProgramadoSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class UnidadAlmacenamientoViewSet(viewsets.ModelViewSet):
     queryset = models.UnidadAlmacenamiento.objects.all().order_by('nombre')
     serializer_class = UnidadAlmacenamientoSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class HistorialProduccionViewSet(viewsets.ModelViewSet):
     queryset = models.HistorialProduccion.objects.all().order_by('-fecha_registro')
     serializer_class = HistorialProduccionSerializerBasic
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 class ComunicacionMQTTViewSet(viewsets.ModelViewSet):
     queryset = models.ComunicacionMQTT.objects.all().order_by('-timestamp')
     serializer_class = ComunicacionMQTTSerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAuthenticated]
 
 
 @api_view(['GET','POST','PUT','PATCH','DELETE','OPTIONS'])
