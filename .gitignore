@@ -92,7 +92,10 @@ AGENTS.md
 /spec 
 opencode.json
 BACKEND_MQTT_PLAN.md
-checklist.md
+checklist.txt
+
+# Archivos de análisis/resultados que no deben versionarse
+ANALISIS_IMPLEMENTACION_MQTT (2).md
 
 # contraseñas 
 KeysRaspberry.txt
