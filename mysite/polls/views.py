@@ -50,6 +50,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_exempt
+import logging
 from allauth.account.models import EmailConfirmation
 from django.utils import timezone
 
@@ -62,6 +63,14 @@ def api_csrf_token(request):
     (SameSite/Secure) y permite al frontend obtener el token explícitamente.
     """
     token = get_token(request)
+    try:
+        logger = logging.getLogger('scada.csrf_debug')
+        cookie = request.META.get('HTTP_COOKIE', '') or ''
+        logger.warning('api_csrf_token called; cookie_len=%d, cookie_sample=%s, origin=%s, host=%s',
+                       len(cookie), (cookie[:200] + '...') if len(cookie) > 200 else cookie,
+                       request.META.get('HTTP_ORIGIN'), request.get_host())
+    except Exception:
+        pass
     return JsonResponse({'csrfToken': token})
 
 
@@ -135,6 +144,14 @@ def api_csrf(request):
     Útil para SPAs que necesitan que el proxy (`/api`) solicite primero
     este endpoint y así obtener la cookie `csrftoken` del backend.
     """
+    try:
+        logger = logging.getLogger('scada.csrf_debug')
+        cookie = request.META.get('HTTP_COOKIE', '') or ''
+        logger.warning('api_csrf called; cookie_len=%d, cookie_sample=%s, origin=%s, host=%s, remote_addr=%s',
+                       len(cookie), (cookie[:200] + '...') if len(cookie) > 200 else cookie,
+                       request.META.get('HTTP_ORIGIN'), request.get_host(), request.META.get('REMOTE_ADDR'))
+    except Exception:
+        pass
     return JsonResponse({'ok': True})
 
 
@@ -202,6 +219,67 @@ class EmpleadoViewSet(viewsets.ModelViewSet):
     queryset = models.Empleado.objects.all().order_by('apellido')
     serializer_class = EmpleadoSerializer
     permission_classes = [IsAuthenticated]
+    
+    def list(self, request, *args, **kwargs):
+        """Listar empleados: combinar registros de `Empleado` con usuarios activos
+        que tengan `Profile` cuando no exista una fila `Empleado` asociada.
+
+        Esto permite que usuarios que se registraron en el sistema aparezcan
+        en la UI aunque aún no tengan un `Empleado` creado en la base de datos.
+        """
+        # Serializar empleados existentes
+        empleados_qs = models.Empleado.objects.all().order_by('apellido')
+        serialized = EmpleadoSerializer(empleados_qs, many=True, context={'request': request}).data
+
+        # Recolectar documentos existentes para evitar duplicados
+        existing_docs = set(emp.get('documento') for emp in serialized if emp.get('documento'))
+
+        # Añadir usuarios activos con profile que no tengan Empleado registrado
+        usuarios = User.objects.filter(is_active=True).exclude(profile__isnull=True)
+        for u in usuarios:
+            # Evitar incluir usuarios cuyo username o email ya figura como documento
+            if str(u.username) in existing_docs or (u.email and u.email in existing_docs):
+                continue
+            perfil = getattr(u, 'profile', None)
+            if perfil is None:
+                continue
+            # Construir representación compatible con el serializer frontend
+            usuario_entry = {
+                'documento': u.username,
+                'nombre': u.first_name or u.username,
+                'apellido': u.last_name or '',
+                'seccion': None,
+                'seccion_nombre': '',
+                'fabrica': None,
+                'fabrica_nombre': '',
+                'rango': None,
+                'rol_actual': perfil.get_role_display() if hasattr(perfil, 'get_role_display') else perfil.role,
+                'fecha_contratacion': None,
+                'contacto': perfil.telefono if getattr(perfil, 'telefono', None) else '',
+                'direccion': '',
+                'email': u.email or '',
+                'estado': 'ACTIVO' if u.is_active else 'OTRO',
+                'tipo_empleado': 'OPERARIO',
+            }
+            serialized.append(usuario_entry)
+
+        # Rellenar email en empleados existentes mediante búsqueda en User
+        # (caso: Empleado created without linked User)
+        for emp in serialized:
+            if not emp.get('email'):
+                doc = emp.get('documento')
+                if not doc:
+                    continue
+                # Buscar por username o email igual al documento
+                try:
+                    user_match = User.objects.filter(models.Q(username=doc) | models.Q(email=doc)).first()
+                    if user_match:
+                        emp['email'] = user_match.email or ''
+                except Exception:
+                    # Silencioso si no se puede resolver
+                    emp['email'] = emp.get('email', '')
+
+        return Response(serialized)
 
 
 class InventarioViewSet(viewsets.ModelViewSet):

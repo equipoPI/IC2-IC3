@@ -1,6 +1,8 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from polls.models import RegistrationConfig
+from allauth.account.models import EmailAddress
+from polls.models import Profile
 import os
 
 
@@ -18,6 +20,36 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f'Superuser "{username}" created'))
         else:
             self.stdout.write(f'Superuser "{username}" already exists')
+
+        # Asegurar que la cuenta de correo esté registrada en allauth y verificada
+        try:
+            user = User.objects.get(username=username)
+            ea, created = EmailAddress.objects.get_or_create(user=user, email=user.email, defaults={'verified': True, 'primary': True})
+            if not created:
+                changed = False
+                if not ea.verified:
+                    ea.verified = True
+                    changed = True
+                if not ea.primary:
+                    ea.primary = True
+                    changed = True
+                if changed:
+                    ea.save()
+
+            # Marcar profile.email_confirmed si existe o crear profile
+            try:
+                profile = user.profile
+                profile.email_confirmed = True
+                profile.save()
+            except Exception:
+                # Crear profile si no existe
+                try:
+                    Profile.objects.create(user=user, email_confirmed=True)
+                except Exception:
+                    pass
+            self.stdout.write(self.style.SUCCESS(f'EmailAddress for "{username}" ensured and verified'))
+        except Exception:
+            self.stdout.write('Could not ensure EmailAddress/profile for superuser')
 
         rk = os.environ.get('REGISTRATION_KEY')
         if rk:

@@ -119,7 +119,11 @@ const getEstadoConfig = (estado: OrdenProduccion["estado"]) => {
   }
 };
 
-const PlanificacionProduccion = () => {
+interface PlanificacionProps {
+  initialTab?: "planificacion" | "plantillas";
+}
+
+const PlanificacionProduccion = ({ initialTab = "planificacion" }: PlanificacionProps) => {
   const [ordenes, setOrdenes] = useState<OrdenProduccion[]>(ordenesIniciales);
   const [mantenimientos, setMantenimientos] = useState<Mantenimiento[]>(mantenimientosIniciales);
   const [plantillas, setPlantillas] = useState<Plantilla[]>(plantillasIniciales);
@@ -325,7 +329,7 @@ const PlanificacionProduccion = () => {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="planificacion" className="w-full">
+      <Tabs defaultValue={initialTab} className="w-full">
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="planificacion" className="gap-2">
             <Calendar className="h-4 w-4" />

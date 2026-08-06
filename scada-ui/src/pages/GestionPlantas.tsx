@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import TablaGestion, { Column } from "@/components/TablaGestion";
 import FormularioPlanta, { PlantaFormData } from "@/components/FormularioPlanta";
+import apiFetch from "@/lib/api";
 
 interface Planta {
   id: number;
@@ -11,48 +12,41 @@ interface Planta {
   fechaCreacion: string;
 }
 
-const plantasIniciales: Planta[] = [
-  {
-    id: 1,
-    nombre: "Planta Norte",
-    ubicacion: "Polígono Industrial Norte, Nave 12",
-    pais: "España",
-    fechaCreacion: "2020-03-15",
-  },
-  {
-    id: 2,
-    nombre: "Planta Central",
-    ubicacion: "Av. Industrial 456, Centro",
-    pais: "México",
-    fechaCreacion: "2019-07-22",
-  },
-  {
-    id: 3,
-    nombre: "Planta Sur",
-    ubicacion: "Zona Franca Sur, Módulo 8",
-    pais: "España",
-    fechaCreacion: "2021-01-10",
-  },
-  {
-    id: 4,
-    nombre: "Fábrica Este",
-    ubicacion: "Parque Tecnológico Este",
-    pais: "Argentina",
-    fechaCreacion: "2022-05-18",
-  },
-  {
-    id: 5,
-    nombre: "Fábrica Oeste",
-    ubicacion: "Complejo Industrial Oeste",
-    pais: "Chile",
-    fechaCreacion: "2023-02-28",
-  },
-];
+// Inicio con lista vacía; cargaremos desde la API
+const plantillasFallback: Planta[] = [];
 
 const GestionPlantas = () => {
-  const [plantas, setPlantas] = useState<Planta[]>(plantasIniciales);
+  const [plantas, setPlantas] = useState<Planta[]>(plantillasFallback);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingPlanta, setEditingPlanta] = useState<Planta | null>(null);
+
+  const getCookie = (name: string) => {
+    const matches = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return matches ? decodeURIComponent(matches[1]) : null;
+  };
+
+  useEffect(() => {
+    // Cargar plantas desde backend
+    const load = async () => {
+      try {
+        const resp = await apiFetch('/api/v1/fabricas/');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        // Normalizar fechas
+        const mapped = data.map((p: any) => ({
+          id: p.id,
+          nombre: p.nombre,
+          ubicacion: p.ubicacion || '',
+          pais: p.pais || '',
+          fechaCreacion: p.fecha_creacion || (p.fecha_creacion && p.fecha_creacion.split('T')[0]) || new Date().toISOString().split('T')[0],
+        }));
+        setPlantas(mapped);
+      } catch (err) {
+        toast.error('No se pudieron cargar las plantas desde la API');
+      }
+    };
+    load();
+  }, []);
 
   const columns: Column<Planta>[] = [
     { key: "id", header: "ID", className: "w-20" },
@@ -78,31 +72,49 @@ const GestionPlantas = () => {
   };
 
   const handleDelete = (planta: Planta) => {
-    setPlantas(plantas.filter((p) => p.id !== planta.id));
-    toast.success(`Planta "${planta.nombre}" eliminada correctamente`);
+    const doDelete = async () => {
+      try {
+        const resp = await apiFetch(`/api/v1/fabricas/${planta.id}/`, { method: 'DELETE' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        setPlantas(plantas.filter((p) => p.id !== planta.id));
+        toast.success(`Planta "${planta.nombre}" eliminada correctamente`);
+      } catch (err) {
+        toast.error('Error al eliminar la planta');
+      }
+    };
+    doDelete();
   };
 
   const handleSubmit = (data: PlantaFormData) => {
-    if (editingPlanta) {
-      setPlantas(
-        plantas.map((p) =>
-          p.id === editingPlanta.id
-            ? { ...p, ...data }
-            : p
-        )
-      );
-      toast.success("Planta actualizada correctamente");
-    } else {
-      const newPlanta: Planta = {
-        id: Math.max(...plantas.map((p) => p.id)) + 1,
-        nombre: data.nombre,
-        ubicacion: data.ubicacion,
-        pais: data.pais,
-        fechaCreacion: new Date().toISOString().split("T")[0],
-      };
-      setPlantas([...plantas, newPlanta]);
-      toast.success("Planta creada correctamente");
-    }
+    const doSubmit = async () => {
+      try {
+          if (editingPlanta) {
+          const resp = await apiFetch(`/api/v1/fabricas/${editingPlanta.id}/`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: data.nombre, ubicacion: data.ubicacion, pais: data.pais }) });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const updated = await resp.json();
+          setPlantas(plantas.map((p) => p.id === updated.id ? { ...p, nombre: updated.nombre, ubicacion: updated.ubicacion, pais: updated.pais, fechaCreacion: updated.fecha_creacion || p.fechaCreacion } : p));
+          toast.success('Planta actualizada correctamente');
+        } else {
+          const resp = await apiFetch('/api/v1/fabricas/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: data.nombre, ubicacion: data.ubicacion, pais: data.pais }) });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const created = await resp.json();
+          const newPlanta: Planta = {
+            id: created.id,
+            nombre: created.nombre,
+            ubicacion: created.ubicacion || '',
+            pais: created.pais || '',
+            fechaCreacion: created.fecha_creacion ? created.fecha_creacion.split('T')[0] : new Date().toISOString().split('T')[0],
+          };
+          setPlantas([...plantas, newPlanta]);
+          toast.success('Planta creada correctamente');
+        }
+        setEditingPlanta(null);
+        setIsFormOpen(false);
+      } catch (err) {
+        toast.error('Error al guardar la planta');
+      }
+    };
+    doSubmit();
   };
 
   return (

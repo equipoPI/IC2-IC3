@@ -62,6 +62,9 @@ mosquitto/config/passwd
 mosquitto/config/passwd.tmp
 mosquitto/config/*.local.conf
 
+# Evitar commitear propuestas y notas locales
+MOSQUITTO_PASSWORD_UI_PROPOSAL.txt
+
 # IDEs
 .vscode/
 .idea/
@@ -81,6 +84,10 @@ desktop.ini
 
 # Local key file with prototype credentials (should not be committed)
 key.env
+
+# Lock file created by backend entrypoint to mark provisioning completed
+# Local state — do not commit
+mysite/.provisioned
 
 # Backups
 *.bak

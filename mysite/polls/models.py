@@ -83,6 +83,7 @@ class Empleado(models.Model):
         ('OTRO', 'Otro'),
     ]
 
+    user = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='empleado')
     nombre = models.CharField(max_length=100)
     apellido = models.CharField(max_length=100)
     documento = models.CharField(max_length=20, primary_key=True, unique=True)
@@ -126,7 +127,10 @@ class Empleado(models.Model):
     rol_actual = models.CharField(max_length=100, blank=True, null=True, help_text="Rol o cargo actual")
 
     def save(self, *args, **kwargs):
-        if self.pk:
+        # Evitar intentar obtener el objeto original cuando el PK ya fue asignado
+        # (por ejemplo, cuando `documento` es primary_key y se establece antes
+        # de guardar). Comprobar existencia antes de recuperar.
+        if self.pk and Empleado.objects.filter(pk=self.pk).exists():
             original = Empleado.objects.get(pk=self.pk)
             if original.estado != self.estado:
                 HistorialEstadoEmpleado.objects.create(
@@ -145,7 +149,8 @@ class Empleado(models.Model):
         self.save()
 
     def __str__(self):
-        return f"{self.nombre} {self.apellido} - {self.fabrica}"
+        uname = self.user.username if self.user else ''
+        return f"{self.nombre} {self.apellido} ({uname}) - {self.fabrica}"
 
 
 class EmpleadoSeccion(models.Model):
@@ -219,6 +224,34 @@ class RegistrationConfig(models.Model):
 def create_or_update_user_profile(sender, instance, created, **kwargs):
     if created:
         Profile.objects.create(user=instance)
+        # Intento crear un registro `Empleado` básico si existen fábricas y secciones.
+        try:
+            # Evitar crear si ya existe un Empleado vinculado
+            if not models.Empleado.objects.filter(user=instance).exists():
+                if models.Fabrica.objects.exists():
+                    fab = models.Fabrica.objects.first()
+                    sec = models.Seccion.objects.filter(fabrica=fab).first()
+                    if sec:
+                        doc = instance.username
+                        # Evitar duplicados por documento o email
+                        if not models.Empleado.objects.filter(documento=doc).exists() and not models.Empleado.objects.filter(email=instance.email).exists():
+                            emp = models.Empleado(
+                                user=instance,
+                                documento=doc,
+                                nombre=instance.first_name or instance.username,
+                                apellido=instance.last_name or '',
+                                fabrica=fab,
+                                seccion=sec,
+                                rango='6',
+                                fecha_contratacion=now().date(),
+                                contacto='',
+                                direccion='',
+                                email=instance.email or ''
+                            )
+                            emp.save()
+        except Exception:
+            # No bloquear el registro de usuario si fallan estas operaciones
+            pass
     else:
         try:
             instance.profile.save()
