@@ -44,7 +44,6 @@ from .serializers import (
 )
 from django.contrib.auth.models import User
 from rest_framework import generics
-from rest_framework.permissions import AllowAny
 from .serializers import UserSerializer, ProfileSerializer
 from django.http import JsonResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -55,6 +54,8 @@ from allauth.account.models import EmailConfirmation
 from django.utils import timezone
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
 @ensure_csrf_cookie
 def api_csrf_token(request):
     """Devuelve el token CSRF actual en JSON para que la SPA lo use en headers.
@@ -94,7 +95,7 @@ class RegisterAPIView(generics.CreateAPIView):
     POST payload: `username`, `email`, `password`, `first_name`, `last_name`
     """
     serializer_class = UserSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
         user = serializer.save()
@@ -137,6 +138,8 @@ def index(request):
     return HttpResponse("Hello, world. You're at the polls index.")
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
 @ensure_csrf_cookie
 def api_csrf(request):
     """Endpoint simple para poner la cookie CSRF (GET).
@@ -360,13 +363,14 @@ class ComunicacionMQTTViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 
-@api_view(['GET','POST','PUT','PATCH','DELETE','OPTIONS'])
-@permission_classes([AllowAny])
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def api_root(request, format=None):
-    """API root que acepta todos los métodos para facilitar pruebas desde UI.
+    """API root seguro.
 
-    Dev: este endpoint devuelve un resumen simple de rutas registradas.
-    En producción se recomienda limitar métodos y autenticar.
+    Por seguridad en entornos no confiables, este endpoint solo acepta GET
+    y requiere autenticación. Para desarrollo local se puede relajar, pero
+    no debe dejarse público en entornos accesibles.
     """
     # Construimos manualmente un índice enriquecido (nombre => {url, description})
     base = request.build_absolute_uri('/')
