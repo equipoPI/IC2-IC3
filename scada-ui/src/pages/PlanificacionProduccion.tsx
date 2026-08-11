@@ -71,6 +71,7 @@ interface Plantilla {
   tiempoEstimado: string;
 }
 
+
 const ordenesIniciales: OrdenProduccion[] = [
   { id: "ORD-001", producto: "Producto A-100", cantidad: 5000, unidad: "uds", fechaInicio: "2024-01-15", horaInicio: "08:00", fechaFin: "2024-01-15", horaFin: "14:00", planta: "Planta Norte", sistema: "Sistema de Mezcla A", maquina: "Mezcladora M-001", estado: "en_proceso", progreso: 65 },
   { id: "ORD-002", producto: "Producto B-200", cantidad: 3000, unidad: "uds", fechaInicio: "2024-01-16", horaInicio: "09:30", fechaFin: "2024-01-16", horaFin: "15:30", planta: "Planta Central", sistema: "Línea de Producción 1", maquina: "Robot R-01", estado: "pendiente", progreso: 0 },
@@ -128,6 +129,10 @@ const PlanificacionProduccion = () => {
   // --- NUEVO: ESTADOS PARA LA API ---
   const [mapaPlantas, setMapaPlantas] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
+
+  // --- NUEVO: ESTADOS PARA EL MODAL DE ADVERTENCIA ---
+  const [mostrarModalConflicto, setMostrarModalConflicto] = useState(false);
+  const [ordenPendiente, setOrdenPendiente] = useState<any>(null);
 
   const [ordenDialogOpen, setOrdenDialogOpen] = useState(false);
   const [plantillaDialogOpen, setPlantillaDialogOpen] = useState(false);
@@ -189,14 +194,12 @@ const PlanificacionProduccion = () => {
       });
   }, []);
 
-  // ==========================================================================
-  // CREAR O EDITAR ORDEN (POST / PUT)
-  // ==========================================================================
-// ==========================================================================
-  // CREAR O EDITAR ORDEN (POST / PUT) - BLINDADO
+
+// // ==========================================================================
+  // CREAR O EDITAR ORDEN (POST / PUT) - EVALUACIÓN
   // ==========================================================================
   const handleSaveOrden = async (data: Omit<OrdenProduccion, "id">) => {
-    // 1. VALIDACIÓN DE CHOQUES (Modo Advertencia)
+    // 1. VALIDACIÓN DE CHOQUES
     const nuevaApertura = new Date(`${data.fechaInicio}T${data.horaInicio.substring(0,5)}`);
     const nuevoCierre = new Date(`${data.fechaFin}T${data.horaFin.substring(0,5)}`);
 
@@ -207,25 +210,14 @@ const PlanificacionProduccion = () => {
       const inicioExistente = new Date(`${ordenExistente.fechaInicio}T${ordenExistente.horaInicio}`);
       const finExistente = new Date(`${ordenExistente.fechaFin}T${ordenExistente.horaFin}`);
 
-      // Solo evaluamos si las fechas son matemáticamente válidas
       if (!isNaN(inicioExistente.getTime()) && !isNaN(finExistente.getTime())) {
          return nuevaApertura < finExistente && nuevoCierre > inicioExistente;
       }
       return false;
     });
 
-    if (hayConflicto) {
-      toast({
-        title: "Superposición de Horarios ⚠️",
-        description: `Advertencia: La planta ${data.planta} ya tiene órdenes en este rango.`,
-        // NOTA: Quitamos el "return;" para que te deje guardar de todas formas y puedas probar.
-      });
-    }
-
     // 2. FORMATEO PERFECTO PARA DJANGO
     const idFabricaDestino = mapaPlantas[data.planta] || 1;
-
-    // Forzamos que las horas tengan formato 24hs estricto (ej: "08:00:00") para que Django no explote
     const horaInicioLimpia = data.horaInicio.length <= 5 ? `${data.horaInicio}:00` : data.horaInicio;
     const horaFinLimpia = data.horaFin.length <= 5 ? `${data.horaFin}:00` : data.horaFin;
 
@@ -242,7 +234,21 @@ const PlanificacionProduccion = () => {
       fabrica: idFabricaDestino 
     };
 
-    // 3. ENVÍO Y MANEJO DE ERRORES REALES
+    if (hayConflicto) {
+      // ¡FRENO DE MANO! Hay conflicto. Mostramos modal interactivo y NO guardamos todavía.
+      setOrdenPendiente(payload);
+      setMostrarModalConflicto(true);
+      return; 
+    }
+
+    // Si la pista está libre, ejecutamos el guardado directamente
+    ejecutarGuardado(payload);
+  };
+
+  // ==========================================================================
+  // EJECUTAR GUARDADO EN DJANGO (LA LLAMADA A LA API AISLADA)
+  // ==========================================================================
+  const ejecutarGuardado = async (payload: any) => {
     try {
       const url = editingOrden ? `http://localhost:8000/polls/api/ordenes/${editingOrden.id}/` : 'http://localhost:8000/polls/api/ordenes/';
       const method = editingOrden ? 'PUT' : 'POST';
@@ -255,18 +261,21 @@ const PlanificacionProduccion = () => {
 
       if (res.ok) {
         toast({ title: editingOrden ? "Orden actualizada" : "¡Orden despachada a producción!" });
-        // Recargamos la página silenciosamente después de 1 segundo para traer el OP-ID fresco
+        
+        // Limpiamos el modal por si el usuario forzó el guardado
+        setMostrarModalConflicto(false);
+        setOrdenPendiente(null);
+        
+        // Recargamos la página silenciosamente
         setTimeout(() => window.location.reload(), 1000); 
       } else {
-        // Captura avanzada: Leemos la respuesta como texto crudo primero
         const errorText = await res.text();
         try {
-          const errorJson = JSON.parse(errorText); // Si es un JSON de error de validación 400
+          const errorJson = JSON.parse(errorText);
           toast({ title: "Rechazado por Django", description: JSON.stringify(errorJson), variant: "destructive" });
         } catch (parseError) {
-          // Si Django devolvió HTML de Error 500, lo mostramos en consola
           console.error("⚠️ EXPLOSIÓN 500 EN DJANGO:", errorText);
-          toast({ title: "Error 500 del Servidor", description: "Django falló. Apretá F12 y mirá la consola para ver qué no le gustó.", variant: "destructive" });
+          toast({ title: "Error 500 del Servidor", description: "Django falló. Apretá F12 y mirá la consola.", variant: "destructive" });
         }
       }
     } catch (e) {
@@ -767,6 +776,54 @@ const PlanificacionProduccion = () => {
           </div>
         </DialogContent>
       </Dialog>
+      {/* MODAL DE ADVERTENCIA POR SOLAPAMIENTO */}
+      {mostrarModalConflicto && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex',
+          justifyContent: 'center', alignItems: 'center', zIndex: 9999
+        }}>
+          <div style={{
+            backgroundColor: '#1e293b', padding: '24px', borderRadius: '8px',
+            maxWidth: '450px', width: '90%', border: '1px solid #334155',
+            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)'
+          }}>
+            <h3 style={{ marginTop: 0, color: '#fbbf24', fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>⚠️</span> Advertencia de Solapamiento
+            </h3>
+            
+            <p style={{ color: '#cbd5e1', lineHeight: '1.6', fontSize: '0.95rem' }}>
+              El horario ingresado choca con otra orden de producción existente en esta planta. 
+              ¿Estás seguro de que querés agendar esta orden de todas formas?
+            </p>
+            
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+              <button 
+                onClick={() => {
+                  setMostrarModalConflicto(false);
+                  setOrdenPendiente(null);
+                }}
+                style={{
+                  padding: '8px 16px', backgroundColor: 'transparent', color: '#cbd5e1',
+                  border: '1px solid #475569', borderRadius: '6px', cursor: 'pointer', fontWeight: '500'
+                }}
+              >
+                Cancelar
+              </button>
+              
+              <button 
+                onClick={() => ejecutarGuardado(ordenPendiente)}
+                style={{
+                  padding: '8px 16px', backgroundColor: '#d97706', color: '#ffffff',
+                  border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '500'
+                }}
+              >
+                Guardar igual
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
