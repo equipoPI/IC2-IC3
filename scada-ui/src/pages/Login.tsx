@@ -29,11 +29,32 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     try {
+      // Limpiar cookies de analytics que pueden inflar el header "Cookie" y causar 400
+      const clearAnalyticsCookies = () => {
+        try {
+          const prefixes = ['rl_', 'ph_', 'posthog'];
+          document.cookie.split(';').forEach((c) => {
+            const name = c.split('=')[0].trim();
+            if (prefixes.some((p) => name.startsWith(p))) {
+              // Expirar la cookie en path=/ para eliminarla
+              document.cookie = `${name}=; Max-Age=0; path=/;`;
+            }
+          });
+        } catch (e) {
+          // no bloquear el flujo si document.cookie falla
+        }
+      };
+
       // Obtener csrf si existe
       const getCookie = (name: string) => {
         const matches = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
         return matches ? decodeURIComponent(matches[1]) : null;
       };
+
+      // Borrar cookies de analytics antes de pedir el token CSRF
+      clearAnalyticsCookies();
+      // Asegurarnos de que el backend haya emitido la cookie `csrftoken`
+      await fetch('/api/csrf/', { credentials: 'include' }).catch(() => null);
       const csrftoken = getCookie('csrftoken');
 
       const headers: any = { 'Content-Type': 'application/json' };

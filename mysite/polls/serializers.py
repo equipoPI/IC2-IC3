@@ -4,6 +4,7 @@ from dj_rest_auth.registration.serializers import RegisterSerializer as DefaultR
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import RegistrationConfig
+from django.utils import timezone
 
 
 class CustomRegisterSerializer(DefaultRegisterSerializer):
@@ -295,14 +296,116 @@ class SeccionSerializer(serializers.ModelSerializer):
 
 
 class EmpleadoSerializer(serializers.ModelSerializer):
-    """Serializer para `Empleado` incluyendo referencias legibles"""
+    """Serializer para `Empleado` que admite creación/actualización parcial desde la SPA.
+
+    - Usa `fabrica` y `seccion` como claves primarias (IDs).
+    - `rol_actual` expone el rol lógico (Empleado/Jefe/Administrador) separado del campo interno `rango`.
+    - Si faltan campos obligatorios en creación, intenta rellenar valores por defecto mínimos.
+    """
+    fabrica = serializers.PrimaryKeyRelatedField(queryset=models.Fabrica.objects.all(), required=False, allow_null=True)
+    seccion = serializers.PrimaryKeyRelatedField(queryset=models.Seccion.objects.all(), required=False, allow_null=True)
     fabrica_nombre = serializers.CharField(source='fabrica.nombre', read_only=True)
     seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
+    fecha_contratacion = serializers.DateField(required=False, allow_null=True)
+    email = serializers.EmailField(required=False, allow_null=True)
 
     class Meta:
         model = models.Empleado
-        # No exponer `clave` en lecturas
-        exclude = ['clave']
+        fields = ['documento', 'nombre', 'apellido', 'seccion', 'seccion_nombre', 'fabrica', 'fabrica_nombre', 'rango', 'rol_actual', 'fecha_contratacion', 'contacto', 'direccion', 'email', 'estado', 'tipo_empleado']
+        extra_kwargs = {
+            'rango': {'required': False},
+            'rol_actual': {'required': False},
+            'contacto': {'required': False},
+            'direccion': {'required': False},
+            'email': {'required': False},
+        }
+
+    def create(self, validated_data):
+        # Rellenar fecha de contratación por defecto si falta
+        if not validated_data.get('fecha_contratacion'):
+            validated_data['fecha_contratacion'] = timezone.now().date()
+
+        # Si no se proporcionó fábrica, intentar usar la primera disponible
+        if not validated_data.get('fabrica'):
+            fab = models.Fabrica.objects.first()
+            if fab:
+                validated_data['fabrica'] = fab
+
+        # Si no se proporcionó sección, intentar usar la primera sección de la fábrica
+        if not validated_data.get('seccion') and validated_data.get('fabrica'):
+            sec = models.Seccion.objects.filter(fabrica=validated_data['fabrica']).first()
+            if sec:
+                validated_data['seccion'] = sec
+
+        # Validación mínima: documento obligatorio
+        if not validated_data.get('documento'):
+            raise serializers.ValidationError({'documento': 'Documento (ID) es obligatorio para crear un empleado.'})
+
+        empleado = models.Empleado(**validated_data)
+        empleado.save()
+        return empleado
+
+    def update(self, instance, validated_data):
+        # Actualizar campos permitidos
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
+    
+    def validate_email(self, value):
+        # Permitir email opcional, pero validar unicidad si se provee
+        if value:
+            qs = models.Empleado.objects.filter(email__iexact=value)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError('Email ya registrado.')
+        return value
+
+    def create(self, validated_data):
+        # Documento puede ser opcional desde la SPA; generamos uno si falta
+        if not validated_data.get('documento'):
+            import time
+            validated_data['documento'] = f'AUTO-{int(time.time())}'
+
+        # Fecha de contratación por defecto hoy si no se envía
+        from django.utils.timezone import now
+        if not validated_data.get('fecha_contratacion'):
+            validated_data['fecha_contratacion'] = now().date()
+
+        empleado = models.Empleado.objects.create(**validated_data)
+        return empleado
+
+    def validate_rango(self, value):
+        # Aceptar tanto códigos internos ('1'..'8') como etiquetas amigables
+        MAP = {
+            'EMPLEADO': '6',
+            'JEFE': '3',
+            'ADMIN': '2',
+            'DIRECTOR': '1',
+            'GERENTE': '2',
+            'JEFE DE SECCIÓN': '3',
+        }
+        if value is None:
+            return value
+        v = str(value).strip().upper()
+        if v in MAP:
+            return MAP[v]
+        # Si el cliente ya envió el código numérico válido, pásalo
+        if v.isdigit() and v in {str(i) for i in range(1,9)}:
+            return v
+        # Fallback: intentar encontrar clave por palabra
+        for k in MAP:
+            if k in v:
+                return MAP[k]
+        raise serializers.ValidationError('Rango inválido')
+
+    def update(self, instance, validated_data):
+        # Asignar campos y guardar
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
 
 
 class InventarioSerializer(serializers.ModelSerializer):

@@ -33,29 +33,30 @@ export interface Empleado {
 interface FormularioEmpleadoProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (empleado: Omit<Empleado, "id" | "nombreCompleto" | "ultimoFichaje">) => void;
+  onSubmit: (empleado: {
+    documento?: string;
+    nombre: string;
+    apellido: string;
+    rango: string;
+    fabrica: string; // id
+    seccion?: string; // id
+    rol: RolUsuario;
+    activo: boolean;
+    email?: string;
+    contacto?: string;
+    fecha_contratacion?: string;
+  }) => void;
   empleado?: Empleado | null;
 }
 
-const rangos = [
-  "Operario",
-  "Técnico",
-  "Supervisor",
-  "Ingeniero",
-  "Jefe de Planta",
-  "Gerente",
-  "Director",
-];
+const rangos = ["Empleado", "Jefe", "Admin"];
 
 const roles: RolUsuario[] = ["Operador", "Jefe de Sector", "Administrador"];
 
-const fabricas = [
-  "Planta Norte",
-  "Planta Sur",
-  "Planta Central",
-  "Fábrica Este",
-  "Fábrica Oeste",
-];
+// Se cargan desde API
+
+interface FabricaOption { id: number; nombre: string }
+interface SeccionOption { id: number; nombre: string; fabrica: number }
 
 const FormularioEmpleado = ({
   open,
@@ -64,12 +65,17 @@ const FormularioEmpleado = ({
   empleado,
 }: FormularioEmpleadoProps) => {
   const [formData, setFormData] = useState({
+    documento: '',
     nombre: "",
     apellido: "",
     rango: "",
-    fabricaAsignada: "",
+    fabrica: "",
+    seccion: "",
     rol: "Operador" as RolUsuario,
     activo: true,
+    email: "",
+    contacto: "",
+    fecha_contratacion: "",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -77,33 +83,65 @@ const FormularioEmpleado = ({
   useEffect(() => {
     if (empleado) {
       const [nombre, ...apellidoParts] = empleado.nombreCompleto.split(" ");
-      setFormData({
+      setFormData((prev) => ({
+        ...prev,
+        documento: empleado.id || '',
         nombre: nombre || "",
         apellido: apellidoParts.join(" ") || "",
         rango: empleado.rango,
-        fabricaAsignada: empleado.fabricaAsignada,
+        fabrica: empleado.fabricaAsignada || '',
         rol: empleado.rol,
         activo: empleado.activo,
-      });
+      }));
     } else {
-      setFormData({
+      setFormData((prev) => ({
+        ...prev,
+        documento: '',
         nombre: "",
         apellido: "",
         rango: "",
-        fabricaAsignada: "",
+        fabrica: "",
+        seccion: "",
         rol: "Operador",
         activo: true,
-      });
+        email: "",
+        contacto: "",
+        fecha_contratacion: "",
+      }));
     }
     setErrors({});
   }, [empleado, open]);
 
+  const [fabricas, setFabricas] = useState<FabricaOption[]>([]);
+  const [secciones, setSecciones] = useState<SeccionOption[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const resp1 = await (await import('@/lib/api')).default('/api/v1/fabricas/');
+        if (resp1.ok) {
+          const data = await resp1.json();
+          setFabricas(data.map((f:any) => ({ id: f.id, nombre: f.nombre })));
+        }
+        const resp2 = await (await import('@/lib/api')).default('/api/v1/secciones/');
+        if (resp2.ok) {
+          const sdata = await resp2.json();
+          setSecciones(sdata.map((s:any) => ({ id: s.id, nombre: s.nombre, fabrica: s.fabrica })));
+        }
+      } catch (err) {
+        // ignore for now
+      }
+    };
+    load();
+  }, []);
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
+    if (!formData.documento.trim()) newErrors.documento = "El documento es obligatorio";
     if (!formData.nombre.trim()) newErrors.nombre = "El nombre es obligatorio";
     if (!formData.apellido.trim()) newErrors.apellido = "El apellido es obligatorio";
     if (!formData.rango) newErrors.rango = "Seleccione un rango";
-    if (!formData.fabricaAsignada) newErrors.fabricaAsignada = "Seleccione una fábrica";
+    if (!formData.fabrica) newErrors.fabrica = "Seleccione una fábrica";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -127,6 +165,12 @@ const FormularioEmpleado = ({
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           <div className="grid gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="documento" className="text-foreground">Documento</Label>
+              <Input id="documento" placeholder="DNI / CUIT" value={formData.documento} onChange={(e) => setFormData({ ...formData, documento: e.target.value })} className={errors.documento ? 'border-destructive' : ''} />
+              {errors.documento && <p className="text-xs text-destructive">{errors.documento}</p>}
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="nombre" className="text-foreground">Nombre</Label>
               <Input
@@ -168,17 +212,46 @@ const FormularioEmpleado = ({
 
             <div className="space-y-2">
               <Label htmlFor="fabrica" className="text-foreground">Fábrica Asignada</Label>
-              <Select value={formData.fabricaAsignada} onValueChange={(value) => setFormData({ ...formData, fabricaAsignada: value })}>
-                <SelectTrigger id="fabrica" className={errors.fabricaAsignada ? "border-destructive" : ""}>
+              <Select value={String(formData.fabrica)} onValueChange={(value) => setFormData({ ...formData, fabrica: value })}>
+                <SelectTrigger id="fabrica" className={errors.fabrica ? "border-destructive" : ""}>
                   <SelectValue placeholder="Seleccione una fábrica" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border-border">
                   {fabricas.map((fabrica) => (
-                    <SelectItem key={fabrica} value={fabrica}>{fabrica}</SelectItem>
+                    <SelectItem key={fabrica.id} value={String(fabrica.id)}>{fabrica.nombre}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {errors.fabricaAsignada && <p className="text-xs text-destructive">{errors.fabricaAsignada}</p>}
+              {errors.fabrica && <p className="text-xs text-destructive">{errors.fabrica}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="seccion" className="text-foreground">Sección</Label>
+              <Select value={String(formData.seccion)} onValueChange={(value) => setFormData({ ...formData, seccion: value })}>
+                <SelectTrigger id="seccion">
+                  <SelectValue placeholder="Seleccione una sección (opcional)" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border-border">
+                  {secciones.filter(s => String(s.fabrica) === String(formData.fabrica)).map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>{s.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-foreground">Email</Label>
+              <Input id="email" placeholder="correo@ejemplo.com" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="contacto" className="text-foreground">Contacto</Label>
+              <Input id="contacto" placeholder="+54 9 11 1234 5678" value={formData.contacto} onChange={(e) => setFormData({ ...formData, contacto: e.target.value })} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="fecha_contratacion" className="text-foreground">Fecha de contratación</Label>
+              <Input id="fecha_contratacion" type="date" value={formData.fecha_contratacion} onChange={(e) => setFormData({ ...formData, fecha_contratacion: e.target.value })} />
             </div>
 
             <div className="space-y-2">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import TablaGestion, { Column } from "@/components/TablaGestion";
 import FormularioEmpleado, { Empleado } from "@/components/FormularioEmpleado";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { RolUsuario } from "@/contexts/AuthContext";
 import { ShieldCheck, Lock, Unlock, History } from "lucide-react";
 import HistorialEmpleadoDialog from "@/components/HistorialEmpleadoDialog";
 import { useNotifications } from "@/contexts/NotificationsContext";
+import apiFetch from "@/lib/api";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,16 +35,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const initialEmpleados: Empleado[] = [
-  { id: "EMP-001", nombre: "Carlos", apellido: "García López", nombreCompleto: "Carlos García López", rango: "Supervisor", fabricaAsignada: "Planta Norte", ultimoFichaje: "2024-01-15 08:30", rol: "Administrador", activo: true },
-  { id: "EMP-002", nombre: "María", apellido: "Rodríguez Sánchez", nombreCompleto: "María Rodríguez Sánchez", rango: "Ingeniero", fabricaAsignada: "Planta Central", ultimoFichaje: "2024-01-15 07:45", rol: "Jefe de Sector", activo: true },
-  { id: "EMP-003", nombre: "Juan", apellido: "Martínez Pérez", nombreCompleto: "Juan Martínez Pérez", rango: "Operario", fabricaAsignada: "Planta Sur", ultimoFichaje: "2024-01-15 06:00", rol: "Operador", activo: true },
-  { id: "EMP-004", nombre: "Ana", apellido: "López Fernández", nombreCompleto: "Ana López Fernández", rango: "Técnico", fabricaAsignada: "Fábrica Este", ultimoFichaje: "2024-01-15 08:15", rol: "Operador", activo: true },
-  { id: "EMP-005", nombre: "Pedro", apellido: "Sánchez Ruiz", nombreCompleto: "Pedro Sánchez Ruiz", rango: "Jefe de Planta", fabricaAsignada: "Planta Norte", ultimoFichaje: "2024-01-15 07:00", rol: "Jefe de Sector", activo: true },
-  { id: "EMP-006", nombre: "Laura", apellido: "González Torres", nombreCompleto: "Laura González Torres", rango: "Gerente", fabricaAsignada: "Planta Central", ultimoFichaje: "2024-01-15 09:00", rol: "Administrador", activo: true },
-  { id: "EMP-007", nombre: "Miguel", apellido: "Hernández Díaz", nombreCompleto: "Miguel Hernández Díaz", rango: "Operario", fabricaAsignada: "Fábrica Oeste", ultimoFichaje: "2024-01-15 06:30", rol: "Operador", activo: false },
-  { id: "EMP-008", nombre: "Carmen", apellido: "Jiménez Moreno", nombreCompleto: "Carmen Jiménez Moreno", rango: "Técnico", fabricaAsignada: "Planta Sur", ultimoFichaje: "2024-01-15 07:30", rol: "Operador", activo: true },
-];
+// Lista inicialmente vacía: cargaremos desde la API cuando sea posible
+const initialEmpleados: Empleado[] = [];
+
+// Mapeo reducido: códigos -> etiqueta simple
+const RANGO_MAP: Record<string, string> = {
+  '1': 'Admin',
+  '2': 'Admin',
+  '3': 'Jefe',
+  '4': 'Empleado',
+  '5': 'Empleado',
+  '6': 'Empleado',
+  '7': 'Empleado',
+  '8': 'Empleado',
+};
 
 const getRolBadgeClass = (rol: RolUsuario) => {
   switch (rol) {
@@ -115,6 +120,34 @@ const GestionEmpleados = () => {
     { key: "ultimoFichaje", header: "Último Fichaje", className: "text-muted-foreground text-sm" },
   ];
 
+
+
+  // Cargar empleados desde API al montar
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const resp = await apiFetch('/api/v1/empleados/');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const mapped = data.map((e: any) => ({
+          id: e.documento,
+          nombre: e.nombre,
+          apellido: e.apellido,
+          nombreCompleto: `${e.nombre} ${e.apellido}`,
+          rango: RANGO_MAP[e.rango] || 'Empleado',
+          fabricaAsignada: e.fabrica_nombre || '',
+          ultimoFichaje: e.ultimo_fichaje || '',
+          rol: e.rol_actual || 'Operador',
+          activo: e.estado === 'ACTIVO',
+        }));
+        setEmpleados(mapped);
+      } catch (err) {
+        toast({ title: 'No se pudieron cargar empleados desde la API', description: String(err), duration: 4000 });
+      }
+    };
+    load();
+  }, []);
+
   const handleAdd = () => {
     setSelectedEmpleado(null);
     setIsFormOpen(true);
@@ -131,52 +164,114 @@ const GestionEmpleados = () => {
   };
 
   const confirmDelete = () => {
-    if (empleadoToDelete) {
-      setEmpleados((prev) => prev.filter((e) => e.id !== empleadoToDelete.id));
-      addAuditLog({
-        usuario: usuario?.nombre || "Sistema",
-        accion: "Eliminación de Empleado",
-        objetoAfectado: `${empleadoToDelete.nombreCompleto} (${empleadoToDelete.id})`,
-        modulo: "Empleados",
-      });
-      toast({ title: "Empleado eliminado", description: `${empleadoToDelete.nombreCompleto} ha sido eliminado correctamente.` });
-    }
-    setDeleteDialogOpen(false);
-    setEmpleadoToDelete(null);
+    const doDelete = async () => {
+      if (!empleadoToDelete) return;
+      try {
+        const resp = await apiFetch(`/api/v1/empleados/${empleadoToDelete.id}/`, { method: 'DELETE' });
+        if (!resp.ok && resp.status !== 204) throw new Error(`HTTP ${resp.status}`);
+        setEmpleados((prev) => prev.filter((e) => e.id !== empleadoToDelete.id));
+        addAuditLog({
+          usuario: usuario?.nombre || "Sistema",
+          accion: "Eliminación de Empleado",
+          objetoAfectado: `${empleadoToDelete.nombreCompleto} (${empleadoToDelete.id})`,
+          modulo: "Empleados",
+        });
+        toast({ title: "Empleado eliminado", description: `${empleadoToDelete.nombreCompleto} ha sido eliminado correctamente.` });
+      } catch (err) {
+        // Fallback local (backend puede requerir campos adicionales para eliminar/relaciones)
+        setEmpleados((prev) => prev.filter((e) => e.id !== empleadoToDelete.id));
+        addAuditLog({
+          usuario: usuario?.nombre || "Sistema",
+          accion: "Eliminación local de Empleado",
+          objetoAfectado: `${empleadoToDelete.nombreCompleto} (${empleadoToDelete.id})`,
+          modulo: "Empleados",
+        });
+        toast({ title: 'Eliminado localmente', description: 'El backend requiere campos adicionales; sincronización pendiente.' });
+      } finally {
+        setDeleteDialogOpen(false);
+        setEmpleadoToDelete(null);
+      }
+    };
+    doDelete();
   };
 
-  const handleSubmit = (data: Omit<Empleado, "id" | "nombreCompleto" | "ultimoFichaje">) => {
-    if (selectedEmpleado) {
-      setEmpleados((prev) =>
-        prev.map((e) =>
-          e.id === selectedEmpleado.id
-            ? { ...e, ...data, nombreCompleto: `${data.nombre} ${data.apellido}` }
-            : e
-        )
-      );
-      addAuditLog({
-        usuario: usuario?.nombre || "Sistema",
-        accion: "Modificación de Empleado",
-        objetoAfectado: `${data.nombre} ${data.apellido} (${selectedEmpleado.id})`,
-        modulo: "Empleados",
-      });
-      toast({ title: "Empleado actualizado", description: `Los datos de ${data.nombre} ${data.apellido} han sido actualizados.` });
-    } else {
-      const newEmpleado: Empleado = {
-        id: `EMP-${String(empleados.length + 1).padStart(3, "0")}`,
-        ...data,
-        nombreCompleto: `${data.nombre} ${data.apellido}`,
-        ultimoFichaje: new Date().toLocaleString("es-ES"),
-      };
-      setEmpleados((prev) => [...prev, newEmpleado]);
-      addAuditLog({
-        usuario: usuario?.nombre || "Sistema",
-        accion: "Alta de Empleado",
-        objetoAfectado: `${data.nombre} ${data.apellido} (${newEmpleado.id})`,
-        modulo: "Empleados",
-      });
-      toast({ title: "Empleado añadido", description: `${data.nombre} ${data.apellido} ha sido añadido al sistema.` });
-    }
+  const handleSubmit = (data: any) => {
+    const doSubmit = async () => {
+      if (selectedEmpleado) {
+        // Intentar sincronizar con backend (requiere campos adicionales en el modelo); si falla, aplicamos localmente
+        try {
+          const payload: any = {
+            nombre: data.nombre,
+            apellido: data.apellido,
+            rol_actual: data.rol || data.rol_actual,
+            fabrica: data.fabrica ? Number(data.fabrica) : undefined,
+            seccion: data.seccion ? Number(data.seccion) : undefined,
+            fecha_contratacion: data.fecha_contratacion,
+            email: data.email,
+            contacto: data.contacto,
+            direccion: data.direccion,
+            estado: data.activo ? 'ACTIVO' : 'OTRO',
+          };
+          const resp = await apiFetch(`/api/v1/empleados/${selectedEmpleado.id}/`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const updated = await resp.json();
+          setEmpleados((prev) => prev.map((e) => e.id === updated.documento ? { ...e, nombre: updated.nombre, apellido: updated.apellido, nombreCompleto: `${updated.nombre} ${updated.apellido}` } : e));
+          addAuditLog({ usuario: usuario?.nombre || 'Sistema', accion: 'Modificación de Empleado', objetoAfectado: `${data.nombre} ${data.apellido} (${selectedEmpleado.id})`, modulo: 'Empleados' });
+          toast({ title: 'Empleado actualizado', description: 'Sincronizado con backend.' });
+        } catch (err) {
+          setEmpleados((prev) => prev.map((e) => e.id === selectedEmpleado.id ? { ...e, ...data, nombreCompleto: `${data.nombre} ${data.apellido}` } : e));
+          addAuditLog({ usuario: usuario?.nombre || 'Sistema', accion: 'Modificación local de Empleado', objetoAfectado: `${data.nombre} ${data.apellido} (${selectedEmpleado.id})`, modulo: 'Empleados' });
+          toast({ title: 'Actualizado localmente', description: 'Backend requiere campos adicionales; sincronización pendiente.' });
+        }
+      } else {
+        // Crear localmente (backend requiere campos obligatorios; creación remota pendiente)
+        try {
+          const payload = {
+            documento: data.documento,
+            nombre: data.nombre,
+            apellido: data.apellido,
+            rol_actual: data.rol || data.rol_actual,
+            fabrica: data.fabrica ? Number(data.fabrica) : undefined,
+            seccion: data.seccion ? Number(data.seccion) : undefined,
+            fecha_contratacion: data.fecha_contratacion,
+            email: data.email,
+            contacto: data.contacto,
+            direccion: data.direccion,
+            estado: data.activo ? 'ACTIVO' : 'OTRO',
+          };
+          const resp = await apiFetch('/api/v1/empleados/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const created = await resp.json();
+          const newEmpleado: Empleado = {
+            id: created.documento || `EMP-${String(empleados.length + 1).padStart(3, '0')}`,
+            nombre: created.nombre,
+            apellido: created.apellido,
+            nombreCompleto: `${created.nombre} ${created.apellido}`,
+            rango: RANGO_MAP[created.rango] || 'Empleado',
+            fabricaAsignada: created.fabrica_nombre || '',
+            ultimoFichaje: '',
+            rol: created.rol_actual || 'Operador',
+            activo: created.estado === 'ACTIVO',
+          };
+          setEmpleados((prev) => [...prev, newEmpleado]);
+          addAuditLog({ usuario: usuario?.nombre || 'Sistema', accion: 'Alta de Empleado', objetoAfectado: `${newEmpleado.nombreCompleto} (${newEmpleado.id})`, modulo: 'Empleados' });
+          toast({ title: 'Empleado creado', description: 'Sincronizado con backend.' });
+        } catch (err) {
+          const newEmpleado: Empleado = {
+            id: `EMP-${String(empleados.length + 1).padStart(3, '0')}`,
+            ...data,
+            nombreCompleto: `${data.nombre} ${data.apellido}`,
+            ultimoFichaje: new Date().toLocaleString('es-ES'),
+          };
+          setEmpleados((prev) => [...prev, newEmpleado]);
+          addAuditLog({ usuario: usuario?.nombre || 'Sistema', accion: 'Alta de Empleado (local)', objetoAfectado: `${data.nombre} ${data.apellido} (${newEmpleado.id})`, modulo: 'Empleados' });
+          toast({ title: 'Empleado añadido (local)', description: 'Backend no respondió; creado localmente.' });
+        }
+      }
+      setSelectedEmpleado(null);
+      setIsFormOpen(false);
+    };
+    doSubmit();
   };
 
   const handleToggleBlock = (empleado: Empleado) => {

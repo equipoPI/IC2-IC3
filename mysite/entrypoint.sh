@@ -19,13 +19,17 @@ done
 echo "Applying migrations..."
 python manage.py migrate --noinput
 
-echo "Ensuring superuser exists: ${DJANGO_SUPERUSER_USERNAME:-admin}"
-python manage.py shell -c "from django.contrib.auth import get_user_model; User = get_user_model(); username='${DJANGO_SUPERUSER_USERNAME:-admin}'; email='${DJANGO_SUPERUSER_EMAIL:-admin@example.com}'; password='${DJANGO_SUPERUSER_PASSWORD:-admin}';
-if not User.objects.filter(username=username).exists():
-    User.objects.create_superuser(username=username, email=email, password=password)
-    print('Superuser created')
-else:
-    print('Superuser already exists')"
+echo "Running provisioning (superuser + registration config) if first run"
+# Ejecutar provision_init solo la primera vez; usamos un fichero lock para evitar ejecuciones repetidas
+PROVISION_LOCK_FILE=/app/.provisioned
+if [ ! -f "$PROVISION_LOCK_FILE" ]; then
+  echo "First-time provisioning: running provision_init"
+  python manage.py provision_init || true
+  # Marcar como provisionado para futuras inicializaciones
+  touch "$PROVISION_LOCK_FILE"
+else
+  echo "Provisioning already run; skipping"
+fi
 
 echo "Collecting static files..."
 python manage.py collectstatic --noinput || true

@@ -16,11 +16,26 @@ const PasswordReset = () => {
     e.preventDefault();
     setIsLoading(true);
     try {
+      // Limpiar cookies de analytics que pueden inflar el header "Cookie" y causar 400
+      const clearAnalyticsCookies = () => {
+        try {
+          const prefixes = ['rl_', 'ph_', 'posthog'];
+          document.cookie.split(';').forEach((c) => {
+            const name = c.split('=')[0].trim();
+            if (prefixes.some((p) => name.startsWith(p))) {
+              document.cookie = `${name}=; Max-Age=0; path=/;`;
+            }
+          });
+        } catch (e) {}
+      };
+
       // Obtener cookie CSRF (y forzar que el backend la emita vía endpoint auxiliar)
       const getCookie = (name: string) => {
         const matches = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
         return matches ? decodeURIComponent(matches[1]) : null;
       };
+      // Borrar cookies de analytics antes de pedir el token CSRF
+      clearAnalyticsCookies();
       // Solicitar token al backend para asegurarnos de que la cookie `csrftoken` está presente
       await fetch('/api/csrf/', { credentials: 'include' }).catch(() => null);
       const csrftoken = getCookie('csrftoken');

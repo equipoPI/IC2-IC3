@@ -1,7 +1,7 @@
 from dj_rest_auth.views import LoginView as _LoginView, LogoutView as _LogoutView
 from dj_rest_auth.views import UserDetailsView as _UserDetailsView
 from dj_rest_auth.registration.views import RegisterView as _RegisterView
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from .serializers import CustomRegisterSerializer
 
 
@@ -40,4 +40,6 @@ class RegisterView(_RegisterView):
     """
     # Forzar el uso del serializer personalizado que valida `registration_key`.
     serializer_class = CustomRegisterSerializer
-    permission_classes = [AllowAny]
+    # En despliegues privados, deshabilitamos el registro público. El login
+    # debe permanecer accesible para usuarios que aún no tienen sesión.
+    permission_classes = [IsAuthenticated]

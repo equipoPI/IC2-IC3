@@ -1,8 +1,8 @@
-import { Navigate } from "react-router-dom";
+import PlanificacionProduccion from "@/pages/PlanificacionProduccion";
 
-// Redirect to the combined planning page with the plantillas tab
+// Render the planning page but force the Plantillas tab when visiting /plantillas
 const GestionPlantillas = () => {
-  return <Navigate to="/planificacion" replace />;
+  return <PlanificacionProduccion initialTab="plantillas" />;
 };
 
 export default GestionPlantillas;

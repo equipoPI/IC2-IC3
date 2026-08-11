@@ -39,7 +39,7 @@ services:
     environment:
       - DEBUG=1
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/ic3_db
-      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,backend
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,backend,host.docker.internal
       - DB_HOST=db
       - DB_PORT=5432
       # Prototype credentials (replace/remove before publishing)
@@ -65,7 +65,7 @@ services:
     ports:
       - "5173:8080"
     environment:
-      - VITE_API_URL=http://backend:8000
+      - VITE_API_URL=
       - WATCHPACK_POLLING=true
     depends_on:
       - backend
@@ -90,7 +90,9 @@ services:
       - scada_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 | grep -v Error || exit 1"]
+      # Evita usar mosquitto_sub sin credenciales (falla con allow_anonymous false).
+      # Comprobamos que el proceso mosquitto esté en ejecución dentro del contenedor.
+      test: ["CMD-SHELL", "pgrep mosquitto || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
