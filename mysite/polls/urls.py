@@ -27,6 +27,7 @@ router.register(r'historial-produccion', views.HistorialProduccionViewSet, basen
 router.register(r'comunicaciones-mqtt', views.ComunicacionMQTTViewSet, basename='comunicaciones_mqtt')
 router.register(r'users', views.UserViewSet, basename='user')
 router.register(r'profiles', views.ProfileViewSet, basename='profile')
+router.register(r'auditoria', views.RegistroAuditoriaViewSet, basename='auditoria')
 
 urlpatterns = [
     # Rutas automáticas de DRF (registradas en router) — raíz de la API de la app

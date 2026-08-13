@@ -19,9 +19,10 @@ from django.contrib import admin
 from django.urls import include, path
 from django.conf import settings
 from django.conf.urls.static import static
-from polls.auth_views import LoginView, LogoutView, UserDetailsView, RegisterView
+from polls.auth_views import LoginView, LogoutView, UserDetailsView, RegisterView, PasswordResetView
 from polls.views import api_csrf
 from polls.views import api_csrf_token
+from polls.views import redirect_verify_email
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -30,11 +31,15 @@ urlpatterns = [
     # Endpoint auxiliar para que SPA obtenga cookie CSRF a través del proxy '/api'
     path('api/csrf/', api_csrf),
     path('api/csrf-token/', api_csrf_token),
+    # Redirigir accesos accidentales al backend hacia el frontend SPA
+    path('verify-email', redirect_verify_email),
     # Auth: registramos vistas clave con documentación en español y delegamos
     path('api/v1/auth/login/', LoginView.as_view(), name='rest_login'),
     path('api/v1/auth/logout/', LogoutView.as_view(), name='rest_logout'),
     path('api/v1/auth/user/', UserDetailsView.as_view(), name='rest_user_details'),
     path('api/v1/auth/registration/', RegisterView.as_view(), name='rest_register'),
+    # Override password reset endpoint to validate existence antes de enviar mail
+    path('api/v1/auth/password/reset/', PasswordResetView.as_view(), name='rest_password_reset_override'),
     # Resto de endpoints de dj-rest-auth (password reset, etc.)
     path('api/v1/auth/', include('dj_rest_auth.urls')),
     path('api/v1/auth/registration/', include('dj_rest_auth.registration.urls')),

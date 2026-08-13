@@ -225,8 +225,12 @@ REST_FRAMEWORK['EXCEPTION_HANDLER'] = 'mysite.utils.exception_handler.custom_exc
 # CONFIGURACIÓN DE CORS - Para permitir peticiones desde React frontend
 # =============================================================================
 
-# En desarrollo, permite todas las origins
-CORS_ALLOW_ALL_ORIGINS = True  # Cambiar en producción
+# En desarrollo preferimos listar orígenes permitidos para permitir credenciales
+# Evitar '*' cuando `CORS_ALLOW_CREDENTIALS = True` para no bloquear cookies.
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = os.environ.get(
+    'CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173'
+).split(',')
 
 # En producción, usar CORS_ALLOWED_ORIGINS específicas:
 # CORS_ALLOWED_ORIGINS = [
@@ -260,9 +264,17 @@ CSRF_TRUSTED_ORIGINS = os.environ.get(
 ).split(',')
 
 # Ajustes de cookies CSRF/Session para desarrollo local (ajustar en producción)
-CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'Lax')
+def _env_samesite(var_name: str, default: str):
+    v = os.environ.get(var_name, default)
+    if v is None:
+        return None
+    if isinstance(v, str) and v.lower() in ['none', 'null', '']:
+        return None
+    return v
+
+CSRF_COOKIE_SAMESITE = _env_samesite('CSRF_COOKIE_SAMESITE', 'Lax')
 CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', 'False') == 'True'
-SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
+SESSION_COOKIE_SAMESITE = _env_samesite('SESSION_COOKIE_SAMESITE', 'Lax')
 SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False') == 'True'
 
 # Personalizar la vista de fallo CSRF para devolver mensajes en español
@@ -365,8 +377,9 @@ LOGGING = {
         },
     },
 }
-# Habilita el acceso desde cualquier puerto/dominio (Ideal para desarrollo)
-CORS_ALLOW_ALL_ORIGINS = True
+# Asegurarse de no permitir '*' cuando se requieren credenciales
+# (ya configurado arriba)
+CORS_ALLOW_ALL_ORIGINS = False
 # Para usar en el código:
 # import logging
 # logger = logging.getLogger('scada')

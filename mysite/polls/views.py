@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.http import HttpResponse
 
 # --- Importaciones de Django REST Framework ---
@@ -25,6 +25,7 @@ from .serializers import ConfiguracionMQTTSerializer
 from .models import TopicMQTT
 from .serializers import TopicMQTTSerializer
 from . import models
+from . import serializers
 from .serializers import (
     SeccionSerializer,
     EmpleadoSerializer,
@@ -50,7 +51,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_exempt
 import logging
-from allauth.account.models import EmailConfirmation
+from allauth.account.models import EmailConfirmation, EmailAddress
 from django.utils import timezone
 
 
@@ -73,6 +74,24 @@ def api_csrf_token(request):
     except Exception:
         pass
     return JsonResponse({'csrfToken': token})
+
+
+def redirect_verify_email(request):
+    """Redirige requests entrantes al backend hacia la ruta de verificación
+    del frontend. Útil cuando el enlace recibido por el usuario apunta al
+    backend (p.ej. http://localhost:8000/verify-email?key=...) y queremos
+    reenviarlo al SPA en `FRONTEND_URL`.
+
+    Devuelve 302 hacia: {FRONTEND_URL}/verify-email?key=<key>
+    """
+    key = request.GET.get('key', '')
+    from django.conf import settings
+    frontend = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    target = f"{frontend.rstrip('/')}/verify-email"
+    if key:
+        # conservar el parámetro 'key' si existe
+        target = f"{target}?key={key}"
+    return redirect(target)
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -169,7 +188,15 @@ def verify_email_get(request):
     key = request.GET.get('key')
     if not key:
         return JsonResponse({'detail': 'No encontrado.'}, status=404)
+    # Usar la utilidad `from_key` de allauth; algunos entornos o versiones
+    # pueden devolver None si el formato no coincide exactamente. Añadimos
+    # un fallback directo por `key` para mayor robustez en el entorno dev.
     conf = EmailConfirmation.from_key(key)
+    if conf is None:
+        try:
+            conf = EmailConfirmation.objects.filter(key=key).first()
+        except Exception:
+            conf = None
     if not conf:
         return JsonResponse({'detail': 'No encontrado.'}, status=404)
     try:
@@ -237,34 +264,36 @@ class EmpleadoViewSet(viewsets.ModelViewSet):
         # Recolectar documentos existentes para evitar duplicados
         existing_docs = set(emp.get('documento') for emp in serialized if emp.get('documento'))
 
-        # Añadir usuarios activos con profile que no tengan Empleado registrado
-        usuarios = User.objects.filter(is_active=True).exclude(profile__isnull=True)
-        for u in usuarios:
-            # Evitar incluir usuarios cuyo username o email ya figura como documento
-            if str(u.username) in existing_docs or (u.email and u.email in existing_docs):
-                continue
-            perfil = getattr(u, 'profile', None)
-            if perfil is None:
-                continue
-            # Construir representación compatible con el serializer frontend
-            usuario_entry = {
-                'documento': u.username,
-                'nombre': u.first_name or u.username,
-                'apellido': u.last_name or '',
-                'seccion': None,
-                'seccion_nombre': '',
-                'fabrica': None,
-                'fabrica_nombre': '',
-                'rango': None,
-                'rol_actual': perfil.get_role_display() if hasattr(perfil, 'get_role_display') else perfil.role,
-                'fecha_contratacion': None,
-                'contacto': perfil.telefono if getattr(perfil, 'telefono', None) else '',
-                'direccion': '',
-                'email': u.email or '',
-                'estado': 'ACTIVO' if u.is_active else 'OTRO',
-                'tipo_empleado': 'OPERARIO',
-            }
-            serialized.append(usuario_entry)
+        # Opcional: incluir usuarios activos sin Empleado si se pasa ?include_users=1
+        include_users = str(request.query_params.get('include_users', '')).lower() in ['1', 'true', 'yes']
+        if include_users:
+            usuarios = User.objects.filter(is_active=True).exclude(profile__isnull=True)
+            for u in usuarios:
+                # Evitar incluir usuarios cuyo username o email ya figura como documento
+                if str(u.username) in existing_docs or (u.email and u.email in existing_docs):
+                    continue
+                perfil = getattr(u, 'profile', None)
+                if perfil is None:
+                    continue
+                # Construir representación compatible con el serializer frontend
+                usuario_entry = {
+                    'documento': u.username,
+                    'nombre': u.first_name or u.username,
+                    'apellido': u.last_name or '',
+                    'seccion': None,
+                    'seccion_nombre': '',
+                    'fabrica': None,
+                    'fabrica_nombre': '',
+                    'rango': None,
+                    'rol_actual': perfil.get_role_display() if hasattr(perfil, 'get_role_display') else perfil.role,
+                    'fecha_contratacion': None,
+                    'contacto': perfil.telefono if getattr(perfil, 'telefono', None) else '',
+                    'direccion': '',
+                    'email': u.email or '',
+                    'estado': 'ACTIVO' if u.is_active else 'OTRO',
+                    'tipo_empleado': 'OPERARIO',
+                }
+                serialized.append(usuario_entry)
 
         # Rellenar email en empleados existentes mediante búsqueda en User
         # (caso: Empleado created without linked User)
@@ -283,6 +312,31 @@ class EmpleadoViewSet(viewsets.ModelViewSet):
                     emp['email'] = emp.get('email', '')
 
         return Response(serialized)
+
+    def destroy(self, request, *args, **kwargs):
+        """Al borrar un Empleado, también eliminar su User y EmailAddress.
+
+        Esto hace que la cuenta quede totalmente removida y obligue a
+        recrear todo el proceso de registro si se desea volver a ingresar.
+        """
+        instancia = self.get_object()
+        usuario = instancia.user
+        # Borrar la instancia Empleado primero
+        self.perform_destroy(instancia)
+
+        # Si había un usuario asociado, eliminarlo y sus emails
+        if usuario:
+            try:
+                # Eliminar registros de EmailAddress explícitamente por seguridad
+                EmailAddress.objects.filter(user=usuario).delete()
+            except Exception:
+                pass
+            try:
+                usuario.delete()
+            except Exception:
+                pass
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class InventarioViewSet(viewsets.ModelViewSet):
@@ -319,6 +373,21 @@ class RegistroMantenimientoViewSet(viewsets.ModelViewSet):
     queryset = models.RegistroMantenimiento.objects.all().order_by('-fecha_inicio')
     serializer_class = RegistroMantenimientoSerializer
     permission_classes = [IsAuthenticated]
+
+
+class RegistroAuditoriaViewSet(viewsets.ModelViewSet):
+    """ViewSet para registros de auditoría: creación por usuarios autenticados
+    y lectura por administradores.
+    """
+    queryset = models.RegistroAuditoria.objects.all().order_by('-timestamp')
+    serializer_class = serializers.RegistroAuditoriaSerializer
+    def get_permissions(self):
+        from rest_framework.permissions import IsAdminUser
+        # Crear: cualquier usuario autenticado puede reportar una acción.
+        if self.action in ['create']:
+            return [IsAuthenticated()]
+        # List/retrieve: solo administradores
+        return [IsAdminUser()]
 
 
 class SistemaViewSet(viewsets.ModelViewSet):
