@@ -119,6 +119,7 @@ class Empleado(models.Model):
             ('TECNICO', 'Técnico'),
             ('JEFE_PLANTA', 'Jefe de Planta'),
             ('ADMINISTRATIVO', 'Administrativo'),
+            ('ADMINISTRADOR', 'Administrador'),
         ],
         default='OPERARIO',
         help_text="Tipo de empleado"
@@ -356,6 +357,32 @@ class EjecucionReceta(models.Model):
 
     def __str__(self):
         return f"Ejecución de {self.receta.nombre} en {self.seccion.nombre} ({self.tiempo_inicio})"
+
+
+class RegistroAuditoria(models.Model):
+    """Registro de auditoría para acciones del sistema.
+
+    Guarda la máxima información posible sobre la acción: usuario (si hay),
+    tipo de acción, módulo, objeto afectado, descripción libre, datos
+    adicionales en JSON, IP y timestamp.
+    """
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    accion = models.CharField(max_length=200)
+    modulo = models.CharField(max_length=200, blank=True, null=True)
+    objeto = models.CharField(max_length=500, blank=True, null=True)
+    descripcion = models.TextField(blank=True, null=True)
+    datos = models.JSONField(blank=True, null=True)
+    ip_origen = models.CharField(max_length=50, blank=True, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = 'Registro de Auditoría'
+        verbose_name_plural = 'Registros de Auditoría'
+
+    def __str__(self):
+        user = self.usuario.username if self.usuario else 'Anon'
+        return f"[{self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}] {user} - {self.accion} ({self.modulo})"
 
 
 class Produccion(models.Model):

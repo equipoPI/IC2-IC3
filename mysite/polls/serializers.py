@@ -74,6 +74,7 @@ from .models import (
 )
 from .models import ConfiguracionMQTT, DispositivoSCADA, LecturaSensor
 from . import models
+from allauth.account.models import EmailAddress
 
 
 # =========================
@@ -120,9 +121,29 @@ class UserSerializer(serializers.ModelSerializer):
 
 class FabricaSerializer(serializers.ModelSerializer):
     """Serializer para Plantas/Fábricas con métricas SCADA"""
+    from datetime import datetime as _datetime
+    fecha_creacion = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = Fabrica
         fields = '__all__'
+
+    def get_fecha_creacion(self, obj):
+        val = getattr(obj, 'fecha_creacion', None)
+        if val is None:
+            return None
+        # Aceptar date o datetime
+        try:
+            if isinstance(val, self._meta.model._meta.get_field('fecha_creacion').__class__):
+                # fallback
+                return str(val)
+        except Exception:
+            pass
+        # Si es datetime, devolver la parte date formateada
+        import datetime as _dt
+        if isinstance(val, _dt.datetime):
+            return val.date().isoformat()
+        return val.isoformat() if hasattr(val, 'isoformat') else str(val)
 
 
 # class SeccionSerializer(serializers.ModelSerializer):
@@ -308,11 +329,23 @@ class EmpleadoSerializer(serializers.ModelSerializer):
     seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
     fecha_contratacion = serializers.DateField(required=False, allow_null=True)
     email = serializers.EmailField(required=False, allow_null=True)
+    # Controla si el email debe marcarse como verificado al crear el empleado
+    email_verified = serializers.BooleanField(write_only=True, required=False, default=False)
+
+    # Campos calculados expuestos por la API
+    ultimo_fichaje = serializers.SerializerMethodField(read_only=True)
+    ultimo_inicio_sesion = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = models.Empleado
-        fields = ['documento', 'nombre', 'apellido', 'seccion', 'seccion_nombre', 'fabrica', 'fabrica_nombre', 'rango', 'rol_actual', 'fecha_contratacion', 'contacto', 'direccion', 'email', 'estado', 'tipo_empleado']
+        # Excluir contacto del API: el sistema no debe depender del teléfono
+        fields = [
+            'documento', 'nombre', 'apellido', 'seccion', 'seccion_nombre', 'fabrica', 'fabrica_nombre',
+            'rango', 'rol_actual', 'fecha_contratacion', 'direccion', 'email', 'estado', 'tipo_empleado',
+            'ultimo_fichaje', 'ultimo_inicio_sesion', 'email_verified'
+        ]
         extra_kwargs = {
+            'documento': {'required': False},
             'rango': {'required': False},
             'rol_actual': {'required': False},
             'contacto': {'required': False},
@@ -320,38 +353,6 @@ class EmpleadoSerializer(serializers.ModelSerializer):
             'email': {'required': False},
         }
 
-    def create(self, validated_data):
-        # Rellenar fecha de contratación por defecto si falta
-        if not validated_data.get('fecha_contratacion'):
-            validated_data['fecha_contratacion'] = timezone.now().date()
-
-        # Si no se proporcionó fábrica, intentar usar la primera disponible
-        if not validated_data.get('fabrica'):
-            fab = models.Fabrica.objects.first()
-            if fab:
-                validated_data['fabrica'] = fab
-
-        # Si no se proporcionó sección, intentar usar la primera sección de la fábrica
-        if not validated_data.get('seccion') and validated_data.get('fabrica'):
-            sec = models.Seccion.objects.filter(fabrica=validated_data['fabrica']).first()
-            if sec:
-                validated_data['seccion'] = sec
-
-        # Validación mínima: documento obligatorio
-        if not validated_data.get('documento'):
-            raise serializers.ValidationError({'documento': 'Documento (ID) es obligatorio para crear un empleado.'})
-
-        empleado = models.Empleado(**validated_data)
-        empleado.save()
-        return empleado
-
-    def update(self, instance, validated_data):
-        # Actualizar campos permitidos
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        return instance
-    
     def validate_email(self, value):
         # Permitir email opcional, pero validar unicidad si se provee
         if value:
@@ -363,7 +364,7 @@ class EmpleadoSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        # Documento puede ser opcional desde la SPA; generamos uno si falta
+        # Generar documento si falta
         if not validated_data.get('documento'):
             import time
             validated_data['documento'] = f'AUTO-{int(time.time())}'
@@ -373,39 +374,157 @@ class EmpleadoSerializer(serializers.ModelSerializer):
         if not validated_data.get('fecha_contratacion'):
             validated_data['fecha_contratacion'] = now().date()
 
+        # Asignar fábrica/ sección por defecto si faltan
+        if not validated_data.get('fabrica'):
+            fab = models.Fabrica.objects.first()
+            if fab:
+                validated_data['fabrica'] = fab
+
+        if not validated_data.get('seccion') and validated_data.get('fabrica'):
+            sec = models.Seccion.objects.filter(fabrica=validated_data['fabrica']).first()
+            if sec:
+                validated_data['seccion'] = sec
+
+        # Asegurar clave única
+        if not validated_data.get('clave'):
+            import random, string
+            chars = string.ascii_uppercase + string.digits
+            clave = ''.join(random.choices(chars, k=8))
+            while models.Empleado.objects.filter(clave=clave).exists():
+                clave = ''.join(random.choices(chars, k=8))
+            validated_data['clave'] = clave
+
+        # Extraer flags auxiliares que no forman parte del modelo
+        email_verified = bool(validated_data.pop('email_verified', False))
+
+        # Validaciones mínimas y creación
+        if not validated_data.get('fabrica'):
+            raise serializers.ValidationError({'fabrica': 'No existe ninguna fábrica en el sistema. Crea una fábrica primero o proporciona el campo `fabrica`.'})
+        if not validated_data.get('seccion'):
+            raise serializers.ValidationError({'seccion': 'La sección es obligatoria. Proporciona `seccion` o crea al menos una sección en la fábrica seleccionada.'})
+
         empleado = models.Empleado.objects.create(**validated_data)
+
+        # Intentar crear usuario y EmailAddress asociado sin bloquear el flujo
+        try:
+            email = (validated_data.get('email') or '').strip()
+            username = str(validated_data.get('documento'))
+
+            user = None
+            if username:
+                user = User.objects.filter(username=username).first()
+            if not user and email:
+                user = User.objects.filter(email__iexact=email).first()
+
+            if not user:
+                user = User.objects.create_user(username=username or f'user_{int(time.time())}', email=email or '')
+                user.set_unusable_password()
+                user.is_active = True if email_verified else False
+                user.first_name = validated_data.get('nombre', '') or ''
+                user.last_name = validated_data.get('apellido', '') or ''
+                user.save()
+
+            # Asociar user al empleado
+            try:
+                if not getattr(empleado, 'user', None):
+                    empleado.user = user
+                    empleado.save()
+            except Exception:
+                pass
+
+            if email:
+                ea = EmailAddress.objects.filter(user=user, email__iexact=email).first()
+                if not ea:
+                    EmailAddress.objects.create(user=user, email=email, primary=True, verified=email_verified)
+                else:
+                    if ea.verified != email_verified:
+                        ea.verified = email_verified
+                        ea.primary = True
+                        ea.save()
+
+            try:
+                if email_verified and not user.is_active:
+                    user.is_active = True
+                    user.save()
+            except Exception:
+                pass
+
+            try:
+                profile = getattr(user, 'profile', None)
+                if profile and not getattr(profile, 'email_confirmed', False):
+                    profile.email_confirmed = True
+                    profile.save()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
         return empleado
 
     def validate_rango(self, value):
-        # Aceptar tanto códigos internos ('1'..'8') como etiquetas amigables
         MAP = {
-            'EMPLEADO': '6',
-            'JEFE': '3',
-            'ADMIN': '2',
-            'DIRECTOR': '1',
-            'GERENTE': '2',
-            'JEFE DE SECCIÓN': '3',
+            'EMPLEADO': '6', 'JEFE': '3', 'ADMIN': '2', 'DIRECTOR': '1', 'GERENTE': '2',
+            'JEFE DE SECCIÓN': '3', 'ADMINISTRADOR': '2',
         }
         if value is None:
             return value
         v = str(value).strip().upper()
         if v in MAP:
             return MAP[v]
-        # Si el cliente ya envió el código numérico válido, pásalo
         if v.isdigit() and v in {str(i) for i in range(1,9)}:
             return v
-        # Fallback: intentar encontrar clave por palabra
         for k in MAP:
             if k in v:
                 return MAP[k]
         raise serializers.ValidationError('Rango inválido')
 
     def update(self, instance, validated_data):
-        # Asignar campos y guardar
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
         return instance
+
+    def get_ultimo_fichaje(self, obj):
+        try:
+            last = None
+            try:
+                last = obj.fichajes.order_by('-fecha', '-id').first()
+            except Exception:
+                last = None
+            if last:
+                fecha = getattr(last, 'fecha', None)
+                hora = getattr(last, 'hora_entrada', None)
+                if fecha and hora:
+                    return f"{fecha.isoformat()} {hora.isoformat()}"
+                if fecha:
+                    return fecha.isoformat()
+            try:
+                inicio = self.get_ultimo_inicio_sesion(obj)
+                if inicio:
+                    return inicio
+            except Exception:
+                pass
+            return ''
+        except Exception:
+            return ''
+
+    def get_ultimo_inicio_sesion(self, obj):
+        try:
+            doc = getattr(obj, 'documento', None)
+            if not doc:
+                return ''
+            from django.contrib.auth.models import User
+            from django.db.models import Q
+            user = User.objects.filter(Q(username=doc) | Q(email=doc)).first()
+            if user:
+                if getattr(user, 'last_login', None):
+                    return user.last_login.isoformat()
+                profile = getattr(user, 'profile', None)
+                if profile and getattr(profile, 'last_seen', None):
+                    return profile.last_seen.isoformat()
+            return ''
+        except Exception:
+            return ''
 
 
 class InventarioSerializer(serializers.ModelSerializer):
@@ -458,6 +577,15 @@ class RegistroMantenimientoSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.RegistroMantenimiento
         fields = '__all__'
+
+
+class RegistroAuditoriaSerializer(serializers.ModelSerializer):
+    usuario_username = serializers.CharField(source='usuario.username', read_only=True)
+
+    class Meta:
+        model = models.RegistroAuditoria
+        fields = ['id', 'usuario', 'usuario_username', 'accion', 'modulo', 'objeto', 'descripcion', 'datos', 'ip_origen', 'timestamp']
+        read_only_fields = ['timestamp', 'usuario_username']
 
 
 class SistemaSerializer(serializers.ModelSerializer):

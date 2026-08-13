@@ -40,8 +40,8 @@ const initialEmpleados: Empleado[] = [];
 
 // Mapeo reducido: códigos -> etiqueta simple
 const RANGO_MAP: Record<string, string> = {
-  '1': 'Admin',
-  '2': 'Admin',
+  '1': 'Administrador',
+  '2': 'Administrador',
   '3': 'Jefe',
   '4': 'Empleado',
   '5': 'Empleado',
@@ -108,6 +108,8 @@ const GestionEmpleados = () => {
       ),
     },
     { key: "fabricaAsignada", header: "Fábrica Asignada" },
+    { key: "email", header: "Email" },
+    { key: "contacto", header: "Contacto" },
     {
       key: "activo",
       header: "Estado",
@@ -129,16 +131,18 @@ const GestionEmpleados = () => {
         const resp = await apiFetch('/api/v1/empleados/');
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
-        const mapped = data.map((e: any) => ({
-          id: e.documento,
-          nombre: e.nombre,
-          apellido: e.apellido,
-          nombreCompleto: `${e.nombre} ${e.apellido}`,
-          rango: RANGO_MAP[e.rango] || 'Empleado',
+        const mapped = data.map((e: any, idx: number) => ({
+          id: e.documento || e.username || `EMP-${String(idx + 1).padStart(4, '0')}`,
+          nombre: e.nombre || '' ,
+          apellido: e.apellido || '' ,
+          nombreCompleto: `${e.nombre || ''} ${e.apellido || ''}`.trim(),
+          rango: RANGO_MAP[String(e.rango)] || RANGO_MAP[e.rango] || 'Empleado',
           fabricaAsignada: e.fabrica_nombre || '',
           ultimoFichaje: e.ultimo_fichaje || '',
           rol: e.rol_actual || 'Operador',
-          activo: e.estado === 'ACTIVO',
+          activo: (e.estado || '').toUpperCase() === 'ACTIVO',
+          email: e.email || '',
+          contacto: e.contacto || '',
         }));
         setEmpleados(mapped);
       } catch (err) {

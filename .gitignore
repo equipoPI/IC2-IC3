@@ -93,6 +93,7 @@ mysite/.provisioned
 *.bak
 *.backup
 *.tmp
+backups/
 
 # configuracion de IA
 AGENTS.md
@@ -123,7 +124,8 @@ scada-ui/node_modules/
 
 # Local test scripts and temp helpers
 test_scripts/
-scripts/reset_*.py
+# Excluir scripts temporales en la raíz, pero mantener utilidades de `mysite/scripts`
+# (no ignoramos `mysite/scripts/reset_admin.py`)
 
 # Editor backups
 *~

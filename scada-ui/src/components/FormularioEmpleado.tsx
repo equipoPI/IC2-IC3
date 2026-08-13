@@ -49,7 +49,7 @@ interface FormularioEmpleadoProps {
   empleado?: Empleado | null;
 }
 
-const rangos = ["Empleado", "Jefe", "Admin"];
+const rangos = ["Empleado", "Jefe", "Administrador"];
 
 const roles: RolUsuario[] = ["Operador", "Jefe de Sector", "Administrador"];
 
