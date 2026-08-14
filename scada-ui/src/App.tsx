@@ -7,6 +7,7 @@ import MainLayout from "@/components/layout/MainLayout";
 import Dashboard from "@/pages/Dashboard";
 import GestionEmpleados from "@/pages/GestionEmpleados";
 import GestionPlantas from "@/pages/GestionPlantas";
+import GestionSecciones from "@/pages/GestionSecciones";
 import GestionSensores from "@/pages/GestionSensores";
 import MonitorizacionSCADA from "@/pages/MonitorizacionSCADA";
 import VisualizacionSCADA from "@/pages/VisualizacionSCADA";
@@ -42,6 +43,7 @@ const ProtectedRoutes = () => {
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/password-reset" element={<PasswordReset />} />
         <Route path="/password-reset-confirm" element={<PasswordResetConfirm />} />
+        <Route path="/password-reset-confirm/" element={<PasswordResetConfirm />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     );
@@ -54,6 +56,7 @@ const ProtectedRoutes = () => {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/empleados" element={<GestionEmpleados />} />
         <Route path="/plantas" element={<GestionPlantas />} />
+      <Route path="/secciones" element={<GestionSecciones />} />
         <Route path="/sensores" element={<GestionSensores />} />
         <Route path="/monitorizacion" element={<MonitorizacionSCADA />} />
         <Route path="/scada" element={<VisualizacionSCADA />} />
@@ -65,6 +68,12 @@ const ProtectedRoutes = () => {
         <Route path="/almacenamiento" element={<AdministracionAlmacenamiento />} />
         {isAdmin && <Route path="/admin" element={<AuditoriaAdmin />} />}
       </Route>
+      {/* Permitimos acceso a la verificación de email aun cuando el usuario
+          ya esté autenticado (el enlace de confirmación debe funcionar
+          independientemente del estado de sesión). */}
+      <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route path="/password-reset-confirm" element={<PasswordResetConfirm />} />
+      <Route path="/password-reset-confirm/" element={<PasswordResetConfirm />} />
       <Route path="/login" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

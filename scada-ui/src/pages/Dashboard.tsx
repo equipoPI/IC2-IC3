@@ -2,54 +2,100 @@ import { Factory, Users, Cpu, AlertTriangle, Activity, TrendingUp, Zap, Clock } 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { useEffect, useState } from "react";
+import apiFetch from "@/lib/api";
 
 const Dashboard = () => {
-  const stats = [
-    {
-      title: "Plantas Activas",
-      value: "4/5",
-      change: "+1 hoy",
-      icon: Factory,
-      trend: "up",
-    },
-    {
-      title: "Empleados en Turno",
-      value: "127",
-      change: "+12 vs ayer",
-      icon: Users,
-      trend: "up",
-    },
-    {
-      title: "Sensores Online",
-      value: "342",
-      change: "98.5% uptime",
-      icon: Cpu,
-      trend: "up",
-    },
-    {
-      title: "Alarmas Activas",
-      value: "8",
-      change: "-3 vs ayer",
-      icon: AlertTriangle,
-      trend: "down",
-    },
-  ];
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState(() => [
+    { title: "Plantas Activas", value: "-", change: "", icon: Factory, trend: "up" },
+    { title: "Empleados en Turno", value: "-", change: "", icon: Users, trend: "up" },
+    { title: "Sensores Online", value: "-", change: "", icon: Cpu, trend: "up" },
+    { title: "Alarmas Activas", value: "-", change: "", icon: AlertTriangle, trend: "down" },
+  ]);
 
-  const plantasResumen = [
-    { nombre: "Planta Norte", estado: "operativo", produccion: 87, eficiencia: 94 },
-    { nombre: "Planta Central", estado: "advertencia", produccion: 65, eficiencia: 78 },
-    { nombre: "Planta Sur", estado: "operativo", produccion: 92, eficiencia: 96 },
-    { nombre: "Fábrica Este", estado: "critico", produccion: 23, eficiencia: 45 },
-    { nombre: "Fábrica Oeste", estado: "offline", produccion: 0, eficiencia: 0 },
-  ];
+  const [plantasResumen, setPlantasResumen] = useState(() => [
+    { nombre: "—", estado: "offline", produccion: 0, eficiencia: 0 },
+  ]);
 
-  const actividadReciente = [
-    { mensaje: "Sensor S-102 reconectado", tiempo: "Hace 2 min", tipo: "info" },
-    { mensaje: "Alarma crítica resuelta - Planta Este", tiempo: "Hace 15 min", tipo: "success" },
-    { mensaje: "Nuevo empleado registrado", tiempo: "Hace 32 min", tipo: "info" },
-    { mensaje: "Mantenimiento programado - Planta Norte", tiempo: "Hace 1 hora", tipo: "warning" },
-    { mensaje: "Temperatura elevada - Sensor T-045", tiempo: "Hace 2 horas", tipo: "warning" },
-  ];
+  const [actividadReciente, setActividadReciente] = useState(() => [
+    { mensaje: "Cargando...", tiempo: "", tipo: "info" },
+  ]);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        // Pedir fabricas, empleados, lecturas y auditoria
+        const [fabrResp, empResp, lectResp, audResp] = await Promise.allSettled([
+          apiFetch('/api/v1/fabricas/'),
+          apiFetch('/api/v1/empleados/'),
+          apiFetch('/api/v1/lecturas/'),
+          apiFetch('/api/v1/auditoria/?page_size=5'),
+        ]);
+
+        // Fabricas
+        let fabricas: any[] = [];
+        if (fabrResp.status === 'fulfilled' && fabrResp.value.ok) {
+          const jf = await fabrResp.value.json();
+          fabricas = jf.results || jf || [];
+        }
+
+        // Empleados
+        let empleadosCount = null;
+        if (empResp.status === 'fulfilled' && empResp.value.ok) {
+          const je = await empResp.value.json();
+          empleadosCount = je.count ?? (Array.isArray(je) ? je.length : null);
+        }
+
+        // Lecturas / sensores
+        let lectCount = null;
+        if (lectResp.status === 'fulfilled' && lectResp.value.ok) {
+          const jl = await lectResp.value.json();
+          lectCount = jl.count ?? (Array.isArray(jl) ? jl.length : null);
+        }
+
+        // Auditoria / actividad
+        let actividades: any[] = [];
+        if (audResp.status === 'fulfilled' && audResp.value.ok) {
+          const ja = await audResp.value.json();
+          actividades = ja.results || ja || [];
+        }
+
+        if (!mounted) return;
+
+        // Map stats
+        setStats([
+          { title: 'Plantas Activas', value: `${fabricas.filter(f => (f.estado || '').toString().toLowerCase().includes('oper')).length}/${fabricas.length}`, change: '', icon: Factory, trend: 'up' },
+          { title: 'Empleados en Turno', value: empleadosCount !== null ? String(empleadosCount) : '-', change: '', icon: Users, trend: 'up' },
+          { title: 'Sensores Online', value: lectCount !== null ? String(lectCount) : '-', change: '', icon: Cpu, trend: 'up' },
+          { title: 'Alarmas Activas', value: String(fabricas.reduce((acc, f) => acc + (Number(f.alarmas_activas || 0)), 0)), change: '', icon: AlertTriangle, trend: 'down' },
+        ]);
+
+        // Plantas resumen: usar fabricas si vienen
+        if (fabricas.length > 0) {
+          setPlantasResumen(fabricas.slice(0, 5).map((f: any) => ({
+            nombre: f.nombre || f.nombre_fabrica || 'Sin nombre',
+            estado: (f.estado || 'offline').toString().toLowerCase(),
+            produccion: Math.round(Number(f.porcentaje_produccion || 0)),
+            eficiencia: Math.round(Number(f.porcentaje_eficiencia || 0)),
+          })));
+        }
+
+        // Actividad reciente desde auditoria
+        if (actividades.length > 0) {
+          setActividadReciente(actividades.map((a: any) => ({ mensaje: a.descripcion || a.accion || a.detalle || String(a), tiempo: a.timestamp || a.fecha_hora || '', tipo: 'info' })));
+        }
+      } catch (err) {
+        // silencioso — mantener datos simulados
+        console.warn('Dashboard: error cargando datos', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    load();
+    return () => { mounted = false; };
+  }, []);
 
   const getEstadoColor = (estado: string) => {
     switch (estado) {

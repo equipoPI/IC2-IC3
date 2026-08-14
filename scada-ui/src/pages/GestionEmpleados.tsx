@@ -74,6 +74,17 @@ const getRangoBadgeVariant = (rango: string) => {
   }
 };
 
+  const formatDateTime = (iso: string) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return iso;
+      return d.toLocaleString('es-AR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return iso;
+    }
+  };
+
 const GestionEmpleados = () => {
   const { isAdmin, addAuditLog, usuario, auditLogs } = useAuth();
   const { addNotificacion } = useNotifications();
@@ -109,7 +120,7 @@ const GestionEmpleados = () => {
     },
     { key: "fabricaAsignada", header: "Fábrica Asignada" },
     { key: "email", header: "Email" },
-    { key: "contacto", header: "Contacto" },
+    // columna de contacto oculta intencionalmente por privacidad/UX
     {
       key: "activo",
       header: "Estado",
@@ -131,18 +142,18 @@ const GestionEmpleados = () => {
         const resp = await apiFetch('/api/v1/empleados/');
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
-        const mapped = data.map((e: any, idx: number) => ({
+          const mapped = data.map((e: any, idx: number) => ({
           id: e.documento || e.username || `EMP-${String(idx + 1).padStart(4, '0')}`,
           nombre: e.nombre || '' ,
           apellido: e.apellido || '' ,
           nombreCompleto: `${e.nombre || ''} ${e.apellido || ''}`.trim(),
           rango: RANGO_MAP[String(e.rango)] || RANGO_MAP[e.rango] || 'Empleado',
           fabricaAsignada: e.fabrica_nombre || '',
-          ultimoFichaje: e.ultimo_fichaje || '',
+          // Priorizar `ultimo_inicio_sesion` si está presente, sino `ultimo_fichaje`
+          ultimoFichaje: formatDateTime(e.ultimo_inicio_sesion || e.ultimo_fichaje || ''),
           rol: e.rol_actual || 'Operador',
           activo: (e.estado || '').toUpperCase() === 'ACTIVO',
           email: e.email || '',
-          contacto: e.contacto || '',
         }));
         setEmpleados(mapped);
       } catch (err) {
@@ -173,6 +184,7 @@ const GestionEmpleados = () => {
       try {
         const resp = await apiFetch(`/api/v1/empleados/${empleadoToDelete.id}/`, { method: 'DELETE' });
         if (!resp.ok && resp.status !== 204) throw new Error(`HTTP ${resp.status}`);
+        // Solo actualizar estado local si el backend confirmó la eliminación
         setEmpleados((prev) => prev.filter((e) => e.id !== empleadoToDelete.id));
         addAuditLog({
           usuario: usuario?.nombre || "Sistema",
@@ -182,15 +194,14 @@ const GestionEmpleados = () => {
         });
         toast({ title: "Empleado eliminado", description: `${empleadoToDelete.nombreCompleto} ha sido eliminado correctamente.` });
       } catch (err) {
-        // Fallback local (backend puede requerir campos adicionales para eliminar/relaciones)
-        setEmpleados((prev) => prev.filter((e) => e.id !== empleadoToDelete.id));
+        // No eliminar localmente si la API no confirma; informar al usuario
         addAuditLog({
           usuario: usuario?.nombre || "Sistema",
-          accion: "Eliminación local de Empleado",
+          accion: "Intento de eliminación fallido",
           objetoAfectado: `${empleadoToDelete.nombreCompleto} (${empleadoToDelete.id})`,
           modulo: "Empleados",
         });
-        toast({ title: 'Eliminado localmente', description: 'El backend requiere campos adicionales; sincronización pendiente.' });
+        toast({ title: 'Error al eliminar', description: 'La eliminación en el backend falló. Revisa los logs del servidor.' });
       } finally {
         setDeleteDialogOpen(false);
         setEmpleadoToDelete(null);
@@ -204,7 +215,8 @@ const GestionEmpleados = () => {
       if (selectedEmpleado) {
         // Intentar sincronizar con backend (requiere campos adicionales en el modelo); si falla, aplicamos localmente
         try {
-          const payload: any = {
+            const payload: any = {
+            documento: selectedEmpleado.id,
             nombre: data.nombre,
             apellido: data.apellido,
             rol_actual: data.rol || data.rol_actual,
@@ -212,14 +224,28 @@ const GestionEmpleados = () => {
             seccion: data.seccion ? Number(data.seccion) : undefined,
             fecha_contratacion: data.fecha_contratacion,
             email: data.email,
-            contacto: data.contacto,
             direccion: data.direccion,
             estado: data.activo ? 'ACTIVO' : 'OTRO',
           };
+          // Eliminar propiedades vacías para evitar validación DRF en campos no requeridos
+          Object.keys(payload).forEach((k) => {
+            const v = payload[k];
+            if (v === undefined || v === null) delete payload[k];
+            if (typeof v === 'string' && v.trim() === '') delete payload[k];
+          });
           const resp = await apiFetch(`/api/v1/empleados/${selectedEmpleado.id}/`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const updated = await resp.json();
-          setEmpleados((prev) => prev.map((e) => e.id === updated.documento ? { ...e, nombre: updated.nombre, apellido: updated.apellido, nombreCompleto: `${updated.nombre} ${updated.apellido}` } : e));
+          setEmpleados((prev) => prev.map((e) => e.id === updated.documento ? {
+            ...e,
+            nombre: updated.nombre,
+            apellido: updated.apellido,
+            nombreCompleto: `${updated.nombre} ${updated.apellido}`,
+            fabricaAsignada: updated.fabrica_nombre || e.fabricaAsignada,
+            ultimoFichaje: formatDateTime(updated.ultimo_inicio_sesion || updated.ultimo_fichaje || e.ultimoFichaje),
+            email: updated.email || e.email,
+            activo: (updated.estado || '').toUpperCase() === 'ACTIVO',
+          } : e));
           addAuditLog({ usuario: usuario?.nombre || 'Sistema', accion: 'Modificación de Empleado', objetoAfectado: `${data.nombre} ${data.apellido} (${selectedEmpleado.id})`, modulo: 'Empleados' });
           toast({ title: 'Empleado actualizado', description: 'Sincronizado con backend.' });
         } catch (err) {
@@ -239,10 +265,16 @@ const GestionEmpleados = () => {
             seccion: data.seccion ? Number(data.seccion) : undefined,
             fecha_contratacion: data.fecha_contratacion,
             email: data.email,
-            contacto: data.contacto,
             direccion: data.direccion,
             estado: data.activo ? 'ACTIVO' : 'OTRO',
+            // Alta desde el panel de Empleados: marcar email como verificado y activar usuario
+            email_verified: true,
           };
+          Object.keys(payload).forEach((k) => {
+            const v = payload[k];
+            if (v === undefined || v === null) delete payload[k];
+            if (typeof v === 'string' && v.trim() === '') delete payload[k];
+          });
           const resp = await apiFetch('/api/v1/empleados/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const created = await resp.json();
@@ -253,7 +285,7 @@ const GestionEmpleados = () => {
             nombreCompleto: `${created.nombre} ${created.apellido}`,
             rango: RANGO_MAP[created.rango] || 'Empleado',
             fabricaAsignada: created.fabrica_nombre || '',
-            ultimoFichaje: '',
+            ultimoFichaje: formatDateTime(created.ultimo_inicio_sesion || created.ultimo_fichaje || ''),
             rol: created.rol_actual || 'Operador',
             activo: created.estado === 'ACTIVO',
           };

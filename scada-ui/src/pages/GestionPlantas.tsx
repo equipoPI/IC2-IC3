@@ -32,8 +32,10 @@ const GestionPlantas = () => {
         const resp = await apiFetch('/api/v1/fabricas/');
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
+        // Soporta paginación de DRF: { count, next, previous, results }
+        const list = Array.isArray(data) ? data : data.results || [];
         // Normalizar fechas
-        const mapped = data.map((p: any) => ({
+        const mapped = list.map((p: any) => ({
           id: p.id,
           nombre: p.nombre,
           ubicacion: p.ubicacion || '',

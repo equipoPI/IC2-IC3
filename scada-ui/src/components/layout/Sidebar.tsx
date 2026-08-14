@@ -32,10 +32,10 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
   const { isAdmin } = useAuth();
 
   const menuGroups = [
-    {
+        {
       title: "Principal",
       items: [
-        { title: "Dashboard", icon: LayoutDashboard, path: "/" },
+        { title: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
       ],
     },
     {
@@ -43,6 +43,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       items: [
         { title: "Gestión de Empleados", icon: Users, path: "/empleados" },
         { title: "Gestión de Plantas y Fábricas", icon: Factory, path: "/plantas" },
+            { title: "Gestión de Secciones", icon: ClipboardList, path: "/secciones" },
         { title: "Gestión de Sensores y Máquinas", icon: Cpu, path: "/sensores" },
         { title: "Administración de Almacenamiento", icon: Database, path: "/almacenamiento" },
       ],

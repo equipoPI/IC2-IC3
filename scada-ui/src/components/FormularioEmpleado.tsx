@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import apiFetch from '@/lib/api';
 import { RolUsuario } from "@/contexts/AuthContext";
 
 export interface Empleado {
@@ -28,6 +29,10 @@ export interface Empleado {
   ultimoFichaje: string;
   rol: RolUsuario;
   activo: boolean;
+  email?: string;
+  contacto?: string;
+  fecha_contratacion?: string;
+  ultimo_inicio_sesion?: string;
 }
 
 interface FormularioEmpleadoProps {
@@ -43,7 +48,6 @@ interface FormularioEmpleadoProps {
     rol: RolUsuario;
     activo: boolean;
     email?: string;
-    contacto?: string;
     fecha_contratacion?: string;
   }) => void;
   empleado?: Empleado | null;
@@ -70,45 +74,67 @@ const FormularioEmpleado = ({
     apellido: "",
     rango: "",
     fabrica: "",
-    seccion: "",
+      seccion: "",
+      ultimo_fichaje: "",
     rol: "Operador" as RolUsuario,
     activo: true,
     email: "",
-    contacto: "",
     fecha_contratacion: "",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (empleado) {
-      const [nombre, ...apellidoParts] = empleado.nombreCompleto.split(" ");
-      setFormData((prev) => ({
-        ...prev,
-        documento: empleado.id || '',
-        nombre: nombre || "",
-        apellido: apellidoParts.join(" ") || "",
-        rango: empleado.rango,
-        fabrica: empleado.fabricaAsignada || '',
-        rol: empleado.rol,
-        activo: empleado.activo,
-      }));
-    } else {
-      setFormData((prev) => ({
-        ...prev,
-        documento: '',
-        nombre: "",
-        apellido: "",
-        rango: "",
-        fabrica: "",
-        seccion: "",
-        rol: "Operador",
-        activo: true,
-        email: "",
-        contacto: "",
-        fecha_contratacion: "",
-      }));
+    const blank = {
+      documento: '',
+      nombre: '',
+      apellido: '',
+      rango: '',
+      fabrica: '',
+      seccion: '',
+      ultimo_fichaje: '',
+      rol: 'Operador' as RolUsuario,
+      activo: true,
+      email: '',
+      fecha_contratacion: '',
+    };
+
+    if (!empleado) {
+      setFormData(blank);
+      setErrors({});
+      return;
     }
+
+    // empleado exists - normalize multiple possible shapes
+    const e: any = empleado;
+    try { console.debug('FormularioEmpleado: poblando desde empleado', e); } catch (ex) {}
+
+    const documento = e.documento || e.id || e.username || '';
+    const nombre = e.nombre || e.first_name || (e.nombreCompleto ? String(e.nombreCompleto).split(' ')[0] : '');
+    const apellido = e.apellido || e.last_name || (e.nombreCompleto ? String(e.nombreCompleto).split(' ').slice(1).join(' ') : '');
+    const rango = e.rango || e.rango_codigo || '';
+    const rol = e.rol_actual || e.rol || 'Operador';
+    const email = e.email || (e.profile && e.profile.email) || '';
+    const contacto = '';
+    const fabricaVal = (e.fabrica !== undefined && e.fabrica !== null) ? String(e.fabrica) : (e.fabrica_nombre || e.fabricaAsignada || '');
+    const seccionVal = (e.seccion !== undefined && e.seccion !== null) ? String(e.seccion) : (e.seccion_nombre || '');
+    const ultimo = e.ultimo_fichaje || e.ultimoFichaje || '';
+    const activoVal = typeof e.activo === 'boolean' ? e.activo : (String(e.estado || '').toLowerCase() === 'activo');
+
+    setFormData({
+      documento: documento || '',
+      nombre: nombre || '',
+      apellido: apellido || '',
+      rango: rango || '',
+      fabrica: fabricaVal || '',
+      seccion: seccionVal || '',
+      ultimo_fichaje: ultimo || '',
+      rol: rol as RolUsuario,
+      activo: activoVal !== undefined ? activoVal : true,
+      email: email || '',
+      fecha_contratacion: e.fecha_contratacion || e.fechaContratacion || '',
+    });
+
     setErrors({});
   }, [empleado, open]);
 
@@ -118,22 +144,26 @@ const FormularioEmpleado = ({
   useEffect(() => {
     const load = async () => {
       try {
-        const resp1 = await (await import('@/lib/api')).default('/api/v1/fabricas/');
+        const resp1 = await apiFetch('/api/v1/fabricas/?page_size=200');
         if (resp1.ok) {
           const data = await resp1.json();
-          setFabricas(data.map((f:any) => ({ id: f.id, nombre: f.nombre })));
+          const items = data.results || data || [];
+          setFabricas(items.map((f: any) => ({ id: f.id, nombre: f.nombre || f.nombre_fabrica || String(f.id) })));
         }
-        const resp2 = await (await import('@/lib/api')).default('/api/v1/secciones/');
+
+        const resp2 = await apiFetch('/api/v1/secciones/?page_size=500');
         if (resp2.ok) {
           const sdata = await resp2.json();
-          setSecciones(sdata.map((s:any) => ({ id: s.id, nombre: s.nombre, fabrica: s.fabrica })));
+          const sitems = sdata.results || sdata || [];
+          setSecciones(sitems.map((s: any) => ({ id: s.id, nombre: s.nombre || String(s.id), fabrica: s.fabrica })));
         }
       } catch (err) {
-        // ignore for now
+        console.warn('FormularioEmpleado: fallo cargando fabricas/secciones', err);
       }
     };
-    load();
-  }, []);
+    // Cargar cada vez que se abra el formulario para reflejar cambios recientes
+    if (open) load();
+  }, [open]);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -142,6 +172,7 @@ const FormularioEmpleado = ({
     if (!formData.apellido.trim()) newErrors.apellido = "El apellido es obligatorio";
     if (!formData.rango) newErrors.rango = "Seleccione un rango";
     if (!formData.fabrica) newErrors.fabrica = "Seleccione una fábrica";
+    // No se valida teléfono: no se captura en el sistema
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -156,7 +187,7 @@ const FormularioEmpleado = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md bg-card border-border">
+      <DialogContent className="w-full max-w-full sm:max-w-md bg-card border-border max-h-[90vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="text-foreground">
             {empleado ? "Editar Empleado" : "Añadir Nuevo Empleado"}
@@ -164,6 +195,7 @@ const FormularioEmpleado = ({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          <div className="overflow-auto max-h-[70vh] pr-2">
           <div className="grid gap-4">
             <div className="space-y-2">
               <Label htmlFor="documento" className="text-foreground">Documento</Label>
@@ -240,14 +272,16 @@ const FormularioEmpleado = ({
             </div>
 
             <div className="space-y-2">
+              <Label className="text-foreground">Último fichaje</Label>
+              <Input readOnly value={formData.ultimo_fichaje || ''} />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="email" className="text-foreground">Email</Label>
               <Input id="email" placeholder="correo@ejemplo.com" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="contacto" className="text-foreground">Contacto</Label>
-              <Input id="contacto" placeholder="+54 9 11 1234 5678" value={formData.contacto} onChange={(e) => setFormData({ ...formData, contacto: e.target.value })} />
-            </div>
+            {/* Eliminado campo de teléfono por política: no se captura ni expone */}
 
             <div className="space-y-2">
               <Label htmlFor="fecha_contratacion" className="text-foreground">Fecha de contratación</Label>
@@ -266,6 +300,7 @@ const FormularioEmpleado = ({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
             </div>
           </div>
 

@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
+import apiFetch from '@/lib/api';
 
 export type RolUsuario = 'Operador' | 'Jefe de Sector' | 'Administrador';
 
@@ -32,6 +33,36 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [usuario, setUsuario] = useState<UsuarioAutenticado | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    // Al montar, comprobar si existe una sesión válida en el backend
+    const check = async () => {
+      try {
+        const resp = await apiFetch('/api/v1/auth/user/');
+        if (resp.ok) {
+          const u = await resp.json();
+          const nombre = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
+          // Mapear rol del perfil si existe
+          let rol: RolUsuario = 'Operador';
+          try {
+            const role = u.profile?.role || '';
+            if (role === 'admin') rol = 'Administrador';
+            else if (role === 'manager') rol = 'Jefe de Sector';
+            else rol = 'Operador';
+          } catch (e) {
+            rol = 'Operador';
+          }
+          setUsuario({ id: String(u.id), nombre, rol });
+        }
+      } catch (e) {
+        // silencioso
+      } finally {
+        setInitialized(true);
+      }
+    };
+    check();
+  }, []);
 
   const login = (user: UsuarioAutenticado) => {
     setUsuario(user);
@@ -83,7 +114,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         addAuditLog,
       }}
     >
-      {children}
+      {initialized ? children : null}
     </AuthContext.Provider>
   );
 };
