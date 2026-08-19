@@ -6,7 +6,11 @@ export type RolUsuario = 'Operador' | 'Jefe de Sector' | 'Administrador';
 export interface UsuarioAutenticado {
   id: string;
   nombre: string;
+  first_name?: string;
+  last_name?: string;
   rol: RolUsuario;
+  username?: string;
+  email?: string;
 }
 
 export interface AuditLog {
@@ -18,11 +22,32 @@ export interface AuditLog {
   modulo: string;
 }
 
+// Deriva el rol desde `empleado.rango` si está disponible,
+// con fallback a `profile.role` para compatibilidad antigua.
+export const deriveRol = (u: any): RolUsuario => {
+  try {
+    const rango = u?.empleado?.rango || u?.profile?.rango || '';
+    if (rango) {
+      const r = String(rango);
+      if (r === '8') return 'Administrador';
+      if (['1', '2', '3'].includes(r)) return 'Jefe de Sector';
+      return 'Operador';
+    }
+    const role = u?.profile?.role || '';
+    if (role === 'admin') return 'Administrador';
+    if (role === 'manager') return 'Jefe de Sector';
+    return 'Operador';
+  } catch (e) {
+    return 'Operador';
+  }
+};
+
 interface AuthContextType {
   usuario: UsuarioAutenticado | null;
   isAuthenticated: boolean;
   login: (usuario: UsuarioAutenticado) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   isAdmin: boolean;
   auditLogs: AuditLog[];
   addAuditLog: (log: Omit<AuditLog, 'id' | 'fechaHora'>) => void;
@@ -42,18 +67,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const resp = await apiFetch('/api/v1/auth/user/');
         if (resp.ok) {
           const u = await resp.json();
-          const nombre = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
-          // Mapear rol del perfil si existe
-          let rol: RolUsuario = 'Operador';
-          try {
-            const role = u.profile?.role || '';
-            if (role === 'admin') rol = 'Administrador';
-            else if (role === 'manager') rol = 'Jefe de Sector';
-            else rol = 'Operador';
-          } catch (e) {
-            rol = 'Operador';
-          }
-          setUsuario({ id: String(u.id), nombre, rol });
+          const first_name = u.first_name || '';
+          const last_name = u.last_name || '';
+          const nombre = `${first_name} ${last_name}`.trim() || u.username || u.email || '';
+          const rol = deriveRol(u);
+          setUsuario({ id: String(u.id), nombre, first_name, last_name, rol, username: u.username, email: u.email });
         }
       } catch (e) {
         // silencioso
@@ -63,6 +81,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
     check();
   }, []);
+
+  const refreshUser = async () => {
+    try {
+      const resp = await apiFetch('/api/v1/auth/user/');
+      if (resp.ok) {
+        const u = await resp.json();
+        const first_name = u.first_name || '';
+        const last_name = u.last_name || '';
+        const nombre = `${first_name} ${last_name}`.trim() || u.username || u.email || '';
+        const rol = deriveRol(u);
+        setUsuario({ id: String(u.id), nombre, first_name, last_name, rol, username: u.username, email: u.email });
+      } else {
+        setUsuario(null);
+      }
+    } catch (e) {
+      // silencioso
+    }
+  };
 
   const login = (user: UsuarioAutenticado) => {
     setUsuario(user);
@@ -74,7 +110,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
-  const logout = () => {
+  const logout = async () => {
     if (usuario) {
       addAuditLog({
         usuario: usuario.nombre,
@@ -82,6 +118,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         objetoAfectado: `Usuario ${usuario.nombre}`,
         modulo: 'Autenticación',
       });
+    }
+    try {
+      // Invalidar la sesión en el backend; si no se hace, la cookie de sesión
+      // sigue siendo válida y una recarga vuelve a autenticar al usuario.
+      await apiFetch('/api/v1/auth/logout/', { method: 'POST' });
+    } catch (e) {
+      // silencioso
     }
     setUsuario(null);
   };
@@ -109,6 +152,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         isAuthenticated: !!usuario,
         login,
         logout,
+        refreshUser,
         isAdmin: usuario?.rol === 'Administrador',
         auditLogs,
         addAuditLog,

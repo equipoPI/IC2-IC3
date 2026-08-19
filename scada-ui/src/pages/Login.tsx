@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Activity, Lock, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, RolUsuario } from "@/contexts/AuthContext";
+import { useAuth, deriveRol } from "@/contexts/AuthContext";
 import {
   Select,
   SelectContent,
@@ -18,8 +18,6 @@ import {
 const Login = () => {
   const [usuario, setUsuario] = useState("");
   const [contrasena, setContrasena] = useState("");
-  // El rol es interno y lo asigna el admin; por defecto local usamos 'Operador'
-  const [rol] = useState<RolUsuario>("Operador");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -83,9 +81,14 @@ const Login = () => {
       // Obtener datos del usuario autenticado
       const userResp = await fetch('/api/v1/auth/user/', { credentials: 'include' });
       const userData = userResp.ok ? await userResp.json() : null;
-      const nombre = userData ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.username : usuario;
+      const first_name = userData?.first_name || '';
+      const last_name = userData?.last_name || '';
+      const nombre = `${first_name} ${last_name}`.trim() || userData?.username || usuario;
+      // El rol se deriva del usuario devuelto por el backend (empleado.rango), no es fijo
+      const rol = deriveRol(userData);
 
-      login({ id: String(userData?.id || Date.now()), nombre, rol });
+      // Pasar todos los campos disponibles al context para evitar estado incompleto
+      login({ id: String(userData?.id || Date.now()), nombre, first_name, last_name, rol, username: userData?.username, email: userData?.email });
       toast({ title: 'Bienvenido', description: `Sesión iniciada como ${rol}` });
       navigate('/dashboard');
     } catch (err) {

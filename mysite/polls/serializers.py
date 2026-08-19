@@ -9,6 +9,7 @@ from django.utils import timezone
 
 class CustomRegisterSerializer(DefaultRegisterSerializer):
     registration_key = serializers.CharField(write_only=True, required=True)
+    documento = serializers.CharField(write_only=True, required=False)
     first_name = serializers.CharField(write_only=True, required=True)
     last_name = serializers.CharField(write_only=True, required=True)
 
@@ -40,11 +41,16 @@ class CustomRegisterSerializer(DefaultRegisterSerializer):
         # Asegurar que se incluyan nombres y apellidos en los datos limpios
         data['first_name'] = self.validated_data.get('first_name', '')
         data['last_name'] = self.validated_data.get('last_name', '')
-        # Asegurar que exista `username` — usar la parte local del email si falta
-        if not data.get('username'):
-            email = data.get('email', '')
-            username = email.split('@')[0] if email else f'user_{int(time.time())}'
-            data['username'] = username
+        # Si se proporciona `documento` en el registro, usarlo como `username` para normalizar
+        documento = self.validated_data.get('documento') or ''
+        if documento:
+            data['username'] = documento
+        else:
+            # Asegurar que exista `username` — usar la parte local del email si falta
+            if not data.get('username'):
+                email = data.get('email', '')
+                username = email.split('@')[0] if email else f'user_{int(time.time())}'
+                data['username'] = username
         return data
 """
 Serializers para Django REST Framework - Sistema SCADA
@@ -84,11 +90,18 @@ from allauth.account.models import EmailAddress
 
 class ProfileSerializer(serializers.ModelSerializer):
     user_username = serializers.CharField(source='user.username', read_only=True)
+    role = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = models.Profile
         fields = ['id', 'user', 'user_username', 'role', 'telefono', 'email_confirmed', 'last_seen', 'created_at']
         read_only_fields = ['created_at', 'last_seen']
+
+    def get_role(self, obj):
+        try:
+            return getattr(obj, 'role', 'operator')
+        except Exception:
+            return 'operator'
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -335,19 +348,20 @@ class EmpleadoSerializer(serializers.ModelSerializer):
     # Campos calculados expuestos por la API
     ultimo_fichaje = serializers.SerializerMethodField(read_only=True)
     ultimo_inicio_sesion = serializers.SerializerMethodField(read_only=True)
+    # Campo derivado: `rol` legible expuesto a la SPA (derivado desde `rango`; no escribir directamente)
+    rol = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = models.Empleado
         # Excluir contacto del API: el sistema no debe depender del teléfono
         fields = [
             'documento', 'nombre', 'apellido', 'seccion', 'seccion_nombre', 'fabrica', 'fabrica_nombre',
-            'rango', 'rol_actual', 'fecha_contratacion', 'direccion', 'email', 'estado', 'tipo_empleado',
+            'rango', 'rol', 'fecha_contratacion', 'direccion', 'email', 'estado',
             'ultimo_fichaje', 'ultimo_inicio_sesion', 'email_verified'
         ]
         extra_kwargs = {
             'documento': {'required': False},
             'rango': {'required': False},
-            'rol_actual': {'required': False},
             'contacto': {'required': False},
             'direccion': {'required': False},
             'email': {'required': False},
@@ -415,17 +429,46 @@ class EmpleadoSerializer(serializers.ModelSerializer):
                 user = User.objects.filter(username=username).first()
             if not user and email:
                 user = User.objects.filter(email__iexact=email).first()
-
             if not user:
-                user = User.objects.create_user(username=username or f'user_{int(time.time())}', email=email or '')
+                # Crear nuevo User preferiendo `documento` como username si está disponible.
+                preferred_username = username or ''
+                if not preferred_username and email:
+                    preferred_username = email.split('@')[0]
+                if not preferred_username:
+                    preferred_username = f'user_{int(time.time())}'
+                # No escribir en `profile.role`: el rol ahora se deriva desde Empleado.rango.
+
+                # Evitar colisiones: si existe otro usuario con el username preferido, generar alternativo
+                conflict = User.objects.filter(username=preferred_username).exclude(email__iexact=email).first()
+                if conflict:
+                    # preferimos usar el email-match user if exists, else append suffix
+                    preferred_username = f"{preferred_username}_{int(time.time()) % 10000}"
+
+                user = User.objects.create_user(username=preferred_username, email=email or '')
                 user.set_unusable_password()
                 user.is_active = True if email_verified else False
+                # Rellenar nombre y apellido desde el empleado si están vacíos
                 user.first_name = validated_data.get('nombre', '') or ''
                 user.last_name = validated_data.get('apellido', '') or ''
                 user.save()
 
-            # Asociar user al empleado
+            # Asociar user al empleado y normalizar username/atributos si es necesario
             try:
+                # Si el usuario actual no coincide con el username esperado (documento), y no hay colisión, renombrarlo
+                desired_username = str(validated_data.get('documento') or '')
+                if desired_username:
+                    existing_with_desired = User.objects.filter(username=desired_username).exclude(pk=user.pk).first()
+                    if not existing_with_desired and user.username != desired_username:
+                        user.username = desired_username
+                        user.save()
+
+                # Actualizar nombres si están vacíos
+                if (not user.first_name) and validated_data.get('nombre'):
+                    user.first_name = validated_data.get('nombre')
+                if (not user.last_name) and validated_data.get('apellido'):
+                    user.last_name = validated_data.get('apellido')
+                user.save()
+
                 if not getattr(empleado, 'user', None):
                     empleado.user = user
                     empleado.save()
@@ -461,6 +504,25 @@ class EmpleadoSerializer(serializers.ModelSerializer):
 
         return empleado
 
+    def get_rol(self, obj):
+        # Mapear código rango a etiqueta comprensible por la SPA
+        try:
+            code = str(obj.rango)
+            if code == '8':
+                return 'Administrador'
+            if code in ['1', '2', '3']:
+                return 'Jefe de Sector'
+            return 'Operador'
+        except Exception:
+            # Fallback: valor por defecto
+            return 'Operador'
+
+    def update(self, instance, validated_data):
+        # Comportamiento por defecto
+        instance = super().update(instance, validated_data)
+        # No sincronizamos ni escribimos en `Profile.role`; el rol se deriva.
+        return instance
+
     def validate_rango(self, value):
         MAP = {
             'EMPLEADO': '6', 'JEFE': '3', 'ADMIN': '2', 'DIRECTOR': '1', 'GERENTE': '2',
@@ -479,9 +541,78 @@ class EmpleadoSerializer(serializers.ModelSerializer):
         raise serializers.ValidationError('Rango inválido')
 
     def update(self, instance, validated_data):
+        # Aplicar cambios al empleado
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
+
+        # Sincronizar cambios relevantes con el User y EmailAddress asociados
+        try:
+            email = (getattr(instance, 'email', '') or '').strip()
+            documento = str(getattr(instance, 'documento', '') or '')
+
+            user = None
+            # Preferir relación directa
+            if getattr(instance, 'user', None):
+                user = instance.user
+
+            # Buscar por username=documento
+            if not user and documento:
+                user = User.objects.filter(username=documento).first()
+
+            # Buscar por email
+            if not user and email:
+                user = User.objects.filter(email__iexact=email).first()
+
+            # Si no existe un usuario asociado, crear uno mínimo
+            if not user:
+                preferred_username = documento or (email.split('@')[0] if email else f'user_{int(time.time())}')
+                conflict = User.objects.filter(username=preferred_username).first()
+                if conflict:
+                    preferred_username = f"{preferred_username}_{int(time.time()) % 10000}"
+                user = User.objects.create_user(username=preferred_username, email=email or '')
+                user.set_unusable_password()
+                user.save()
+                instance.user = user
+                instance.save()
+
+            # Actualizar nombre/apellido
+            changed = False
+            if instance.nombre and user.first_name != instance.nombre:
+                user.first_name = instance.nombre
+                changed = True
+            if instance.apellido and user.last_name != instance.apellido:
+                user.last_name = instance.apellido
+                changed = True
+
+            # Intentar normalizar username si documento cambió
+            if documento and user.username != documento:
+                existing = User.objects.filter(username=documento).exclude(pk=user.pk).first()
+                if not existing:
+                    user.username = documento
+                    changed = True
+
+            # Actualizar email si cambió
+            if email and user.email != email:
+                user.email = email
+                changed = True
+
+            if changed:
+                user.save()
+
+            # Asegurar EmailAddress sincronizada
+            if email:
+                ea = EmailAddress.objects.filter(user=user, email__iexact=email).first()
+                if not ea:
+                    EmailAddress.objects.create(user=user, email=email, primary=True, verified=False)
+                else:
+                    if not ea.primary:
+                        ea.primary = True
+                        ea.save()
+        except Exception:
+            # No bloquear la actualización del empleado por errores en sincronización
+            pass
+
         return instance
 
     def get_ultimo_fichaje(self, obj):
@@ -515,7 +646,27 @@ class EmpleadoSerializer(serializers.ModelSerializer):
                 return ''
             from django.contrib.auth.models import User
             from django.db.models import Q
-            user = User.objects.filter(Q(username=doc) | Q(email=doc)).first()
+            # Buscar usuario por username igual al documento o por email del empleado
+            user = None
+            try:
+                user = User.objects.filter(Q(username=doc)).first()
+            except Exception:
+                user = None
+            if not user:
+                emp_email = getattr(obj, 'email', None) or ''
+                if emp_email:
+                    try:
+                        user = User.objects.filter(Q(email__iexact=emp_email)).first()
+                    except Exception:
+                        user = None
+            # Si no hay user directo, intentar por EmailAddress que apunte al usuario
+            if not user:
+                try:
+                    ea = EmailAddress.objects.filter(email__iexact=(getattr(obj, 'email', '') or '')).first()
+                    if ea:
+                        user = getattr(ea, 'user', None)
+                except Exception:
+                    user = None
             if user:
                 if getattr(user, 'last_login', None):
                     return user.last_login.isoformat()

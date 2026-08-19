@@ -55,7 +55,7 @@ const Register = () => {
     }
     setIsLoading(true);
     try {
-      const username = email ? email.split('@')[0] : '';
+      const username = documento ? documento : (email ? email.split('@')[0] : '');
 
       // Obtener cookie CSRF
       const getCookie = (name: string) => {
@@ -67,11 +67,14 @@ const Register = () => {
       const headers: any = { 'Content-Type': 'application/json' };
       if (csrftoken) headers['X-CSRFToken'] = csrftoken;
 
+      const regPayload: any = { username, email, password1, password2, first_name: firstName, last_name: lastName, registration_key: registrationKey };
+      if (documento && documento.trim()) regPayload.documento = documento.trim();
+
       const res = await fetch(`/api/v1/auth/registration/`, {
         method: 'POST',
         credentials: 'include',
         headers,
-        body: JSON.stringify({ username, email, password1, password2, first_name: firstName, last_name: lastName, registration_key: registrationKey }),
+        body: JSON.stringify(regPayload),
       });
       if (res.ok) {
         toast({ title: "Registro enviado", description: "Revise su correo para confirmar la cuenta" });

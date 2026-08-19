@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { RolUsuario } from "@/contexts/AuthContext";
-import { ShieldCheck, Lock, Unlock, History } from "lucide-react";
+import { Lock, Unlock, History } from "lucide-react";
 import HistorialEmpleadoDialog from "@/components/HistorialEmpleadoDialog";
 import { useNotifications } from "@/contexts/NotificationsContext";
 import apiFetch from "@/lib/api";
@@ -40,14 +40,14 @@ const initialEmpleados: Empleado[] = [];
 
 // Mapeo reducido: códigos -> etiqueta simple
 const RANGO_MAP: Record<string, string> = {
-  '1': 'Administrador',
-  '2': 'Administrador',
-  '3': 'Jefe',
-  '4': 'Empleado',
-  '5': 'Empleado',
+  '1': 'Director',
+  '2': 'Gerente',
+  '3': 'Jefe de Sección',
+  '4': 'Coordinador',
+  '5': 'Especialista',
   '6': 'Empleado',
-  '7': 'Empleado',
-  '8': 'Empleado',
+  '7': 'Pasante',
+  '8': 'Administrador',
 };
 
 const getRolBadgeClass = (rol: RolUsuario) => {
@@ -86,7 +86,7 @@ const getRangoBadgeVariant = (rango: string) => {
   };
 
 const GestionEmpleados = () => {
-  const { isAdmin, addAuditLog, usuario, auditLogs } = useAuth();
+  const { isAdmin, addAuditLog, usuario, auditLogs, refreshUser } = useAuth();
   const { addNotificacion } = useNotifications();
   const [historialOpen, setHistorialOpen] = useState(false);
   const [empleadoHistorial, setEmpleadoHistorial] = useState<Empleado | null>(null);
@@ -97,9 +97,8 @@ const GestionEmpleados = () => {
   const [empleadoToDelete, setEmpleadoToDelete] = useState<Empleado | null>(null);
   const [blockDialogOpen, setBlockDialogOpen] = useState(false);
   const [empleadoToBlock, setEmpleadoToBlock] = useState<Empleado | null>(null);
-  const [rolDialogOpen, setRolDialogOpen] = useState(false);
-  const [empleadoToPromote, setEmpleadoToPromote] = useState<Empleado | null>(null);
-  const [newRol, setNewRol] = useState<RolUsuario>("Operador");
+  // removed persistent `rol` UI: no role-change dialog/state
+  
 
   const columns: Column<Empleado>[] = [
     { key: "id", header: "ID", className: "font-mono text-sm" },
@@ -109,15 +108,7 @@ const GestionEmpleados = () => {
       header: "Rango",
       render: (emp) => <Badge variant={getRangoBadgeVariant(emp.rango)}>{emp.rango}</Badge>,
     },
-    {
-      key: "rol",
-      header: "Rol",
-      render: (emp) => (
-        <Badge variant="outline" className={getRolBadgeClass(emp.rol)}>
-          {emp.rol}
-        </Badge>
-      ),
-    },
+    // `rol` persistente eliminado: mostrar sólo `rango` derivado para evitar inconsistencias
     { key: "fabricaAsignada", header: "Fábrica Asignada" },
     { key: "email", header: "Email" },
     // columna de contacto oculta intencionalmente por privacidad/UX
@@ -147,11 +138,11 @@ const GestionEmpleados = () => {
           nombre: e.nombre || '' ,
           apellido: e.apellido || '' ,
           nombreCompleto: `${e.nombre || ''} ${e.apellido || ''}`.trim(),
-          rango: RANGO_MAP[String(e.rango)] || RANGO_MAP[e.rango] || 'Empleado',
+            rango: RANGO_MAP[String(e.rango)] || RANGO_MAP[e.rango] || 'Empleado',
           fabricaAsignada: e.fabrica_nombre || '',
           // Priorizar `ultimo_inicio_sesion` si está presente, sino `ultimo_fichaje`
           ultimoFichaje: formatDateTime(e.ultimo_inicio_sesion || e.ultimo_fichaje || ''),
-          rol: e.rol_actual || 'Operador',
+            // rol eliminado: derivar en runtime desde `rango` cuando sea necesario
           activo: (e.estado || '').toUpperCase() === 'ACTIVO',
           email: e.email || '',
         }));
@@ -169,8 +160,25 @@ const GestionEmpleados = () => {
   };
 
   const handleEdit = (empleado: Empleado) => {
-    setSelectedEmpleado(empleado);
-    setIsFormOpen(true);
+    const doOpen = async () => {
+      try {
+        // Intentar obtener detalle completo desde backend (incluye fecha_contratacion, seccion, etc.)
+        const resp = await apiFetch(`/api/v1/empleados/${encodeURIComponent(empleado.id)}/`);
+        if (resp.ok) {
+          const full = await resp.json();
+          const normalized = { ...full, id: full.documento || full.username || full.id };
+          setSelectedEmpleado(normalized as any);
+        } else {
+          // fallback a la versión reducida
+          setSelectedEmpleado(empleado);
+        }
+      } catch (e) {
+        setSelectedEmpleado(empleado);
+      } finally {
+        setIsFormOpen(true);
+      }
+    };
+    doOpen();
   };
 
   const handleDelete = (empleado: Empleado) => {
@@ -219,7 +227,8 @@ const GestionEmpleados = () => {
             documento: selectedEmpleado.id,
             nombre: data.nombre,
             apellido: data.apellido,
-            rol_actual: data.rol || data.rol_actual,
+              rango: data.rango,
+              // rol_actual removed: backend derives role from `rango`
             fabrica: data.fabrica ? Number(data.fabrica) : undefined,
             seccion: data.seccion ? Number(data.seccion) : undefined,
             fecha_contratacion: data.fecha_contratacion,
@@ -242,10 +251,24 @@ const GestionEmpleados = () => {
             apellido: updated.apellido,
             nombreCompleto: `${updated.nombre} ${updated.apellido}`,
             fabricaAsignada: updated.fabrica_nombre || e.fabricaAsignada,
+            rango: RANGO_MAP[String(updated.rango)] || RANGO_MAP[updated.rango] || e.rango,
             ultimoFichaje: formatDateTime(updated.ultimo_inicio_sesion || updated.ultimo_fichaje || e.ultimoFichaje),
             email: updated.email || e.email,
             activo: (updated.estado || '').toUpperCase() === 'ACTIVO',
           } : e));
+          // Emitir evento global para que widgets/perfil recarguen datos
+          try {
+            window.dispatchEvent(new CustomEvent('empleado:updated', { detail: { documento: updated.documento, email: updated.email } }));
+          } catch (e) {}
+          // Si actualizamos al usuario actualmente autenticado, refrescar contexto global
+          try {
+            const isCurrentUser = usuario && (String(updated.documento) === String(usuario.username) || (updated.email && usuario.email && String(updated.email) === String(usuario.email)));
+            if (isCurrentUser) {
+              await refreshUser();
+            }
+          } catch (e) {
+            // silencioso
+          }
           addAuditLog({ usuario: usuario?.nombre || 'Sistema', accion: 'Modificación de Empleado', objetoAfectado: `${data.nombre} ${data.apellido} (${selectedEmpleado.id})`, modulo: 'Empleados' });
           toast({ title: 'Empleado actualizado', description: 'Sincronizado con backend.' });
         } catch (err) {
@@ -260,7 +283,8 @@ const GestionEmpleados = () => {
             documento: data.documento,
             nombre: data.nombre,
             apellido: data.apellido,
-            rol_actual: data.rol || data.rol_actual,
+            rango: data.rango,
+            // rol_actual removed: rely on `rango`
             fabrica: data.fabrica ? Number(data.fabrica) : undefined,
             seccion: data.seccion ? Number(data.seccion) : undefined,
             fecha_contratacion: data.fecha_contratacion,
@@ -286,11 +310,12 @@ const GestionEmpleados = () => {
             rango: RANGO_MAP[created.rango] || 'Empleado',
             fabricaAsignada: created.fabrica_nombre || '',
             ultimoFichaje: formatDateTime(created.ultimo_inicio_sesion || created.ultimo_fichaje || ''),
-            rol: created.rol_actual || 'Operador',
             activo: created.estado === 'ACTIVO',
           };
           setEmpleados((prev) => [...prev, newEmpleado]);
           addAuditLog({ usuario: usuario?.nombre || 'Sistema', accion: 'Alta de Empleado', objetoAfectado: `${newEmpleado.nombreCompleto} (${newEmpleado.id})`, modulo: 'Empleados' });
+          // Emitir evento global para que Perfil/otros recarguen datos
+          try { window.dispatchEvent(new CustomEvent('empleado:updated', { detail: { documento: created.documento, email: created.email } })); } catch (e) {}
           toast({ title: 'Empleado creado', description: 'Sincronizado con backend.' });
         } catch (err) {
           const newEmpleado: Empleado = {
@@ -337,33 +362,7 @@ const GestionEmpleados = () => {
     setEmpleadoToBlock(null);
   };
 
-  const handleEditRol = (empleado: Empleado) => {
-    setEmpleadoToPromote(empleado);
-    setNewRol(empleado.rol);
-    setRolDialogOpen(true);
-  };
-
-  const confirmRolChange = () => {
-    if (empleadoToPromote && newRol !== empleadoToPromote.rol) {
-      const oldRol = empleadoToPromote.rol;
-      setEmpleados((prev) =>
-        prev.map((e) => (e.id === empleadoToPromote.id ? { ...e, rol: newRol } : e))
-      );
-      addAuditLog({
-        usuario: usuario?.nombre || "Sistema",
-        accion: "Cambio de Rol",
-        objetoAfectado: `${empleadoToPromote.nombreCompleto}: ${oldRol} → ${newRol}`,
-        modulo: "Empleados",
-      });
-      addNotificacion({
-        titulo: "Cambio de rol",
-        mensaje: `${usuario?.nombre || "Admin"} cambió el rol de ${empleadoToPromote.nombreCompleto}: ${oldRol} → ${newRol}.`,
-        tipo: 'info',
-      });
-    }
-    setRolDialogOpen(false);
-    setEmpleadoToPromote(null);
-  };
+  
 
   const handleViewHistorial = (empleado: Empleado) => {
     setEmpleadoHistorial(empleado);
@@ -393,14 +392,7 @@ const GestionEmpleados = () => {
       </Button>
       {isAdmin && (
         <>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleEditRol(empleado)}
-            title="Editar Rol"
-          >
-            <ShieldCheck className="h-4 w-4 text-primary" />
-          </Button>
+          {/* Editar rango se hará en el formulario del empleado (campo `rango`). */}
           <Button
             variant="ghost"
             size="icon"
@@ -481,33 +473,7 @@ const GestionEmpleados = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Role Change Dialog */}
-      <Dialog open={rolDialogOpen} onOpenChange={setRolDialogOpen}>
-        <DialogContent className="sm:max-w-sm bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="text-foreground">Editar Rol</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              Cambiar rol de <span className="font-medium text-foreground">{empleadoToPromote?.nombreCompleto}</span>
-            </p>
-            <Select value={newRol} onValueChange={(v) => setNewRol(v as RolUsuario)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-popover border-border">
-                <SelectItem value="Operador">Operador</SelectItem>
-                <SelectItem value="Jefe de Sector">Jefe de Sector</SelectItem>
-                <SelectItem value="Administrador">Administrador</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRolDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={confirmRolChange}>Guardar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Role change UI removed: use `rango` field in FormularioEmpleado */}
       {/* Historial Dialog */}
       {empleadoHistorial && (
         <HistorialEmpleadoDialog

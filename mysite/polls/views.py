@@ -285,13 +285,14 @@ class EmpleadoViewSet(viewsets.ModelViewSet):
                     'fabrica': None,
                     'fabrica_nombre': '',
                     'rango': None,
-                    'rol_actual': perfil.get_role_display() if hasattr(perfil, 'get_role_display') else perfil.role,
+                    'rol': perfil.get_role_display() if hasattr(perfil, 'get_role_display') else (perfil.role if perfil and perfil.role else 'Empleado'),
                     'fecha_contratacion': None,
                     'contacto': perfil.telefono if getattr(perfil, 'telefono', None) else '',
                     'direccion': '',
                     'email': u.email or '',
                     'estado': 'ACTIVO' if u.is_active else 'OTRO',
-                    'tipo_empleado': 'OPERARIO',
+                    # Defaulting role to match previous behavior; frontend will read `rango` when available.
+                    # `tipo_empleado` eliminado: no incluir clave en payload
                 }
                 serialized.append(usuario_entry)
 

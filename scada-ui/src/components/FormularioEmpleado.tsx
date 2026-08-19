@@ -27,7 +27,6 @@ export interface Empleado {
   rango: string;
   fabricaAsignada: string;
   ultimoFichaje: string;
-  rol: RolUsuario;
   activo: boolean;
   email?: string;
   contacto?: string;
@@ -45,7 +44,6 @@ interface FormularioEmpleadoProps {
     rango: string;
     fabrica: string; // id
     seccion?: string; // id
-    rol: RolUsuario;
     activo: boolean;
     email?: string;
     fecha_contratacion?: string;
@@ -53,7 +51,16 @@ interface FormularioEmpleadoProps {
   empleado?: Empleado | null;
 }
 
-const rangos = ["Empleado", "Jefe", "Administrador"];
+const RANGO_OPTIONS = [
+  { value: '1', label: 'Director' },
+  { value: '2', label: 'Gerente' },
+  { value: '3', label: 'Jefe de Sección' },
+  { value: '4', label: 'Coordinador' },
+  { value: '5', label: 'Especialista' },
+  { value: '6', label: 'Empleado' },
+  { value: '7', label: 'Pasante' },
+  { value: '8', label: 'Administrador' },
+];
 
 const roles: RolUsuario[] = ["Operador", "Jefe de Sector", "Administrador"];
 
@@ -76,7 +83,6 @@ const FormularioEmpleado = ({
     fabrica: "",
       seccion: "",
       ultimo_fichaje: "",
-    rol: "Operador" as RolUsuario,
     activo: true,
     email: "",
     fecha_contratacion: "",
@@ -93,7 +99,6 @@ const FormularioEmpleado = ({
       fabrica: '',
       seccion: '',
       ultimo_fichaje: '',
-      rol: 'Operador' as RolUsuario,
       activo: true,
       email: '',
       fecha_contratacion: '',
@@ -112,8 +117,14 @@ const FormularioEmpleado = ({
     const documento = e.documento || e.id || e.username || '';
     const nombre = e.nombre || e.first_name || (e.nombreCompleto ? String(e.nombreCompleto).split(' ')[0] : '');
     const apellido = e.apellido || e.last_name || (e.nombreCompleto ? String(e.nombreCompleto).split(' ').slice(1).join(' ') : '');
-    const rango = e.rango || e.rango_codigo || '';
-    const rol = e.rol_actual || e.rol || 'Operador';
+    let rango = e.rango || e.rango_codigo || '';
+    // Si el backend/otro componente nos pasó la etiqueta en lugar del código,
+    // intentar mapearla al código correspondiente.
+    if (rango && isNaN(Number(rango))) {
+      const found = RANGO_OPTIONS.find(opt => String(opt.label).toLowerCase() === String(rango).toLowerCase());
+      if (found) rango = found.value;
+    }
+    // rol se deriva en runtime desde `rango`, no se captura en el formulario
     const email = e.email || (e.profile && e.profile.email) || '';
     const contacto = '';
     const fabricaVal = (e.fabrica !== undefined && e.fabrica !== null) ? String(e.fabrica) : (e.fabrica_nombre || e.fabricaAsignada || '');
@@ -129,7 +140,6 @@ const FormularioEmpleado = ({
       fabrica: fabricaVal || '',
       seccion: seccionVal || '',
       ultimo_fichaje: ultimo || '',
-      rol: rol as RolUsuario,
       activo: activoVal !== undefined ? activoVal : true,
       email: email || '',
       fecha_contratacion: e.fecha_contratacion || e.fechaContratacion || '',
@@ -234,8 +244,8 @@ const FormularioEmpleado = ({
                   <SelectValue placeholder="Seleccione un rango" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border-border">
-                  {rangos.map((rango) => (
-                    <SelectItem key={rango} value={rango}>{rango}</SelectItem>
+                  {RANGO_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -288,19 +298,7 @@ const FormularioEmpleado = ({
               <Input id="fecha_contratacion" type="date" value={formData.fecha_contratacion} onChange={(e) => setFormData({ ...formData, fecha_contratacion: e.target.value })} />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="rol" className="text-foreground">Rol del Sistema</Label>
-              <Select value={formData.rol} onValueChange={(value) => setFormData({ ...formData, rol: value as RolUsuario })}>
-                <SelectTrigger id="rol">
-                  <SelectValue placeholder="Seleccione un rol" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover border-border">
-                  {roles.map((rol) => (
-                    <SelectItem key={rol} value={rol}>{rol}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* `rol` persistente eliminado: se deriva desde `rango`. No mostrar campo editable. */}
             </div>
           </div>
 

@@ -100,8 +100,8 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
 
       <aside
         className={cn(
-          "fixed top-16 left-0 z-40 h-[calc(100vh-4rem)] w-72 bg-sidebar border-r border-sidebar-border transition-transform duration-300 ease-in-out lg:translate-x-0",
-          isOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed top-16 left-0 z-40 h-[calc(100vh-4rem)] w-72 bg-sidebar border-r border-sidebar-border transition-transform duration-300 ease-in-out",
+          isOpen ? "translate-x-0 lg:translate-x-0" : "-translate-x-full lg:-translate-x-full"
         )}
       >
         <div className="flex flex-col h-full">

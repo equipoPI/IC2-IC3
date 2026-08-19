@@ -129,7 +129,7 @@ logger_mqtt.debug('Mensaje MQTT recibido: topic=/sensor/temperatura, payload=25.
 ✅ ComunicacionMQTT
 
 ### Modelos Mejorados (2):
-✅ **Empleado** - Agregados: `tipo_empleado`, `rol_actual`  
+✅ **Empleado** - Agregados: `tipo_empleado` (removido), `rol_actual` (removido). Ahora el rol se deriva desde `Empleado.rango`.
 ✅ **CambioEmpleado** (reemplaza Promocion) - Sistema completo de cambios
 
 ---

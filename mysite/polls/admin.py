@@ -24,7 +24,7 @@ class SeccionAdmin(admin.ModelAdmin):
 class EmpleadoAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'apellido', 'documento', 'fabrica', 'seccion', 'estado', 'email')
     search_fields = ('nombre', 'apellido', 'documento', 'email')
-    list_filter = ('estado', 'rango', 'tipo_empleado')
+    list_filter = ('estado', 'rango')
 
 
 @admin.register(DispositivoSCADA)

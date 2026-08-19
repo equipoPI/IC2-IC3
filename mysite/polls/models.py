@@ -80,6 +80,7 @@ class Empleado(models.Model):
         ('ACTIVO', 'Activo'),
         ('DESPEDIDO', 'Despedido'),
         ('JUBILADO', 'Jubilado'),
+        ('SUSPENDIDO', 'Suspendido'),
         ('OTRO', 'Otro'),
     ]
 
@@ -98,7 +99,7 @@ class Empleado(models.Model):
         ('5', 'Especialista'),
         ('6', 'Empleado'),
         ('7', 'Pasante'),
-        ('8', 'Contratista'),
+        ('8', 'Administrador'),
     ]
 
     rango = models.CharField(max_length=50, choices=RANGO_OPCIONES)
@@ -111,21 +112,8 @@ class Empleado(models.Model):
     email = models.EmailField(unique=True)
     estado = models.CharField(max_length=20, choices=ESTADOS_EMPLEADO, default='ACTIVO')
 
-    tipo_empleado = models.CharField(
-        max_length=50,
-        choices=[
-            ('OPERARIO', 'Operario'),
-            ('SUPERVISOR', 'Supervisor'),
-            ('TECNICO', 'Técnico'),
-            ('JEFE_PLANTA', 'Jefe de Planta'),
-            ('ADMINISTRATIVO', 'Administrativo'),
-            ('ADMINISTRADOR', 'Administrador'),
-        ],
-        default='OPERARIO',
-        help_text="Tipo de empleado"
-    )
-
-    rol_actual = models.CharField(max_length=100, blank=True, null=True, help_text="Rol o cargo actual")
+    # `tipo_empleado` removido: usar `rango` como fuente canónica de autorización.
+    # Si se desea conservar valores históricos, backfill previo es necesario.
 
     def save(self, *args, **kwargs):
         # Evitar intentar obtener el objeto original cuando el PK ya fue asignado
@@ -167,22 +155,17 @@ class EmpleadoSeccion(models.Model):
         return f"{self.empleado} en {self.seccion} desde {self.fecha_union}"
 
 
-# Perfil/Role para usuarios del sistema
-ROLE_CHOICES = [
-    ('operator', 'Empleado'),
-    ('manager', 'Jefe'),
-    ('admin', 'Administrador'),
-]
-
+# Perfil para usuarios del sistema: rol derivado desde `Empleado.rango`
 
 class Profile(models.Model):
-    """Perfil extendido para `User` con rol y metadatos adicionales.
+    """Perfil extendido para `User` con metadatos adicionales.
 
-    - `role` define capacidades (operator/manager/admin).
-    - `email_confirmed` se usa para bloqueo hasta verificación por email.
+    Nota: el campo `role` fue eliminado como columna persistente. El rol
+    efectivo se deriva de la relación `user.empleado.rango`. Se exponen
+    utilidades `role` (propiedad) y `get_role_display()` para compatibilidad
+    con código que previamente consumía esas llamadas.
     """
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='operator')
     telefono = models.CharField(max_length=30, blank=True, null=True)
     email_confirmed = models.BooleanField(default=False)
     last_seen = models.DateTimeField(null=True, blank=True)
@@ -194,6 +177,41 @@ class Profile(models.Model):
 
     def __str__(self):
         return f"{self.user.username} ({self.get_role_display()})"
+
+    @property
+    def role(self):
+        """Código de rol interno derivado desde `Empleado.rango`.
+
+        Devuelve uno de: 'admin', 'manager', 'operator'. Si no existe
+        un `Empleado` asociado, retorna 'operator' por defecto.
+        """
+        try:
+            emp = getattr(self.user, 'empleado', None)
+            if emp and getattr(emp, 'rango', None):
+                r = str(emp.rango)
+                if r == '8':
+                    return 'admin'
+                if r in ['1', '2', '3']:
+                    return 'manager'
+                return 'operator'
+        except Exception:
+            pass
+        return 'operator'
+
+    def get_role_display(self):
+        """Etiqueta legible del rol derivada desde `Empleado.rango`.
+
+        Mantiene la compatibilidad con llamadas existentes a
+        `perfil.get_role_display()`.
+        """
+        try:
+            emp = getattr(self.user, 'empleado', None)
+            if emp and getattr(emp, 'rango', None):
+                mapping = dict(getattr(models.Empleado, 'RANGO_OPCIONES', []))
+                return mapping.get(str(emp.rango), 'Empleado')
+        except Exception:
+            pass
+        return 'Empleado'
 
 
 class RegistrationConfig(models.Model):
