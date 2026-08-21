@@ -113,13 +113,29 @@ const GestionEmpleados = () => {
     { key: "email", header: "Email" },
     // columna de contacto oculta intencionalmente por privacidad/UX
     {
-      key: "activo",
+      key: "estado",
       header: "Estado",
-      render: (emp) => (
-        <Badge variant={emp.activo ? "default" : "destructive"}>
-          {emp.activo ? "Activo" : "Bloqueado"}
-        </Badge>
-      ),
+      render: (emp) => {
+        let variant: "default" | "destructive" | "secondary" | "outline" = "outline";
+        let label = emp.estado || "Otro";
+        if (label === "ACTIVO") {
+          variant = "default";
+          label = "Activo";
+        } else if (label === "DESPEDIDO") {
+          variant = "destructive";
+          label = "Despedido";
+        } else if (label === "SUSPENDIDO") {
+          variant = "destructive";
+          label = "Suspendido";
+        } else if (label === "JUBILADO") {
+          variant = "secondary";
+          label = "Jubilado";
+        } else {
+          variant = "outline";
+          label = "Otro";
+        }
+        return <Badge variant={variant}>{label}</Badge>;
+      },
     },
     { key: "ultimoFichaje", header: "Último Fichaje", className: "text-muted-foreground text-sm" },
   ];
@@ -138,12 +154,13 @@ const GestionEmpleados = () => {
           nombre: e.nombre || '' ,
           apellido: e.apellido || '' ,
           nombreCompleto: `${e.nombre || ''} ${e.apellido || ''}`.trim(),
-            rango: RANGO_MAP[String(e.rango)] || RANGO_MAP[e.rango] || 'Empleado',
+          rango: RANGO_MAP[String(e.rango)] || RANGO_MAP[e.rango] || 'Empleado',
           fabricaAsignada: e.fabrica_nombre || '',
           // Priorizar `ultimo_inicio_sesion` si está presente, sino `ultimo_fichaje`
           ultimoFichaje: formatDateTime(e.ultimo_inicio_sesion || e.ultimo_fichaje || ''),
-            // rol eliminado: derivar en runtime desde `rango` cuando sea necesario
+          // rol eliminado: derivar en runtime desde `rango` cuando sea necesario
           activo: (e.estado || '').toUpperCase() === 'ACTIVO',
+          estado: e.estado || 'ACTIVO',
           email: e.email || '',
         }));
         setEmpleados(mapped);
@@ -227,14 +244,14 @@ const GestionEmpleados = () => {
             documento: selectedEmpleado.id,
             nombre: data.nombre,
             apellido: data.apellido,
-              rango: data.rango,
-              // rol_actual removed: backend derives role from `rango`
+            rango: data.rango,
+            // rol_actual removed: backend derives role from `rango`
             fabrica: data.fabrica ? Number(data.fabrica) : undefined,
             seccion: data.seccion ? Number(data.seccion) : undefined,
             fecha_contratacion: data.fecha_contratacion,
             email: data.email,
             direccion: data.direccion,
-            estado: data.activo ? 'ACTIVO' : 'OTRO',
+            estado: data.estado || 'ACTIVO',
           };
           // Eliminar propiedades vacías para evitar validación DRF en campos no requeridos
           Object.keys(payload).forEach((k) => {
@@ -255,6 +272,7 @@ const GestionEmpleados = () => {
             ultimoFichaje: formatDateTime(updated.ultimo_inicio_sesion || updated.ultimo_fichaje || e.ultimoFichaje),
             email: updated.email || e.email,
             activo: (updated.estado || '').toUpperCase() === 'ACTIVO',
+            estado: updated.estado || 'ACTIVO',
           } : e));
           // Emitir evento global para que widgets/perfil recarguen datos
           try {
@@ -272,7 +290,7 @@ const GestionEmpleados = () => {
           addAuditLog({ usuario: usuario?.nombre || 'Sistema', accion: 'Modificación de Empleado', objetoAfectado: `${data.nombre} ${data.apellido} (${selectedEmpleado.id})`, modulo: 'Empleados' });
           toast({ title: 'Empleado actualizado', description: 'Sincronizado con backend.' });
         } catch (err) {
-          setEmpleados((prev) => prev.map((e) => e.id === selectedEmpleado.id ? { ...e, ...data, nombreCompleto: `${data.nombre} ${data.apellido}` } : e));
+          setEmpleados((prev) => prev.map((e) => e.id === selectedEmpleado.id ? { ...e, ...data, nombreCompleto: `${data.nombre} ${data.apellido}`, estado: data.estado || 'ACTIVO' } : e));
           addAuditLog({ usuario: usuario?.nombre || 'Sistema', accion: 'Modificación local de Empleado', objetoAfectado: `${data.nombre} ${data.apellido} (${selectedEmpleado.id})`, modulo: 'Empleados' });
           toast({ title: 'Actualizado localmente', description: 'Backend requiere campos adicionales; sincronización pendiente.' });
         }
@@ -290,7 +308,7 @@ const GestionEmpleados = () => {
             fecha_contratacion: data.fecha_contratacion,
             email: data.email,
             direccion: data.direccion,
-            estado: data.activo ? 'ACTIVO' : 'OTRO',
+            estado: data.estado || 'ACTIVO',
             // Alta desde el panel de Empleados: marcar email como verificado y activar usuario
             email_verified: true,
           };
@@ -311,6 +329,7 @@ const GestionEmpleados = () => {
             fabricaAsignada: created.fabrica_nombre || '',
             ultimoFichaje: formatDateTime(created.ultimo_inicio_sesion || created.ultimo_fichaje || ''),
             activo: created.estado === 'ACTIVO',
+            estado: created.estado || 'ACTIVO',
           };
           setEmpleados((prev) => [...prev, newEmpleado]);
           addAuditLog({ usuario: usuario?.nombre || 'Sistema', accion: 'Alta de Empleado', objetoAfectado: `${newEmpleado.nombreCompleto} (${newEmpleado.id})`, modulo: 'Empleados' });
@@ -323,6 +342,7 @@ const GestionEmpleados = () => {
             ...data,
             nombreCompleto: `${data.nombre} ${data.apellido}`,
             ultimoFichaje: new Date().toLocaleString('es-ES'),
+            estado: data.estado || 'ACTIVO',
           };
           setEmpleados((prev) => [...prev, newEmpleado]);
           addAuditLog({ usuario: usuario?.nombre || 'Sistema', accion: 'Alta de Empleado (local)', objetoAfectado: `${data.nombre} ${data.apellido} (${newEmpleado.id})`, modulo: 'Empleados' });
@@ -342,21 +362,43 @@ const GestionEmpleados = () => {
 
   const confirmBlock = () => {
     if (empleadoToBlock) {
-      const newStatus = !empleadoToBlock.activo;
-      setEmpleados((prev) =>
-        prev.map((e) => (e.id === empleadoToBlock.id ? { ...e, activo: newStatus } : e))
-      );
-      addAuditLog({
-        usuario: usuario?.nombre || "Sistema",
-        accion: newStatus ? "Desbloqueo de Empleado" : "Bloqueo de Empleado",
-        objetoAfectado: `${empleadoToBlock.nombreCompleto} (${empleadoToBlock.id})`,
-        modulo: "Empleados",
-      });
-      addNotificacion({
-        titulo: newStatus ? "Acceso desbloqueado" : "Acceso bloqueado",
-        mensaje: `${usuario?.nombre || "Admin"} ha ${newStatus ? "desbloqueado" : "bloqueado"} a ${empleadoToBlock.nombreCompleto}.`,
-        tipo: newStatus ? 'success' : 'warning',
-      });
+      const isBlocked = empleadoToBlock.activo; // Si estaba activo, ahora lo bloqueamos (SUSPENDIDO)
+      const nuevoEstado = isBlocked ? 'SUSPENDIDO' : 'ACTIVO';
+      const doBlock = async () => {
+        try {
+          const resp = await apiFetch(`/api/v1/empleados/${empleadoToBlock.id}/`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado: nuevoEstado }),
+          });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const updated = await resp.json();
+          
+          setEmpleados((prev) =>
+            prev.map((e) => (e.id === empleadoToBlock.id ? {
+              ...e,
+              activo: updated.estado === 'ACTIVO',
+              estado: updated.estado,
+            } : e))
+          );
+
+          addAuditLog({
+            usuario: usuario?.nombre || "Sistema",
+            accion: nuevoEstado === 'ACTIVO' ? "Desbloqueo de Empleado" : "Bloqueo de Empleado",
+            objetoAfectado: `${empleadoToBlock.nombreCompleto} (${empleadoToBlock.id})`,
+            modulo: "Empleados",
+          });
+          addNotificacion({
+            titulo: nuevoEstado === 'ACTIVO' ? "Acceso desbloqueado" : "Acceso bloqueado",
+            mensaje: `${usuario?.nombre || "Admin"} ha ${nuevoEstado === 'ACTIVO' ? "desbloqueado" : "bloqueado"} a ${empleadoToBlock.nombreCompleto}.`,
+            tipo: nuevoEstado === 'ACTIVO' ? 'success' : 'warning',
+          });
+          toast({ title: nuevoEstado === 'ACTIVO' ? "Acceso desbloqueado" : "Acceso bloqueado", description: `El empleado ha sido ${nuevoEstado === 'ACTIVO' ? "habilitado" : "suspendido"} correctamente.` });
+        } catch (err) {
+          toast({ title: 'Error al actualizar acceso', description: 'No se pudo sincronizar el cambio con el servidor.', variant: 'destructive' });
+        }
+      };
+      doBlock();
     }
     setBlockDialogOpen(false);
     setEmpleadoToBlock(null);

@@ -28,6 +28,7 @@ export interface Empleado {
   fabricaAsignada: string;
   ultimoFichaje: string;
   activo: boolean;
+  estado?: string;
   email?: string;
   contacto?: string;
   fecha_contratacion?: string;
@@ -44,7 +45,7 @@ interface FormularioEmpleadoProps {
     rango: string;
     fabrica: string; // id
     seccion?: string; // id
-    activo: boolean;
+    estado: string;
     email?: string;
     fecha_contratacion?: string;
   }) => void;
@@ -60,6 +61,14 @@ const RANGO_OPTIONS = [
   { value: '6', label: 'Empleado' },
   { value: '7', label: 'Pasante' },
   { value: '8', label: 'Administrador' },
+];
+
+const ESTADO_OPTIONS = [
+  { value: 'ACTIVO', label: 'Activo' },
+  { value: 'DESPEDIDO', label: 'Despedido' },
+  { value: 'JUBILADO', label: 'Jubilado' },
+  { value: 'SUSPENDIDO', label: 'Suspendido' },
+  { value: 'OTRO', label: 'Otro' },
 ];
 
 const roles: RolUsuario[] = ["Operador", "Jefe de Sector", "Administrador"];
@@ -81,9 +90,9 @@ const FormularioEmpleado = ({
     apellido: "",
     rango: "",
     fabrica: "",
-      seccion: "",
-      ultimo_fichaje: "",
-    activo: true,
+    seccion: "",
+    ultimo_fichaje: "",
+    estado: "ACTIVO",
     email: "",
     fecha_contratacion: "",
   });
@@ -99,7 +108,7 @@ const FormularioEmpleado = ({
       fabrica: '',
       seccion: '',
       ultimo_fichaje: '',
-      activo: true,
+      estado: 'ACTIVO',
       email: '',
       fecha_contratacion: '',
     };
@@ -130,7 +139,7 @@ const FormularioEmpleado = ({
     const fabricaVal = (e.fabrica !== undefined && e.fabrica !== null) ? String(e.fabrica) : (e.fabrica_nombre || e.fabricaAsignada || '');
     const seccionVal = (e.seccion !== undefined && e.seccion !== null) ? String(e.seccion) : (e.seccion_nombre || '');
     const ultimo = e.ultimo_fichaje || e.ultimoFichaje || '';
-    const activoVal = typeof e.activo === 'boolean' ? e.activo : (String(e.estado || '').toLowerCase() === 'activo');
+    const estadoVal = e.estado || (e.activo ? 'ACTIVO' : 'SUSPENDIDO');
 
     setFormData({
       documento: documento || '',
@@ -140,7 +149,7 @@ const FormularioEmpleado = ({
       fabrica: fabricaVal || '',
       seccion: seccionVal || '',
       ultimo_fichaje: ultimo || '',
-      activo: activoVal !== undefined ? activoVal : true,
+      estado: estadoVal || 'ACTIVO',
       email: email || '',
       fecha_contratacion: e.fecha_contratacion || e.fechaContratacion || '',
     });
@@ -296,6 +305,20 @@ const FormularioEmpleado = ({
             <div className="space-y-2">
               <Label htmlFor="fecha_contratacion" className="text-foreground">Fecha de contratación</Label>
               <Input id="fecha_contratacion" type="date" value={formData.fecha_contratacion} onChange={(e) => setFormData({ ...formData, fecha_contratacion: e.target.value })} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="estado" className="text-foreground">Estado</Label>
+              <Select value={formData.estado} onValueChange={(value) => setFormData({ ...formData, estado: value })}>
+                <SelectTrigger id="estado">
+                  <SelectValue placeholder="Seleccione un estado" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border-border">
+                  {ESTADO_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* `rol` persistente eliminado: se deriva desde `rango`. No mostrar campo editable. */}

@@ -37,6 +37,10 @@ const Register = () => {
       return;
     }
     // Validación cliente: campos obligatorios
+    if (!documento.trim()) {
+      toast({ title: "Error", description: "El documento (DNI/CUIT) es obligatorio", variant: "destructive" });
+      return;
+    }
     if (!firstName.trim()) {
       toast({ title: "Error", description: "El nombre es obligatorio", variant: "destructive" });
       return;
@@ -55,7 +59,7 @@ const Register = () => {
     }
     setIsLoading(true);
     try {
-      const username = documento ? documento : (email ? email.split('@')[0] : '');
+      const username = documento.trim();
 
       // Obtener cookie CSRF
       const getCookie = (name: string) => {
@@ -67,8 +71,26 @@ const Register = () => {
       const headers: any = { 'Content-Type': 'application/json' };
       if (csrftoken) headers['X-CSRFToken'] = csrftoken;
 
-      const regPayload: any = { username, email, password1, password2, first_name: firstName, last_name: lastName, registration_key: registrationKey };
-      if (documento && documento.trim()) regPayload.documento = documento.trim();
+      // El payload contiene los datos de usuario y los campos adicionales de Empleado para que el backend los guarde atómicamente
+      const regPayload: any = {
+        username,
+        email,
+        password1,
+        password2,
+        first_name: firstName,
+        last_name: lastName,
+        registration_key: registrationKey,
+        documento: username,
+        direccion: direccion.trim() || undefined,
+        fecha_contratacion: fechaContratacion || undefined,
+        fabrica: fabrica || undefined,
+        seccion: seccion || undefined,
+      };
+
+      // Limpiar campos undefined
+      Object.keys(regPayload).forEach((k) => {
+        if (regPayload[k] === undefined) delete regPayload[k];
+      });
 
       const res = await fetch(`/api/v1/auth/registration/`, {
         method: 'POST',
@@ -78,30 +100,6 @@ const Register = () => {
       });
       if (res.ok) {
         toast({ title: "Registro enviado", description: "Revise su correo para confirmar la cuenta" });
-        // Intentar crear también el Empleado asociado en la API del backend
-        try {
-          const empleadoPayload: any = {
-            documento: documento || username || undefined,
-            nombre: firstName,
-            apellido: lastName,
-            email,
-            direccion: direccion || undefined,
-            fecha_contratacion: fechaContratacion || undefined,
-            fabrica: fabrica || undefined,
-            seccion: seccion || undefined,
-            // registro público: no verificar email automáticamente
-            email_verified: false,
-          };
-          Object.keys(empleadoPayload).forEach((k) => { const v = empleadoPayload[k]; if (v === undefined) delete empleadoPayload[k]; });
-          await fetch('/api/v1/empleados/', {
-            method: 'POST',
-            credentials: 'include',
-            headers,
-            body: JSON.stringify(empleadoPayload),
-          });
-        } catch (err) {
-          console.warn('No se pudo crear Empleado tras registro:', err);
-        }
         navigate("/login");
       } else {
         const data = await res.json();
@@ -112,6 +110,7 @@ const Register = () => {
           password1: 'Contraseña',
           password2: 'Confirmación de contraseña',
           registration_key: 'Clave de registro',
+          documento: 'Documento',
           non_field_errors: '',
           detail: '',
         };
@@ -125,6 +124,9 @@ const Register = () => {
           'Passwords do not match.': 'Las contraseñas no coinciden.',
           'This password is too short.': 'La contraseña es demasiado corta.',
           'user with this email already exists.': 'Ya existe un usuario con este correo.',
+          'Este documento ya está registrado.': 'Este documento ya está registrado.',
+          'Este documento ya está registrado como usuario.': 'Este documento ya está registrado como usuario.',
+          'El documento debe contener solo números.': 'El documento debe contener solo números.',
         };
 
         const translate = (msg: string) => {
@@ -198,8 +200,8 @@ const Register = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label htmlFor="documento">Documento (DNI/CUIT)</Label>
-              <Input id="documento" type="text" value={documento} onChange={(e) => setDocumento(e.target.value)} />
+              <Label htmlFor="documento">Documento (DNI/CUIT) *</Label>
+              <Input id="documento" type="text" value={documento} onChange={(e) => setDocumento(e.target.value)} required />
             </div>
             <div>
               <Label htmlFor="email">Email</Label>

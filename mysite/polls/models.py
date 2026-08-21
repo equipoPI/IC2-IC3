@@ -130,6 +130,13 @@ class Empleado(models.Model):
                 )
         super().save(*args, **kwargs)
 
+        # Sincronizar estado laboral con el acceso al sistema (User.is_active)
+        if self.user:
+            is_active = (self.estado == 'ACTIVO')
+            if self.user.is_active != is_active:
+                self.user.is_active = is_active
+                self.user.save()
+
     def calcular_antiguedad(self):
         hoy = now().date()
         self.antiguedad = hoy.year - self.fecha_contratacion.year
@@ -246,15 +253,15 @@ def create_or_update_user_profile(sender, instance, created, **kwargs):
         # Intento crear un registro `Empleado` básico si existen fábricas y secciones.
         try:
             # Evitar crear si ya existe un Empleado vinculado
-            if not models.Empleado.objects.filter(user=instance).exists():
-                if models.Fabrica.objects.exists():
-                    fab = models.Fabrica.objects.first()
-                    sec = models.Seccion.objects.filter(fabrica=fab).first()
+            if not Empleado.objects.filter(user=instance).exists():
+                if Fabrica.objects.exists():
+                    fab = Fabrica.objects.first()
+                    sec = Seccion.objects.filter(fabrica=fab).first()
                     if sec:
                         doc = instance.username
                         # Evitar duplicados por documento o email
-                        if not models.Empleado.objects.filter(documento=doc).exists() and not models.Empleado.objects.filter(email=instance.email).exists():
-                            emp = models.Empleado(
+                        if not Empleado.objects.filter(documento=doc).exists() and not Empleado.objects.filter(email=instance.email).exists():
+                            emp = Empleado(
                                 user=instance,
                                 documento=doc,
                                 nombre=instance.first_name or instance.username,
@@ -496,6 +503,7 @@ class DispositivoSCADA(models.Model):
     inventario = models.ForeignKey(Inventario, on_delete=models.SET_NULL, null=True, blank=True, related_name='dispositivos')
     estado = models.CharField(max_length=20, choices=ESTADOS, default='OFFLINE')
     topic_mqtt = models.CharField(max_length=255, blank=True, null=True, help_text="Topic MQTT para este dispositivo")
+    gateway_id = models.CharField(max_length=100, blank=True, null=True, help_text="ID del gateway/Raspberry asignado")
     fecha_instalacion = models.DateField(default=now)
     ultima_lectura = models.DateTimeField(null=True, blank=True)
     descripcion = models.TextField(blank=True, null=True)

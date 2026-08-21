@@ -9,9 +9,16 @@ from django.utils import timezone
 
 class CustomRegisterSerializer(DefaultRegisterSerializer):
     registration_key = serializers.CharField(write_only=True, required=True)
-    documento = serializers.CharField(write_only=True, required=False)
+    documento = serializers.CharField(write_only=True, required=True)
     first_name = serializers.CharField(write_only=True, required=True)
     last_name = serializers.CharField(write_only=True, required=True)
+
+    def to_internal_value(self, data):
+        # Si se provee documento pero no username, asignarlo automáticamente
+        if data and 'documento' in data and 'username' not in data:
+            data = data.copy()
+            data['username'] = data['documento']
+        return super().to_internal_value(data)
 
     def validate_registration_key(self, value):
         # Primero, intentar obtener la clave activa desde la base de datos (editable por admin)
@@ -34,24 +41,110 @@ class CustomRegisterSerializer(DefaultRegisterSerializer):
             raise serializers.ValidationError('Correo ya existente.')
         return value
 
+    def validate_documento(self, value):
+        if not value:
+            raise serializers.ValidationError('El documento es obligatorio.')
+        doc = str(value).strip()
+        if not doc.isdigit():
+            raise serializers.ValidationError('El documento debe contener solo números.')
+        
+        # Validar si ya existe en Empleado
+        from .models import Empleado
+        if Empleado.objects.filter(documento=doc).exists():
+            raise serializers.ValidationError('Este documento ya está registrado.')
+        
+        # Validar si ya existe en User
+        if User.objects.filter(username=doc).exists():
+            raise serializers.ValidationError('Este documento ya está registrado como usuario.')
+        return doc
+
     def get_cleaned_data(self):
         data = super().get_cleaned_data()
-        # registration_key is only used for validation, not stored
         data.pop('registration_key', None)
         # Asegurar que se incluyan nombres y apellidos en los datos limpios
         data['first_name'] = self.validated_data.get('first_name', '')
         data['last_name'] = self.validated_data.get('last_name', '')
-        # Si se proporciona `documento` en el registro, usarlo como `username` para normalizar
-        documento = self.validated_data.get('documento') or ''
-        if documento:
-            data['username'] = documento
-        else:
-            # Asegurar que exista `username` — usar la parte local del email si falta
-            if not data.get('username'):
-                email = data.get('email', '')
-                username = email.split('@')[0] if email else f'user_{int(time.time())}'
-                data['username'] = username
+        # Usar siempre el documento como username para normalizar
+        documento = self.validated_data.get('documento', '').strip()
+        data['username'] = documento
         return data
+
+    def save(self, request):
+        user = super().save(request)
+        # La señal post_save ya creó el Empleado básico con documento = instance.username
+        # Ahora actualizamos los campos opcionales del Empleado desde initial_data
+        try:
+            documento = self.validated_data.get('documento', '').strip()
+            if documento:
+                from .models import Empleado, Fabrica, Seccion
+                from django.utils import timezone
+                import random, string
+
+                emp = Empleado.objects.filter(user=user).first()
+                is_new = False
+                if not emp:
+                    # En caso de que la señal no lo haya creado por falta de fábricas u otro error
+                    emp = Empleado(user=user, documento=documento)
+                    is_new = True
+
+                emp.nombre = user.first_name or self.validated_data.get('first_name', '')
+                emp.apellido = user.last_name or self.validated_data.get('last_name', '')
+                emp.email = user.email or ''
+
+                # Campos opcionales / Valores por defecto
+                direccion = self.initial_data.get('direccion')
+                if direccion:
+                    emp.direccion = direccion
+                elif is_new:
+                    emp.direccion = ''
+
+                fecha_contratacion = self.initial_data.get('fecha_contratacion')
+                if fecha_contratacion:
+                    emp.fecha_contratacion = fecha_contratacion
+                elif is_new or not emp.fecha_contratacion:
+                    emp.fecha_contratacion = timezone.now().date()
+
+                if is_new or not emp.rango:
+                    emp.rango = '6'  # Operador por defecto en registro público
+
+                # Generar clave única si es nuevo o no tiene
+                if not emp.clave:
+                    chars = string.ascii_uppercase + string.digits
+                    clave = ''.join(random.choices(chars, k=8))
+                    while Empleado.objects.filter(clave=clave).exists():
+                        clave = ''.join(random.choices(chars, k=8))
+                    emp.clave = clave
+
+                # Fábrica y Sección
+                fabrica_id = self.initial_data.get('fabrica')
+                if fabrica_id:
+                    try:
+                        emp.fabrica = Fabrica.objects.get(id=fabrica_id)
+                    except Fabrica.DoesNotExist:
+                        pass
+                elif is_new or not getattr(emp, 'fabrica', None):
+                    # Asignar la primera fábrica por defecto
+                    emp.fabrica = Fabrica.objects.first()
+
+                seccion_id = self.initial_data.get('seccion')
+                if seccion_id:
+                    try:
+                        emp.seccion = Seccion.objects.get(id=seccion_id)
+                    except Seccion.DoesNotExist:
+                        pass
+                elif is_new or not getattr(emp, 'seccion', None):
+                    # Asignar la primera sección de la fábrica por defecto
+                    if emp.fabrica:
+                        emp.seccion = Seccion.objects.filter(fabrica=emp.fabrica).first()
+
+                # Guardar el registro de empleado (solo si se pudieron resolver fábrica y sección requeridas)
+                if getattr(emp, 'fabrica', None) and getattr(emp, 'seccion', None):
+                    emp.save()
+        except Exception:
+            pass
+        return user
+
+
 """
 Serializers para Django REST Framework - Sistema SCADA
 """

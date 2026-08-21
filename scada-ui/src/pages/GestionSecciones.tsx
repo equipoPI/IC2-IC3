@@ -28,12 +28,12 @@ const GestionSecciones = () => {
         id: s.id,
         nombre: s.nombre,
         fabrica: s.fabrica,
-        fabrica_nombre: s.fabrica_nombre || s.fabrica_nombre || '',
+        fabrica_nombre: s.fabrica_nombre || '',
         capacidad_trabajadores: s.capacidad_trabajadores || 0,
         tamano_seccion: s.tamano_seccion || 0,
       })));
     } catch (err) {
-      toast.error('No se pudieron cargar las secciones');
+      toast.error('No se pudieron cargar las ubicaciones internas');
     }
   };
 
@@ -49,9 +49,9 @@ const GestionSecciones = () => {
         const resp = await apiFetch(`/api/v1/secciones/${item.id}/`, { method: 'DELETE' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         setSecciones(secciones.filter((s) => s.id !== item.id));
-        toast.success(`Sección "${item.nombre}" eliminada`);
+        toast.success(`Ubicación "${item.nombre}" eliminada`);
       } catch (err) {
-        toast.error('Error al eliminar la sección');
+        toast.error('Error al eliminar la ubicación');
       }
     };
     doDelete();
@@ -60,14 +60,29 @@ const GestionSecciones = () => {
   const handleSubmit = (data: SeccionFormData) => {
     const doSubmit = async () => {
       try {
+        const payload = {
+          nombre: data.nombre,
+          fabrica: parseInt(data.fabrica),
+          capacidad_trabajadores: data.capacidad_trabajadores ? parseInt(data.capacidad_trabajadores) : 0,
+          tamano_seccion: data.tamano_seccion ? parseFloat(data.tamano_seccion) : 0.0,
+        };
+
         if (editing) {
-          const resp = await apiFetch(`/api/v1/secciones/${editing.id}/`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+          const resp = await apiFetch(`/api/v1/secciones/${editing.id}/`, { 
+            method: 'PUT', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(payload) 
+          });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const updated = await resp.json();
           setSecciones(secciones.map((s) => s.id === updated.id ? { ...s, ...updated } : s));
-          toast.success('Sección actualizada correctamente');
+          toast.success('Ubicación actualizada correctamente');
         } else {
-          const resp = await apiFetch('/api/v1/secciones/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+          const resp = await apiFetch('/api/v1/secciones/', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(payload) 
+          });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const created = await resp.json();
           setSecciones([...secciones, {
@@ -78,30 +93,29 @@ const GestionSecciones = () => {
             capacidad_trabajadores: created.capacidad_trabajadores || 0,
             tamano_seccion: created.tamano_seccion || 0,
           }]);
-          toast.success('Sección creada correctamente');
+          toast.success('Ubicación creada correctamente');
         }
         setEditing(null);
         setIsFormOpen(false);
       } catch (err) {
-        toast.error('Error guardando la sección');
+        toast.error('Error al guardar la ubicación');
       }
     };
     doSubmit();
   };
 
+  // Simplificamos las columnas ocultando capacidad y tamaño por cuestiones de claridad/UX
   const columns: Column<Seccion>[] = [
-    { key: 'id', header: 'ID', className: 'w-16' },
-    { key: 'nombre', header: 'Nombre' },
-    { key: 'fabrica_nombre', header: 'Fábrica' },
-    { key: 'capacidad_trabajadores', header: 'Capacidad' },
-    { key: 'tamano_seccion', header: 'Tamaño (m²)' },
+    { key: 'id', header: 'ID', className: 'w-20' },
+    { key: 'nombre', header: 'Nombre del Sector / Ubicación Interna' },
+    { key: 'fabrica_nombre', header: 'Planta / Fábrica Asignada' },
   ];
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Gestión de Secciones</h1>
-        <p className="text-muted-foreground mt-1">Administra las secciones vinculadas a las fábricas</p>
+        <h1 className="text-2xl font-semibold text-foreground">Gestión de Ubicaciones Internas (Secciones)</h1>
+        <p className="text-muted-foreground mt-1">Administra los sectores y subdivisiones internas de cada planta industrial</p>
       </div>
 
       <TablaGestion
@@ -110,8 +124,8 @@ const GestionSecciones = () => {
         onAdd={handleAdd}
         onEdit={handleEdit}
         onDelete={handleDelete}
-        searchPlaceholder="Buscar secciones..."
-        addButtonLabel="Añadir Sección"
+        searchPlaceholder="Buscar ubicaciones..."
+        addButtonLabel="Añadir Ubicación"
       />
 
       <FormularioSeccion

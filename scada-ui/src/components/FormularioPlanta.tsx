@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -42,7 +42,12 @@ const paises = [
   "Francia",
 ];
 
-const estados = ["Operativo", "En Mantenimiento", "Inactivo"];
+const estados = [
+  { value: "OPERATIVO", label: "Operativo" },
+  { value: "ADVERTENCIA", label: "Advertencia" },
+  { value: "CRITICO", label: "Crítico" },
+  { value: "OFFLINE", label: "Offline" },
+];
 
 const FormularioPlanta = ({
   open,
@@ -50,19 +55,32 @@ const FormularioPlanta = ({
   onSubmit,
   initialData,
 }: FormularioPlantaProps) => {
-  const [formData, setFormData] = useState<PlantaFormData>(
-    initialData || {
-      nombre: "",
-      ubicacion: "",
-      pais: "",
-      estado: "Operativo",
+  const [formData, setFormData] = useState<PlantaFormData>({
+    nombre: "",
+    ubicacion: "",
+    pais: "",
+    estado: "OPERATIVO",
+  });
+
+  useEffect(() => {
+    if (open) {
+      if (initialData) {
+        setFormData(initialData);
+      } else {
+        setFormData({
+          nombre: "",
+          ubicacion: "",
+          pais: "",
+          estado: "OPERATIVO",
+        });
+      }
     }
-  );
+  }, [initialData, open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit(formData);
-    setFormData({ nombre: "", ubicacion: "", pais: "", estado: "Operativo" });
+    setFormData({ nombre: "", ubicacion: "", pais: "", estado: "OPERATIVO" });
     onOpenChange(false);
   };
 
@@ -144,10 +162,10 @@ const FormularioPlanta = ({
                 <SelectTrigger className="bg-background border-border">
                   <SelectValue placeholder="Seleccionar estado" />
                 </SelectTrigger>
-                <SelectContent>
-                  {estados.map((estado) => (
-                    <SelectItem key={estado} value={estado}>
-                      {estado}
+                <SelectContent className="bg-popover border-border">
+                  {estados.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

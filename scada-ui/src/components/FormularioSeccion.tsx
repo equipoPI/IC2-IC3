@@ -20,8 +20,8 @@ import apiFetch from "@/lib/api";
 export interface SeccionFormData {
   nombre: string;
   fabrica: string; // id as string
-  capacidad_trabajadores: string; // numeric as string
-  tamano_seccion: string; // numeric as string
+  capacidad_trabajadores?: string; // opcional
+  tamano_seccion?: string; // opcional
 }
 
 interface FormularioSeccionProps {
@@ -32,10 +32,23 @@ interface FormularioSeccionProps {
 }
 
 const FormularioSeccion = ({ open, onOpenChange, onSubmit, initialData }: FormularioSeccionProps) => {
-  const [formData, setFormData] = useState<SeccionFormData>(initialData || { nombre: '', fabrica: '', capacidad_trabajadores: '0', tamano_seccion: '0' });
+  const [formData, setFormData] = useState<SeccionFormData>({ nombre: '', fabrica: '', capacidad_trabajadores: '0', tamano_seccion: '0' });
   const [fabricas, setFabricas] = useState<{ id: number; nombre: string }[]>([]);
 
-  useEffect(() => { if (initialData) setFormData(initialData); }, [initialData]);
+  useEffect(() => {
+    if (open) {
+      if (initialData) {
+        setFormData({
+          nombre: initialData.nombre || "",
+          fabrica: initialData.fabrica || "",
+          capacidad_trabajadores: initialData.capacidad_trabajadores || "0",
+          tamano_seccion: initialData.tamano_seccion || "0",
+        });
+      } else {
+        setFormData({ nombre: '', fabrica: '', capacidad_trabajadores: '0', tamano_seccion: '0' });
+      }
+    }
+  }, [initialData, open]);
 
   useEffect(() => {
     const load = async () => {
@@ -44,7 +57,7 @@ const FormularioSeccion = ({ open, onOpenChange, onSubmit, initialData }: Formul
         if (!resp.ok) return;
         const data = await resp.json();
         const list = Array.isArray(data) ? data : data.results || [];
-        setFabricas(list.map((f: any) => ({ id: f.id, nombre: f.nombre || f.nombre_fabrica || String(f.id) })));
+        setFabricas(list.map((f: any) => ({ id: f.id, nombre: f.nombre || String(f.id) })));
       } catch (err) {
         // silent
       }
@@ -54,7 +67,11 @@ const FormularioSeccion = ({ open, onOpenChange, onSubmit, initialData }: Formul
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    onSubmit({
+      ...formData,
+      capacidad_trabajadores: formData.capacidad_trabajadores || "0",
+      tamano_seccion: formData.tamano_seccion || "0",
+    });
     onOpenChange(false);
     setFormData({ nombre: '', fabrica: '', capacidad_trabajadores: '0', tamano_seccion: '0' });
   };
@@ -63,22 +80,31 @@ const FormularioSeccion = ({ open, onOpenChange, onSubmit, initialData }: Formul
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px] bg-card border-border">
         <DialogHeader>
-          <DialogTitle className="text-foreground">{initialData ? 'Editar Sección' : 'Nueva Sección'}</DialogTitle>
+          <DialogTitle className="text-foreground">
+            {initialData ? 'Editar Ubicación Interna (Sección)' : 'Nueva Ubicación Interna (Sección)'}
+          </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           <div className="space-y-2">
-            <Label htmlFor="nombre" className="text-foreground">Nombre</Label>
-            <Input id="nombre" value={formData.nombre} onChange={(e) => setFormData({ ...formData, nombre: e.target.value })} placeholder="Nombre de la sección" required />
+            <Label htmlFor="nombre" className="text-foreground">Nombre de la Ubicación Interna</Label>
+            <Input 
+              id="nombre" 
+              value={formData.nombre} 
+              onChange={(e) => setFormData({ ...formData, nombre: e.target.value })} 
+              placeholder="Ej: Sector de Mezclado, Depósito A" 
+              className="bg-background border-border"
+              required 
+            />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="fabrica" className="text-foreground">Fábrica</Label>
+            <Label htmlFor="fabrica" className="text-foreground">Planta / Fábrica Asignada</Label>
             <Select value={formData.fabrica} onValueChange={(v) => setFormData({ ...formData, fabrica: v })}>
               <SelectTrigger id="fabrica" className="bg-background border-border">
                 <SelectValue placeholder="Seleccione una fábrica" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-popover border-border">
                 {fabricas.map((f) => (
                   <SelectItem key={f.id} value={String(f.id)}>{f.nombre}</SelectItem>
                 ))}
@@ -86,21 +112,9 @@ const FormularioSeccion = ({ open, onOpenChange, onSubmit, initialData }: Formul
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="capacidad" className="text-foreground">Capacidad trabajadores</Label>
-              <Input id="capacidad" type="number" value={formData.capacidad_trabajadores} onChange={(e) => setFormData({ ...formData, capacidad_trabajadores: e.target.value })} min={0} />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="tamano" className="text-foreground">Tamaño (m²)</Label>
-              <Input id="tamano" type="number" step="0.1" value={formData.tamano_seccion} onChange={(e) => setFormData({ ...formData, tamano_seccion: e.target.value })} min={0} />
-            </div>
-          </div>
-
           <div className="flex justify-end gap-3 pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-            <Button type="submit">{initialData ? 'Guardar Cambios' : 'Crear Sección'}</Button>
+            <Button type="submit">{initialData ? 'Guardar Cambios' : 'Crear Ubicación'}</Button>
           </div>
         </form>
       </DialogContent>

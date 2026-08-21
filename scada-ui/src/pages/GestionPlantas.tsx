@@ -3,12 +3,14 @@ import { toast } from "sonner";
 import TablaGestion, { Column } from "@/components/TablaGestion";
 import FormularioPlanta, { PlantaFormData } from "@/components/FormularioPlanta";
 import apiFetch from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
 
 interface Planta {
   id: number;
   nombre: string;
   ubicacion: string;
   pais: string;
+  estado: string;
   fechaCreacion: string;
 }
 
@@ -40,6 +42,7 @@ const GestionPlantas = () => {
           nombre: p.nombre,
           ubicacion: p.ubicacion || '',
           pais: p.pais || '',
+          estado: p.estado || 'OPERATIVO',
           fechaCreacion: p.fecha_creacion || (p.fecha_creacion && p.fecha_creacion.split('T')[0]) || new Date().toISOString().split('T')[0],
         }));
         setPlantas(mapped);
@@ -55,6 +58,27 @@ const GestionPlantas = () => {
     { key: "nombre", header: "Nombre" },
     { key: "ubicacion", header: "Ubicación" },
     { key: "pais", header: "País" },
+    {
+      key: "estado",
+      header: "Estado",
+      render: (item) => {
+        let variant: "default" | "destructive" | "secondary" | "outline" = "outline";
+        let label = item.estado || "Otro";
+        if (label === "OPERATIVO") {
+          variant = "default";
+          label = "Operativo";
+        } else if (label === "ADVERTENCIA") {
+          return <Badge className="bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/30" variant="outline">Advertencia</Badge>;
+        } else if (label === "CRITICO") {
+          variant = "destructive";
+          label = "Crítico";
+        } else if (label === "OFFLINE") {
+          variant = "outline";
+          label = "Offline";
+        }
+        return <Badge variant={variant}>{label}</Badge>;
+      },
+    },
     {
       key: "fechaCreacion",
       header: "Fecha de Creación",
@@ -91,13 +115,13 @@ const GestionPlantas = () => {
     const doSubmit = async () => {
       try {
           if (editingPlanta) {
-          const resp = await apiFetch(`/api/v1/fabricas/${editingPlanta.id}/`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: data.nombre, ubicacion: data.ubicacion, pais: data.pais }) });
+          const resp = await apiFetch(`/api/v1/fabricas/${editingPlanta.id}/`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: data.nombre, ubicacion: data.ubicacion, pais: data.pais, estado: data.estado }) });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const updated = await resp.json();
-          setPlantas(plantas.map((p) => p.id === updated.id ? { ...p, nombre: updated.nombre, ubicacion: updated.ubicacion, pais: updated.pais, fechaCreacion: updated.fecha_creacion || p.fechaCreacion } : p));
+          setPlantas(plantas.map((p) => p.id === updated.id ? { ...p, nombre: updated.nombre, ubicacion: updated.ubicacion, pais: updated.pais, estado: updated.estado, fechaCreacion: updated.fecha_creacion || p.fechaCreacion } : p));
           toast.success('Planta actualizada correctamente');
         } else {
-          const resp = await apiFetch('/api/v1/fabricas/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: data.nombre, ubicacion: data.ubicacion, pais: data.pais }) });
+          const resp = await apiFetch('/api/v1/fabricas/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: data.nombre, ubicacion: data.ubicacion, pais: data.pais, estado: data.estado }) });
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
           const created = await resp.json();
           const newPlanta: Planta = {
@@ -105,6 +129,7 @@ const GestionPlantas = () => {
             nombre: created.nombre,
             ubicacion: created.ubicacion || '',
             pais: created.pais || '',
+            estado: created.estado || 'OPERATIVO',
             fechaCreacion: created.fecha_creacion ? created.fecha_creacion.split('T')[0] : new Date().toISOString().split('T')[0],
           };
           setPlantas([...plantas, newPlanta]);
@@ -150,7 +175,7 @@ const GestionPlantas = () => {
                 nombre: editingPlanta.nombre,
                 ubicacion: editingPlanta.ubicacion,
                 pais: editingPlanta.pais,
-                estado: "Operativo",
+                estado: editingPlanta.estado,
               }
             : undefined
         }

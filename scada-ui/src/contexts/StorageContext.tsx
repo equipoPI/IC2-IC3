@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import apiFetch from '@/lib/api';
 
 export interface StorageUnit {
   id: string;
@@ -30,45 +31,6 @@ interface StorageContextType {
   getStorageUnitByNodeId: (nodeId: string) => StorageUnit | undefined;
 }
 
-const defaultStorageUnits: StorageUnit[] = [
-  {
-    id: 'storage-1',
-    nodeId: 'tank-1',
-    name: 'Tanque A',
-    type: 'tank',
-    content: 'Aceite de Oliva',
-    currentVolume: 750,
-    capacity: 1000,
-    unit: 'L',
-    temperature: 25,
-    status: 'active',
-  },
-  {
-    id: 'storage-2',
-    nodeId: 'tank-2',
-    name: 'Tanque B',
-    type: 'tank',
-    content: 'Agua Destilada',
-    currentVolume: 360,
-    capacity: 800,
-    unit: 'L',
-    temperature: 30,
-    status: 'active',
-  },
-  {
-    id: 'storage-3',
-    nodeId: 'tank-3',
-    name: 'Tanque Salida',
-    type: 'tank',
-    content: 'Producto Final',
-    currentVolume: 450,
-    capacity: 1500,
-    unit: 'L',
-    temperature: 42,
-    status: 'active',
-  },
-];
-
 const defaultIngredients: Ingredient[] = [
   { id: 'ing-1', name: 'Aceite de Oliva', category: 'raw_material', unit: 'L', availableInStorage: 'storage-1' },
   { id: 'ing-2', name: 'Agua Destilada', category: 'raw_material', unit: 'L', availableInStorage: 'storage-2' },
@@ -85,25 +47,116 @@ const defaultIngredients: Ingredient[] = [
 const StorageContext = createContext<StorageContextType | undefined>(undefined);
 
 export const StorageProvider = ({ children }: { children: ReactNode }) => {
-  const [storageUnits, setStorageUnits] = useState<StorageUnit[]>(defaultStorageUnits);
+  const [storageUnits, setStorageUnits] = useState<StorageUnit[]>([]);
   const [ingredients] = useState<Ingredient[]>(defaultIngredients);
+  const [defaultInventarioId, setDefaultInventarioId] = useState<number | null>(null);
 
-  const updateStorageUnit = (updatedUnit: StorageUnit) => {
-    setStorageUnits((prev) =>
-      prev.map((unit) => (unit.id === updatedUnit.id ? updatedUnit : unit))
-    );
+  // Mapear unidad de almacenamiento de backend a frontend
+  const mapToFrontend = (item: any): StorageUnit => ({
+    id: String(item.id),
+    nodeId: item.node_id || "",
+    name: item.nombre,
+    type: (item.tipo || "TANK").toLowerCase() as 'tank' | 'silo' | 'deposit',
+    content: item.contenido || "",
+    currentVolume: item.volumen_actual || 0,
+    capacity: item.capacidad || 1000,
+    unit: item.unidad || "L",
+    temperature: item.temperatura || undefined,
+    status: (item.estado || "ACTIVE").toLowerCase() as 'active' | 'inactive' | 'warning' | 'error',
+  });
+
+  // Mapear unidad de almacenamiento de frontend a backend
+  const mapToBackend = (unit: Omit<StorageUnit, 'id'> | StorageUnit, inventarioId: number) => ({
+    nombre: unit.name,
+    tipo: unit.type.toUpperCase(),
+    contenido: unit.content,
+    volumen_actual: unit.currentVolume,
+    capacidad: unit.capacity,
+    unidad: unit.unit,
+    temperatura: unit.temperature || null,
+    estado: unit.status.toUpperCase(),
+    node_id: unit.nodeId || null,
+    inventario: inventarioId,
+  });
+
+  // Cargar datos al montar
+  const loadData = async () => {
+    try {
+      // Traer primer inventario para usar de default en creaciones
+      const invResp = await apiFetch('/api/v1/inventarios/');
+      let invId = 1;
+      if (invResp.ok) {
+        const invs = await invResp.json();
+        const list = Array.isArray(invs) ? invs : invs.results || [];
+        if (list.length > 0) {
+          invId = list[0].id;
+          setDefaultInventarioId(invId);
+        }
+      }
+
+      // Traer unidades de almacenamiento
+      const resp = await apiFetch('/api/v1/unidades-almacenamiento/');
+      if (resp.ok) {
+        const items = await resp.json();
+        const list = Array.isArray(items) ? items : items.results || [];
+        setStorageUnits(list.map(mapToFrontend));
+      }
+    } catch (err) {
+      console.error("Error al cargar unidades de almacenamiento", err);
+    }
   };
 
-  const addStorageUnit = (unitData: Omit<StorageUnit, 'id'>) => {
-    const newUnit: StorageUnit = {
-      ...unitData,
-      id: `storage-${Date.now()}`,
-    };
-    setStorageUnits((prev) => [...prev, newUnit]);
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const updateStorageUnit = async (updatedUnit: StorageUnit) => {
+    try {
+      const invId = defaultInventarioId || 1;
+      const resp = await apiFetch(`/api/v1/unidades-almacenamiento/${updatedUnit.id}/`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mapToBackend(updatedUnit, invId)),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setStorageUnits((prev) =>
+          prev.map((unit) => (unit.id === updatedUnit.id ? mapToFrontend(data) : unit))
+        );
+      }
+    } catch (err) {
+      console.error("Error al actualizar unidad de almacenamiento", err);
+    }
   };
 
-  const deleteStorageUnit = (id: string) => {
-    setStorageUnits((prev) => prev.filter((unit) => unit.id !== id));
+  const addStorageUnit = async (unitData: Omit<StorageUnit, 'id'>) => {
+    try {
+      const invId = defaultInventarioId || 1;
+      const resp = await apiFetch('/api/v1/unidades-almacenamiento/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mapToBackend(unitData, invId)),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setStorageUnits((prev) => [...prev, mapToFrontend(data)]);
+      }
+    } catch (err) {
+      console.error("Error al crear unidad de almacenamiento", err);
+    }
+  };
+
+  const deleteStorageUnit = async (id: string) => {
+    try {
+      const resp = await apiFetch(`/api/v1/unidades-almacenamiento/${id}/`, {
+        method: 'DELETE',
+      });
+      if (resp.ok) {
+        setStorageUnits((prev) => prev.filter((unit) => unit.id !== id));
+      }
+    } catch (err) {
+      console.error("Error al eliminar unidad de almacenamiento", err);
+    }
   };
 
   const getStorageUnitByNodeId = (nodeId: string) => {

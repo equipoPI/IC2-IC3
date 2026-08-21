@@ -1,93 +1,111 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import TablaGestion, { Column } from "@/components/TablaGestion";
 import FormularioSensor, { SensorFormData } from "@/components/FormularioSensor";
+import apiFetch from "@/lib/api";
 
 interface Sensor {
-  id: number;
-  numeroSerie: string;
+  numero_serie: string;
   nombre: string;
   categoria: string;
-  inventarioAsignado: string;
-  seccion: string;
+  estado: string;
+  seccion: number | string;
+  seccion_nombre?: string;
+  sistema?: number | string;
+  sistema_nombre?: string;
+  inventario?: number | string;
+  inventario_nombre?: string;
+  gateway_id?: string;
+  topic_mqtt?: string;
+  descripcion?: string;
 }
 
-const sensoresIniciales: Sensor[] = [
-  {
-    id: 1,
-    numeroSerie: "SN-2024-0001",
-    nombre: "Sensor Temp. Horno 1",
-    categoria: "Sensor de Temperatura",
-    inventarioAsignado: "Planta Norte - INV001",
-    seccion: "Producción",
-  },
-  {
-    id: 2,
-    numeroSerie: "SN-2024-0002",
-    nombre: "Sensor Presión Tanque A",
-    categoria: "Sensor de Presión",
-    inventarioAsignado: "Planta Central - INV002",
-    seccion: "Control de Calidad",
-  },
-  {
-    id: 3,
-    numeroSerie: "SN-2023-0045",
-    nombre: "Bomba Principal P1",
-    categoria: "Bomba",
-    inventarioAsignado: "Planta Sur - INV003",
-    seccion: "Producción",
-  },
-  {
-    id: 4,
-    numeroSerie: "SN-2024-0003",
-    nombre: "Motor Línea 2",
-    categoria: "Motor",
-    inventarioAsignado: "Fábrica Este - INV004",
-    seccion: "Empaque",
-  },
-  {
-    id: 5,
-    numeroSerie: "SN-2022-0128",
-    nombre: "PLC Control Central",
-    categoria: "PLC",
-    inventarioAsignado: "Planta Norte - INV001",
-    seccion: "Mantenimiento",
-  },
-  {
-    id: 6,
-    numeroSerie: "SN-2024-0004",
-    nombre: "Válvula Reguladora V3",
-    categoria: "Válvula",
-    inventarioAsignado: "Planta Central - INV002",
-    seccion: "Producción",
-  },
-];
+const categoriasMap: Record<string, string> = {
+  SENSOR_TEMPERATURA: "Sensor de Temperatura",
+  SENSOR_PRESION: "Sensor de Presión",
+  SENSOR_FLUJO: "Sensor de Flujo",
+  SENSOR_NIVEL: "Sensor de Nivel",
+  SENSOR_HUMEDAD: "Sensor de Humedad",
+  MOTOR: "Motor",
+  BOMBA: "Bomba",
+  VALVULA: "Válvula",
+  PLC: "PLC",
+  HMI: "HMI",
+  MEZCLADORA: "Mezcladora",
+  ENVASADORA: "Envasadora",
+  TRANSPORTADOR: "Transportador",
+  ROBOT: "Robot",
+  OTRO: "Otro",
+};
+
+const getCategoriaLabel = (categoria: string) => {
+  return categoriasMap[categoria] || categoria;
+};
 
 const getCategoriaColor = (categoria: string) => {
   const colors: Record<string, string> = {
-    "Sensor de Temperatura": "bg-orange-500/20 text-orange-400 border-orange-500/30",
-    "Sensor de Presión": "bg-blue-500/20 text-blue-400 border-blue-500/30",
-    "Sensor de Flujo": "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-    Motor: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-    Bomba: "bg-green-500/20 text-green-400 border-green-500/30",
-    Válvula: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+    SENSOR_TEMPERATURA: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+    SENSOR_PRESION: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+    SENSOR_FLUJO: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+    SENSOR_NIVEL: "bg-teal-500/20 text-teal-400 border-teal-500/30",
+    SENSOR_HUMEDAD: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
+    MOTOR: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+    BOMBA: "bg-green-500/20 text-green-400 border-green-500/30",
+    VALVULA: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
     PLC: "bg-red-500/20 text-red-400 border-red-500/30",
     HMI: "bg-pink-500/20 text-pink-400 border-pink-500/30",
   };
   return colors[categoria] || "bg-muted text-muted-foreground";
 };
 
+const getEstadoBadge = (estado: string) => {
+  let variant: "default" | "destructive" | "secondary" | "outline" = "outline";
+  let label = estado;
+
+  if (estado === "ONLINE") {
+    variant = "default";
+    label = "Online";
+  } else if (estado === "OFFLINE") {
+    variant = "outline";
+    label = "Offline";
+  } else if (estado === "MANTENIMIENTO") {
+    return <Badge className="bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/30" variant="outline">Mantenimiento</Badge>;
+  } else if (estado === "ERROR") {
+    variant = "destructive";
+    label = "Error";
+  }
+
+  return <Badge variant={variant}>{label}</Badge>;
+};
+
 const GestionSensores = () => {
-  const [sensores, setSensores] = useState<Sensor[]>(sensoresIniciales);
+  const [sensores, setSensores] = useState<Sensor[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSensor, setEditingSensor] = useState<Sensor | null>(null);
 
+  // Cargar sensores desde la API
+  const loadSensores = async () => {
+    try {
+      const resp = await apiFetch("/api/v1/dispositivos/");
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      const list = Array.isArray(data) ? data : data.results || [];
+      setSensores(list);
+    } catch (err) {
+      toast.error("No se pudieron cargar los sensores desde el servidor");
+    }
+  };
+
+  useEffect(() => {
+    loadSensores();
+  }, []);
+
   const columns: Column<Sensor>[] = [
     {
-      key: "numeroSerie",
+      key: "numero_serie",
       header: "Número de Serie",
-      className: "font-mono",
+      className: "font-mono w-32",
     },
     { key: "nombre", header: "Nombre" },
     {
@@ -95,12 +113,31 @@ const GestionSensores = () => {
       header: "Categoría",
       render: (item) => (
         <Badge variant="outline" className={getCategoriaColor(item.categoria)}>
-          {item.categoria}
+          {getCategoriaLabel(item.categoria)}
         </Badge>
       ),
     },
-    { key: "inventarioAsignado", header: "Inventario Asignado" },
-    { key: "seccion", header: "Sección" },
+    {
+      key: "estado",
+      header: "Estado",
+      render: (item) => getEstadoBadge(item.estado),
+    },
+    {
+      key: "sistema_nombre",
+      header: "Máquina/Sistema",
+      render: (item) => item.sistema_nombre || "Individual",
+    },
+    {
+      key: "seccion_nombre",
+      header: "Sección",
+      render: (item) => item.seccion_nombre || "Sin Asignar",
+    },
+    {
+      key: "gateway_id",
+      header: "Gateway ID",
+      className: "font-mono",
+      render: (item) => item.gateway_id || "-",
+    },
   ];
 
   const handleAdd = () => {
@@ -114,28 +151,59 @@ const GestionSensores = () => {
   };
 
   const handleDelete = (sensor: Sensor) => {
-    setSensores(sensores.filter((s) => s.id !== sensor.id));
-    toast.success(`Sensor "${sensor.nombre}" eliminado correctamente`);
+    const doDelete = async () => {
+      try {
+        const resp = await apiFetch(`/api/v1/dispositivos/${sensor.numero_serie}/`, {
+          method: "DELETE",
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        setSensores(sensores.filter((s) => s.numero_serie !== sensor.numero_serie));
+        toast.success(`Sensor "${sensor.nombre}" eliminado correctamente`);
+      } catch (err) {
+        toast.error("No se pudo eliminar el sensor");
+      }
+    };
+    doDelete();
   };
 
   const handleSubmit = (data: SensorFormData) => {
-    if (editingSensor) {
-      setSensores(
-        sensores.map((s) =>
-          s.id === editingSensor.id
-            ? { ...s, ...data }
-            : s
-        )
-      );
-      toast.success("Sensor/Máquina actualizado correctamente");
-    } else {
-      const newSensor: Sensor = {
-        id: Math.max(...sensores.map((s) => s.id)) + 1,
-        ...data,
-      };
-      setSensores([...sensores, newSensor]);
-      toast.success("Sensor/Máquina creado correctamente");
-    }
+    const doSubmit = async () => {
+      try {
+        const payload = {
+          numero_serie: data.numero_serie,
+          nombre: data.nombre,
+          categoria: data.categoria,
+          seccion: data.seccion ? parseInt(data.seccion) : null,
+          sistema: data.sistema ? parseInt(data.sistema) : null,
+          inventario: data.inventario ? parseInt(data.inventario) : null,
+          gateway_id: data.gateway_id || null,
+          descripcion: data.descripcion || null,
+        };
+
+        if (editingSensor) {
+          const resp = await apiFetch(`/api/v1/dispositivos/${editingSensor.numero_serie}/`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          toast.success("Sensor actualizado correctamente");
+        } else {
+          const resp = await apiFetch("/api/v1/dispositivos/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          toast.success("Sensor creado correctamente");
+        }
+        loadSensores();
+        setIsFormOpen(false);
+      } catch (err) {
+        toast.error("Error al guardar el sensor");
+      }
+    };
+    doSubmit();
   };
 
   return (
@@ -166,11 +234,14 @@ const GestionSensores = () => {
         initialData={
           editingSensor
             ? {
-                numeroSerie: editingSensor.numeroSerie,
+                numero_serie: editingSensor.numero_serie,
                 nombre: editingSensor.nombre,
                 categoria: editingSensor.categoria,
-                inventarioAsignado: editingSensor.inventarioAsignado,
-                seccion: editingSensor.seccion,
+                seccion: editingSensor.seccion ? String(editingSensor.seccion) : "",
+                sistema: editingSensor.sistema ? String(editingSensor.sistema) : "",
+                inventario: editingSensor.inventario ? String(editingSensor.inventario) : "",
+                gateway_id: editingSensor.gateway_id || "",
+                descripcion: editingSensor.descripcion || "",
               }
             : undefined
         }
