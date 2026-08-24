@@ -138,7 +138,7 @@ mqtt:
     keyfile: null
   topics:
     base: scada/planta1
-    enable_legacy_topics: true
+    enable_legacy_topics: false
     publish:
       alarmas: alarmas
       bomba1: actuadores/bomba1
