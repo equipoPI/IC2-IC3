@@ -872,3 +872,64 @@ class ComunicacionMQTT(models.Model):
 
     def __str__(self):
         return f"{self.direccion} - {self.topic} ({self.timestamp.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
+class MetricaConfiguracion(models.Model):
+    nombre = models.CharField(max_length=100, unique=True)
+    unidad_medida = models.CharField(max_length=20)
+    icono = models.CharField(max_length=50, help_text="Nombre de icono Lucide (e.g. thermometer, gauge, zap, droplet)")
+    rango_minimo = models.FloatField(default=0.0)
+    rango_maximo = models.FloatField(default=100.0)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Configuración de Métrica"
+        verbose_name_plural = "Configuraciones de Métricas"
+
+    def __str__(self):
+        return f"{self.nombre} ({self.unidad_medida})"
+
+
+class VariableVinculada(models.Model):
+    fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='variables_vinculadas')
+    metrica_config = models.ForeignKey(MetricaConfiguracion, on_delete=models.CASCADE, related_name='vinculos')
+    sensor = models.ForeignKey(DispositivoSCADA, on_delete=models.SET_NULL, null=True, blank=True, related_name='variables_vinculadas')
+    umbral_advertencia = models.FloatField(blank=True, null=True)
+    umbral_critico = models.FloatField(blank=True, null=True)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('fabrica', 'metrica_config')
+        verbose_name = "Variable Vinculada"
+        verbose_name_plural = "Variables Vinculadas"
+
+    def __str__(self):
+        sensor_str = self.sensor.numero_serie if self.sensor else "Sin sensor"
+        return f"{self.fabrica.nombre} - {self.metrica_config.nombre} ({sensor_str})"
+
+
+class Alarma(models.Model):
+    SEVERIDADES = [
+        ('alta', 'Alta'),
+        ('media', 'Media'),
+        ('baja', 'Baja'),
+    ]
+    ESTADOS = [
+        ('abierta', 'Abierta'),
+        ('cerrada', 'Cerrada'),
+    ]
+    planta = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='alarmas_sistema')
+    seccion = models.ForeignKey(Seccion, on_delete=models.SET_NULL, null=True, blank=True, related_name='alarmas_sistema')
+    sensor_maquina = models.CharField(max_length=255)
+    descripcion = models.TextField()
+    severidad = models.CharField(max_length=20, choices=SEVERIDADES, default='media')
+    fecha_hora = models.DateTimeField(auto_now_add=True)
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='abierta')
+
+    class Meta:
+        ordering = ['-fecha_hora']
+        verbose_name = "Alarma"
+        verbose_name_plural = "Alarmas"
+
+    def __str__(self):
+        return f"ALM - {self.descripcion} ({self.planta.nombre})"
