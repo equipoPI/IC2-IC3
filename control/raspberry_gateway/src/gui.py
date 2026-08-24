@@ -32,7 +32,7 @@ class GatewayGUI:
         frm.grid()
 
         # Info
-        ttk.Label(frm, text="Gateway ID / MAC:").grid(column=0, row=0, sticky='w')
+        ttk.Label(frm, text="Gateway ID / MAC (ID Único SCADA):").grid(column=0, row=0, sticky='w')
         self.mac_var = tk.StringVar(value=self._get_mac())
         ttk.Label(frm, textvariable=self.mac_var).grid(column=1, row=0, sticky='w')
 
@@ -90,27 +90,37 @@ class GatewayGUI:
         self.mqtt_port = tk.StringVar(value=str(self.gateway.config.get('mqtt', {}).get('port', 1883)))
         ttk.Entry(frm, textvariable=self.mqtt_port, width=10).grid(column=1, row=9, sticky='w')
 
-        # MQTT Username / Password
-        ttk.Label(frm, text='MQTT Username:').grid(column=0, row=12, sticky='w')
+        ttk.Label(frm, text='MQTT Username:').grid(column=0, row=10, sticky='w')
         self.mqtt_username = tk.StringVar(value=self.gateway.config.get('mqtt', {}).get('username', ''))
-        ttk.Entry(frm, textvariable=self.mqtt_username, width=20).grid(column=1, row=12, sticky='w')
+        ttk.Entry(frm, textvariable=self.mqtt_username, width=20).grid(column=1, row=10, sticky='w')
 
-        ttk.Label(frm, text='MQTT Password:').grid(column=0, row=13, sticky='w')
-        # Password field masked
+        ttk.Label(frm, text='MQTT Password:').grid(column=0, row=11, sticky='w')
         self.mqtt_password = tk.StringVar(value=self.gateway.config.get('mqtt', {}).get('password', ''))
-        ttk.Entry(frm, textvariable=self.mqtt_password, width=20, show='*').grid(column=1, row=13, sticky='w')
+        ttk.Entry(frm, textvariable=self.mqtt_password, width=20, show='*').grid(column=1, row=11, sticky='w')
 
-        ttk.Label(frm, text='Serial Port:').grid(column=0, row=10, sticky='w')
+        ttk.Label(frm, text='Serial Port:').grid(column=0, row=12, sticky='w')
         self.serial_port = tk.StringVar(value=self.gateway.config.get('serial', {}).get('port', ''))
-        ttk.Entry(frm, textvariable=self.serial_port, width=20).grid(column=1, row=10, sticky='w')
+        ttk.Entry(frm, textvariable=self.serial_port, width=20).grid(column=1, row=12, sticky='w')
 
-        ttk.Label(frm, text='Baudrate:').grid(column=0, row=11, sticky='w')
+        ttk.Label(frm, text='Baudrate:').grid(column=0, row=13, sticky='w')
         self.baudrate = tk.StringVar(value=str(self.gateway.config.get('serial', {}).get('baudrate', 115200)))
-        ttk.Entry(frm, textvariable=self.baudrate, width=10).grid(column=1, row=11, sticky='w')
+        ttk.Entry(frm, textvariable=self.baudrate, width=10).grid(column=1, row=13, sticky='w')
+
+        ttk.Label(frm, text='Planta (Tenant):').grid(column=0, row=14, sticky='w')
+        self.mqtt_tenant = tk.StringVar(value=self.gateway.config.get('mqtt', {}).get('tenant', 'rafaela'))
+        ttk.Entry(frm, textvariable=self.mqtt_tenant, width=20).grid(column=1, row=14, sticky='w')
+
+        ttk.Label(frm, text='Sección (Sector):').grid(column=0, row=15, sticky='w')
+        self.mqtt_sector = tk.StringVar(value=self.gateway.config.get('mqtt', {}).get('default_sector', 'ala_este'))
+        ttk.Entry(frm, textvariable=self.mqtt_sector, width=20).grid(column=1, row=15, sticky='w')
+
+        ttk.Label(frm, text='Sistema (System):').grid(column=0, row=16, sticky='w')
+        self.mqtt_system = tk.StringVar(value=self.gateway.config.get('mqtt', {}).get('default_system', 'linea_mezclado_1'))
+        ttk.Entry(frm, textvariable=self.mqtt_system, width=20).grid(column=1, row=16, sticky='w')
 
         # Buttons frame - topics and last data buttons side by side
         self.btn_frame_toggles = ttk.Frame(frm)
-        self.btn_frame_toggles.grid(column=0, row=14, columnspan=2, pady=(8,0))
+        self.btn_frame_toggles.grid(column=0, row=17, columnspan=2, pady=(8,0))
 
         # Button to toggle topics view
         self.topics_shown = False
@@ -187,7 +197,7 @@ class GatewayGUI:
         self.topics_text.insert(tk.END, '\n'.join(content_lines))
         self.topics_text.configure(state='disabled')
 
-        self.topics_frame.grid(column=0, row=15, columnspan=2, pady=(8,0))
+        self.topics_frame.grid(column=0, row=18, columnspan=2, pady=(8,0))
         self.show_topics_btn.config(text='Ocultar topics')
         self.topics_shown = True
 
@@ -200,7 +210,7 @@ class GatewayGUI:
             return
 
         # Show the frame initially
-        self.last_data_frame.grid(column=0, row=15, columnspan=2, pady=(8,0))
+        self.last_data_frame.grid(column=0, row=18, columnspan=2, pady=(8,0))
         self.show_last_data_btn.config(text='Ocultar últimos datos')
         self.last_data_shown = True
         self._last_data_has_content = False
@@ -346,6 +356,15 @@ class GatewayGUI:
             password = self.mqtt_password.get()
             conf['mqtt']['username'] = username
             conf['mqtt']['password'] = password
+            
+            # planta, seccion, sistema
+            tenant = self.mqtt_tenant.get().strip()
+            sector = self.mqtt_sector.get().strip()
+            system = self.mqtt_system.get().strip()
+            conf['mqtt']['tenant'] = tenant
+            conf['mqtt']['default_sector'] = sector
+            conf['mqtt']['default_system'] = system
+
             conf.setdefault('serial', {})['port'] = s_port
             conf['serial']['baudrate'] = baud
 
@@ -358,6 +377,9 @@ class GatewayGUI:
                 if self.gateway.mqtt:
                     self.gateway.mqtt.broker = broker
                     self.gateway.mqtt.port = port
+                    self.gateway.mqtt.tenant = self.gateway.mqtt._sanitize_token(tenant)
+                    self.gateway.mqtt.default_sector = self.gateway.mqtt._sanitize_token(sector)
+                    self.gateway.mqtt.default_system = self.gateway.mqtt._sanitize_token(system)
                     # apply username/password if present
                     try:
                         self.gateway.mqtt.username = self.mqtt_username.get().strip() or None

@@ -523,7 +523,7 @@ class MQTTClient:
     
     def publish_sensor_data(self, sensor_data: Dict[str, Any]):
         """
-        Publica datos de sensores en los topics correspondientes
+        Publica datos de sensores agrupados en formato JSON en los topics correspondientes
         
         Args:
             sensor_data: Diccionario con datos del Arduino parseados
@@ -531,28 +531,56 @@ class MQTTClient:
         try:
             sector = self.default_sector
             system = self.default_system
+            ts = sensor_data.get("timestamp") or time.time()
 
-            # Telemetría estándar con payload simple
-            self.publish_structured(sector, system, "sensor_nivel_01", "valor_cm", sensor_data.get("nivel_bombo1", ""))
-            self.publish_structured(sector, system, "sensor_nivel_01", "porcentaje", sensor_data.get("porcentaje_bombo1", ""))
-            self.publish_structured(sector, system, "sensor_nivel_02", "valor_cm", sensor_data.get("nivel_bombo2", ""))
-            self.publish_structured(sector, system, "sensor_nivel_02", "porcentaje", sensor_data.get("porcentaje_bombo2", ""))
-            self.publish_structured(sector, system, "sensor_nivel_03", "valor_cm", sensor_data.get("nivel_mezcla", ""))
-            self.publish_structured(sector, system, "sensor_nivel_03", "porcentaje", sensor_data.get("porcentaje_mezcla", ""))
+            # 1. Sensores de Nivel (Bombos)
+            self.publish_structured(sector, system, "sensores", "bombo1", {
+                "nivel": sensor_data.get("nivel_bombo1", 0.0),
+                "porcentaje": sensor_data.get("porcentaje_bombo1", 0),
+                "timestamp": ts
+            })
+            self.publish_structured(sector, system, "sensores", "bombo2", {
+                "nivel": sensor_data.get("nivel_bombo2", 0.0),
+                "porcentaje": sensor_data.get("porcentaje_bombo2", 0),
+                "timestamp": ts
+            })
+            self.publish_structured(sector, system, "sensores", "mezcla", {
+                "nivel": sensor_data.get("nivel_mezcla", 0.0),
+                "porcentaje": sensor_data.get("porcentaje_mezcla", 0),
+                "timestamp": ts
+            })
 
-            self.publish_structured(sector, system, "caudalimetro_01", "caudal_l", sensor_data.get("caudal_1", ""))
-            self.publish_structured(sector, system, "caudalimetro_02", "caudal_l", sensor_data.get("caudal_2", ""))
+            # 2. Caudalímetros
+            self.publish_structured(sector, system, "sensores", "caudal", {
+                "caudal_1": sensor_data.get("caudal_1", 0.0),
+                "caudal_2": sensor_data.get("caudal_2", 0.0),
+                "timestamp": ts
+            })
 
-            self.publish_structured(sector, system, "bomba_01", "estado", int(bool(sensor_data.get("estado_bomba1", False))))
-            self.publish_structured(sector, system, "bomba_02", "estado", int(bool(sensor_data.get("estado_bomba2", False))))
-            self.publish_structured(sector, system, "bomba_mezcla", "estado", int(bool(sensor_data.get("estado_bomba_mezcla", False))))
-            self.publish_structured(sector, system, "mezclador", "estado", int(bool(sensor_data.get("estado_mezclador", False))))
-            self.publish_structured(sector, system, "bomba_reposicion", "estado", int(bool(sensor_data.get("estado_bomba_repo", False))))
+            # 3. Actuadores (Bombas y Mezclador)
+            self.publish_structured(sector, system, "actuadores", "bombas", {
+                "bomba1": int(bool(sensor_data.get("estado_bomba1", False))),
+                "bomba2": int(bool(sensor_data.get("estado_bomba2", False))),
+                "bomba_mezcla": int(bool(sensor_data.get("estado_bomba_mezcla", False))),
+                "bomba_reposicion": int(bool(sensor_data.get("estado_bomba_repo", False))),
+                "timestamp": ts
+            })
+            self.publish_structured(sector, system, "actuadores", "mezclador", {
+                "estado": int(bool(sensor_data.get("estado_mezclador", False))),
+                "timestamp": ts
+            })
 
-            self.publish_structured(sector, system, "proceso", "hora_restante", sensor_data.get("hora_restante", ""))
-            self.publish_structured(sector, system, "proceso", "min_restante", sensor_data.get("min_restante", ""))
-            self.publish_structured(sector, system, "proceso", "estado", sensor_data.get("estado_proceso", ""))
-            self.publish_structured(sector, system, "proceso", "error", sensor_data.get("error", 0))
+            # 4. Proceso (Estado y tiempo restante)
+            self.publish_structured(sector, system, "proceso", "mezclado", {
+                "estado": sensor_data.get("estado_proceso", 0),
+                "error": sensor_data.get("error", 0),
+                "timestamp": ts
+            })
+            self.publish_structured(sector, system, "proceso", "tiempo_restante", {
+                "horas": sensor_data.get("hora_restante", 0),
+                "minutos": sensor_data.get("min_restante", 0),
+                "timestamp": ts
+            })
 
             # Compatibilidad legacy opcional
             if self.enable_legacy_topics:
