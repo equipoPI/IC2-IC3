@@ -13,11 +13,11 @@ import MonitorizacionSCADA from "@/pages/MonitorizacionSCADA";
 import VisualizacionSCADA from "@/pages/VisualizacionSCADA";
 import GestionAlarmas from "@/pages/GestionAlarmas";
 import Auditoria from "@/pages/Auditoria";
+import AnalisisEstadisticas from "@/pages/AnalisisEstadisticas";
 import PlanificacionProduccion from "@/pages/PlanificacionProduccion";
 import GestionPlantillas from "@/pages/GestionPlantillas";
 import ConfiguracionMQTT from "@/pages/ConfiguracionMQTT";
 import AdministracionAlmacenamiento from "@/pages/AdministracionAlmacenamiento";
-import AuditoriaAdmin from "@/pages/AuditoriaAdmin";
 import NotFound from "@/pages/NotFound";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -64,9 +64,9 @@ const ProtectedRoutes = () => {
         <Route path="/alarmas" element={<GestionAlarmas />} />
         <Route path="/plantillas" element={<GestionPlantillas />} />
         <Route path="/auditoria" element={<Auditoria />} />
+        <Route path="/analisis" element={<AnalisisEstadisticas />} />
         <Route path="/comunicacion" element={<ConfiguracionMQTT />} />
         <Route path="/almacenamiento" element={<AdministracionAlmacenamiento />} />
-        {isAdmin && <Route path="/admin" element={<AuditoriaAdmin />} />}
       </Route>
       {/* Permitimos acceso a la verificación de email aun cuando el usuario
           ya esté autenticado (el enlace de confirmación debe funcionar

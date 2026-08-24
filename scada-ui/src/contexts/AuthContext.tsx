@@ -9,6 +9,7 @@ export interface UsuarioAutenticado {
   first_name?: string;
   last_name?: string;
   rol: RolUsuario;
+  rango?: string;
   username?: string;
   email?: string;
 }
@@ -26,6 +27,7 @@ export interface AuditLog {
 // con fallback a `profile.role` para compatibilidad antigua.
 export const deriveRol = (u: any): RolUsuario => {
   try {
+    if (u?.is_superuser) return 'Administrador';
     const rango = u?.empleado?.rango || u?.profile?.rango || '';
     if (rango) {
       const r = String(rango);
@@ -71,7 +73,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const last_name = u.last_name || '';
           const nombre = `${first_name} ${last_name}`.trim() || u.username || u.email || '';
           const rol = deriveRol(u);
-          setUsuario({ id: String(u.id), nombre, first_name, last_name, rol, username: u.username, email: u.email });
+          const rango = u.is_superuser ? '8' : String(u.empleado?.rango || u.profile?.rango || '');
+          setUsuario({ id: String(u.id), nombre, first_name, last_name, rol, rango, username: u.username, email: u.email });
         }
       } catch (e) {
         // silencioso
@@ -91,7 +94,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const last_name = u.last_name || '';
         const nombre = `${first_name} ${last_name}`.trim() || u.username || u.email || '';
         const rol = deriveRol(u);
-        setUsuario({ id: String(u.id), nombre, first_name, last_name, rol, username: u.username, email: u.email });
+        const rango = u.is_superuser ? '8' : String(u.empleado?.rango || u.profile?.rango || '');
+        setUsuario({ id: String(u.id), nombre, first_name, last_name, rol, rango, username: u.username, email: u.email });
       } else {
         setUsuario(null);
       }

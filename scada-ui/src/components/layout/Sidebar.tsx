@@ -15,6 +15,7 @@ import {
   Wifi,
   Database,
   ShieldCheck,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         { title: "Monitorización de Plantas", icon: Monitor, path: "/monitorizacion" },
         { title: "Visualización SCADA", icon: Activity, path: "/scada" },
         { title: "Gestión de Alarmas y Notificaciones", icon: Bell, path: "/alarmas" },
+        { title: "Estadísticas y Análisis", icon: BarChart3, path: "/analisis" },
         { title: "Auditoría y Registro de Actividades", icon: ClipboardList, path: "/auditoria" },
       ],
     },
@@ -71,16 +73,6 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         { title: "Configuración MQTT", icon: Wifi, path: "/comunicacion" },
       ],
     },
-    ...(isAdmin
-      ? [
-          {
-            title: "Administración",
-            items: [
-              { title: "Panel de Control de Admin", icon: ShieldCheck, path: "/admin" },
-            ],
-          },
-        ]
-      : []),
   ];
 
   const toggleGroup = (title: string) => {
