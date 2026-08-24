@@ -16,6 +16,7 @@ import {
   Database,
   ShieldCheck,
   BarChart3,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       title: "Principal",
       items: [
         { title: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
+        { title: "Guía del Sistema", icon: BookOpen, path: "/guia-sistema" },
       ],
     },
     {

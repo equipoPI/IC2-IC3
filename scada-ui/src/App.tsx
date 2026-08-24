@@ -18,6 +18,7 @@ import PlanificacionProduccion from "@/pages/PlanificacionProduccion";
 import GestionPlantillas from "@/pages/GestionPlantillas";
 import ConfiguracionMQTT from "@/pages/ConfiguracionMQTT";
 import AdministracionAlmacenamiento from "@/pages/AdministracionAlmacenamiento";
+import GuiaSistema from "@/pages/GuiaSistema";
 import NotFound from "@/pages/NotFound";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -56,7 +57,7 @@ const ProtectedRoutes = () => {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/empleados" element={<GestionEmpleados />} />
         <Route path="/plantas" element={<GestionPlantas />} />
-      <Route path="/secciones" element={<GestionSecciones />} />
+        <Route path="/secciones" element={<GestionSecciones />} />
         <Route path="/sensores" element={<GestionSensores />} />
         <Route path="/monitorizacion" element={<MonitorizacionSCADA />} />
         <Route path="/scada" element={<VisualizacionSCADA />} />
@@ -67,6 +68,7 @@ const ProtectedRoutes = () => {
         <Route path="/analisis" element={<AnalisisEstadisticas />} />
         <Route path="/comunicacion" element={<ConfiguracionMQTT />} />
         <Route path="/almacenamiento" element={<AdministracionAlmacenamiento />} />
+        <Route path="/guia-sistema" element={<GuiaSistema />} />
       </Route>
       {/* Permitimos acceso a la verificación de email aun cuando el usuario
           ya esté autenticado (el enlace de confirmación debe funcionar
