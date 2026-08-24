@@ -35,6 +35,8 @@ interface ConexionMQTT {
   ip: string;
   puerto: number;
   estado?: "conectado" | "desconectado" | "error";
+  usuario?: string;
+  password?: string;
 }
 
 interface TopicMQTT {
@@ -57,7 +59,7 @@ const ConfiguracionMQTT = () => {
   const [editingConexion, setEditingConexion] = useState<ConexionMQTT | null>(null);
   const [editingTopic, setEditingTopic] = useState<TopicMQTT | null>(null);
 
-  const [formConexion, setFormConexion] = useState({ nombre: "", ip: "", puerto: "1883" });
+  const [formConexion, setFormConexion] = useState({ nombre: "", ip: "", puerto: "1883", usuario: "", password: "" });
   const [formTopic, setFormTopic] = useState({ configuracion: "", topic: "", tipo: "suscripcion" as "suscripcion" | "publicacion", tipoDato: "string", descripcion: "" });
 
   const handleSaveConexion = () => {
@@ -66,25 +68,31 @@ const ConfiguracionMQTT = () => {
       return;
     }
 
-    const payload = { nombre: formConexion.nombre, broker_url: formConexion.ip, puerto: parseInt(formConexion.puerto) };
+    const payload = { 
+      nombre: formConexion.nombre, 
+      broker_url: formConexion.ip, 
+      puerto: parseInt(formConexion.puerto),
+      usuario: formConexion.usuario || null,
+      password: formConexion.password || null
+    };
     if (editingConexion && editingConexion.id) {
       fetch(`/api/v1/configuraciones-mqtt/${editingConexion.id}/`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         .then(r => r.json())
         .then((data) => {
-          setConexiones(conexiones.map(c => c.id === String(data.id) ? { ...c, nombre: data.nombre, ip: data.broker_url, puerto: data.puerto } : c));
+          setConexiones(conexiones.map(c => c.id === String(data.id) ? { ...c, nombre: data.nombre, ip: data.broker_url, puerto: data.puerto, usuario: data.usuario } : c));
           toast({ title: 'Conexión actualizada', description: 'La conexión se ha actualizado correctamente' });
         });
     } else {
       fetch('/api/v1/configuraciones-mqtt/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
         .then(r => r.json())
         .then((data) => {
-          setConexiones([...conexiones, { id: String(data.id), nombre: data.nombre, ip: data.broker_url, puerto: data.puerto, estado: 'desconectado' }]);
+          setConexiones([...conexiones, { id: String(data.id), nombre: data.nombre, ip: data.broker_url, puerto: data.puerto, estado: 'desconectado', usuario: data.usuario }]);
           toast({ title: 'Conexión creada', description: 'La conexión se ha creado correctamente' });
         });
     }
     setDialogConexion(false);
     setEditingConexion(null);
-    setFormConexion({ nombre: "", ip: "", puerto: "1883" });
+    setFormConexion({ nombre: "", ip: "", puerto: "1883", usuario: "", password: "" });
   };
 
   const handleSaveTopic = () => {
@@ -116,7 +124,13 @@ const ConfiguracionMQTT = () => {
 
   const handleEditConexion = (conexion: ConexionMQTT) => {
     setEditingConexion(conexion);
-    setFormConexion({ nombre: conexion.nombre, ip: conexion.ip, puerto: String(conexion.puerto) });
+    setFormConexion({ 
+      nombre: conexion.nombre, 
+      ip: conexion.ip, 
+      puerto: String(conexion.puerto),
+      usuario: conexion.usuario || "",
+      password: "" 
+    });
     setDialogConexion(true);
   };
 
@@ -145,7 +159,14 @@ const ConfiguracionMQTT = () => {
   useEffect(() => {
     fetch('/api/v1/configuraciones-mqtt/')
       .then(r => r.json())
-      .then((data) => setConexiones(data.map((c: any) => ({ id: String(c.id), nombre: c.nombre, ip: c.broker_url, puerto: c.puerto, estado: c.activo ? 'conectado' : 'desconectado' }))));
+      .then((data) => setConexiones(data.map((c: any) => ({ 
+        id: String(c.id), 
+        nombre: c.nombre, 
+        ip: c.broker_url, 
+        puerto: c.puerto, 
+        estado: c.activo ? 'conectado' : 'desconectado',
+        usuario: c.usuario
+      }))));
 
     fetch('/api/v1/mqtt-topics/')
       .then(r => r.json())
@@ -228,7 +249,7 @@ const ConfiguracionMQTT = () => {
       <Card className="bg-card border-border">
         <CardHeader className="flex flex-row items-center justify-between pb-4">
           <CardTitle className="text-lg">Conexiones MQTT</CardTitle>
-          <Button size="sm" onClick={() => { setEditingConexion(null); setFormConexion({ nombre: "", ip: "", puerto: "1883" }); setDialogConexion(true); }}>
+          <Button size="sm" onClick={() => { setEditingConexion(null); setFormConexion({ nombre: "", ip: "", puerto: "1883", usuario: "", password: "" }); setDialogConexion(true); }}>
             <Plus className="h-4 w-4 mr-2" />
             Nueva Conexión
           </Button>
@@ -345,9 +366,19 @@ const ConfiguracionMQTT = () => {
               <Label>Dirección IP</Label>
               <Input value={formConexion.ip} onChange={(e) => setFormConexion({...formConexion, ip: e.target.value})} placeholder="192.168.1.100" className="bg-background border-border" />
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Puerto</Label>
+                <Input type="number" value={formConexion.puerto} onChange={(e) => setFormConexion({...formConexion, puerto: e.target.value})} placeholder="1883" className="bg-background border-border" />
+              </div>
+              <div className="space-y-2">
+                <Label>Usuario (Opcional)</Label>
+                <Input value={formConexion.usuario} onChange={(e) => setFormConexion({...formConexion, usuario: e.target.value})} placeholder="admin" className="bg-background border-border" />
+              </div>
+            </div>
             <div className="space-y-2">
-              <Label>Puerto</Label>
-              <Input type="number" value={formConexion.puerto} onChange={(e) => setFormConexion({...formConexion, puerto: e.target.value})} placeholder="1883" className="bg-background border-border" />
+              <Label>Contraseña (Opcional)</Label>
+              <Input type="password" value={formConexion.password} onChange={(e) => setFormConexion({...formConexion, password: e.target.value})} placeholder="••••••••" className="bg-background border-border" />
             </div>
           </div>
           <DialogFooter>

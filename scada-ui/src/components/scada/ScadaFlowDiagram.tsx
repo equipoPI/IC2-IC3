@@ -16,6 +16,7 @@ import ValveNode from './nodes/ValveNode';
 import MixerNode from './nodes/MixerNode';
 import SensorNode from './nodes/SensorNode';
 import { useStorage } from '@/contexts/StorageContext';
+import apiFetch from '@/lib/api';
 
 const nodeTypes = {
   tank: TankNode,
@@ -58,7 +59,10 @@ export const machineDefinitions = {
   'tank-3': { label: 'Tanque Salida', connectedNodes: ['mixer-1'] },
 };
 
-const createInitialNodes = (storageUnits: ReturnType<typeof useStorage>['storageUnits']): Node[] => {
+const createInitialNodes = (
+  storageUnits: ReturnType<typeof useStorage>['storageUnits'],
+  dispositivos: any[]
+): Node[] => {
   const getStorageData = (nodeId: string) => {
     const unit = storageUnits.find(u => u.nodeId === nodeId);
     if (unit) {
@@ -73,6 +77,47 @@ const createInitialNodes = (storageUnits: ReturnType<typeof useStorage>['storage
       };
     }
     return null;
+  };
+
+  const getDeviceData = (nodeId: string, defaultData: any) => {
+    const dev = dispositivos.find(d => d.numero_serie === nodeId);
+    if (!dev) return defaultData;
+
+    // Retornar datos mapeados de base de datos
+    if (dev.categoria === 'VALVULA') {
+      const isOpen = dev.valor_lectura === 1 || dev.valor_lectura === "open" || String(dev.valor_lectura) === "1.0" || String(dev.valor_lectura) === "true";
+      return {
+        label: dev.nombre || defaultData.label,
+        isOpen,
+        flowRate: dev.valor_lectura !== null ? Number(dev.valor_lectura) : defaultData.flowRate,
+      };
+    }
+    if (dev.categoria === 'BOMBA') {
+      const isRunning = dev.valor_lectura === 1 || dev.valor_lectura === "running" || String(dev.valor_lectura) === "1.0" || String(dev.valor_lectura) === "true";
+      return {
+        label: dev.nombre || defaultData.label,
+        isRunning,
+        rpm: isRunning ? 1450 : 0,
+        power: isRunning ? 75 : 0,
+      };
+    }
+    if (dev.categoria === 'MEZCLADORA') {
+      const isRunning = dev.valor_lectura === 1 || dev.valor_lectura === "running" || String(dev.valor_lectura) === "1.0" || String(dev.valor_lectura) === "true";
+      return {
+        label: dev.nombre || defaultData.label,
+        isRunning,
+        speed: isRunning ? 120 : 0,
+        temperature: 45,
+      };
+    }
+    // Sensores en general
+    return {
+      label: dev.nombre || defaultData.label,
+      value: dev.valor_lectura !== null ? Number(dev.valor_lectura) : defaultData.value,
+      unit: dev.unidad_lectura || defaultData.unit,
+      type: defaultData.type,
+      status: dev.estado === 'ERROR' ? 'critical' : dev.estado === 'MANTENIMIENTO' ? 'warning' : 'normal',
+    };
   };
 
   return [
@@ -92,43 +137,43 @@ const createInitialNodes = (storageUnits: ReturnType<typeof useStorage>['storage
       id: 'valve-1',
       type: 'valve',
       position: { x: 220, y: 100 },
-      data: { label: 'Válvula V1', isOpen: true, flowRate: 12.5 },
+      data: getDeviceData('valve-1', { label: 'Válvula V1', isOpen: true, flowRate: 12.5 }),
     },
     {
       id: 'valve-2',
       type: 'valve',
       position: { x: 220, y: 330 },
-      data: { label: 'Válvula V2', isOpen: true, flowRate: 8.3 },
+      data: getDeviceData('valve-2', { label: 'Válvula V2', isOpen: true, flowRate: 8.3 }),
     },
     {
       id: 'pump-1',
       type: 'pump',
       position: { x: 350, y: 180 },
-      data: { label: 'Bomba P1', isRunning: true, rpm: 1450, power: 75 },
+      data: getDeviceData('pump-1', { label: 'Bomba P1', isRunning: true, rpm: 1450, power: 75 }),
     },
     {
       id: 'mixer-1',
       type: 'mixer',
       position: { x: 500, y: 150 },
-      data: { label: 'Mezclador M1', isRunning: true, speed: 120, temperature: 45 },
+      data: getDeviceData('mixer-1', { label: 'Mezclador M1', isRunning: true, speed: 120, temperature: 45 }),
     },
     {
       id: 'sensor-1',
       type: 'sensor',
       position: { x: 650, y: 80 },
-      data: { label: 'Sensor Temp', value: 45.2, unit: '°C', type: 'temperature', status: 'normal' },
+      data: getDeviceData('sensor-1', { label: 'Sensor Temp', value: 45.2, unit: '°C', type: 'temperature', status: 'normal' }),
     },
     {
       id: 'sensor-2',
       type: 'sensor',
       position: { x: 650, y: 180 },
-      data: { label: 'Sensor Presión', value: 2.4, unit: 'bar', type: 'pressure', status: 'normal' },
+      data: getDeviceData('sensor-2', { label: 'Sensor Presión', value: 2.4, unit: 'bar', type: 'pressure', status: 'normal' }),
     },
     {
       id: 'sensor-3',
       type: 'sensor',
       position: { x: 650, y: 280 },
-      data: { label: 'Sensor Flujo', value: 18.7, unit: 'L/min', type: 'flow', status: 'warning' },
+      data: getDeviceData('sensor-3', { label: 'Sensor Flujo', value: 18.7, unit: 'L/min', type: 'flow', status: 'warning' }),
     },
     {
       id: 'tank-3',
@@ -157,8 +202,28 @@ interface ScadaFlowDiagramProps {
 
 const ScadaFlowDiagram = ({ selectedView = 'planta-completa' }: ScadaFlowDiagramProps) => {
   const { storageUnits } = useStorage();
+  const [dispositivos, setDispositivos] = useState<any[]>([]);
+
+  const loadDispositivos = async () => {
+    try {
+      const resp = await apiFetch("/api/v1/dispositivos/");
+      if (resp.ok) {
+        const data = await resp.json();
+        const list = Array.isArray(data) ? data : data.results || [];
+        setDispositivos(list);
+      }
+    } catch (e) {
+      // silent
+    }
+  };
+
+  useEffect(() => {
+    loadDispositivos();
+    const interval = setInterval(loadDispositivos, 3000);
+    return () => clearInterval(interval);
+  }, []);
   
-  const allNodes = useMemo(() => createInitialNodes(storageUnits), [storageUnits]);
+  const allNodes = useMemo(() => createInitialNodes(storageUnits, dispositivos), [storageUnits, dispositivos]);
 
   const filteredData = useMemo(() => {
     let nodeIds: string[] = [];
@@ -191,80 +256,16 @@ const ScadaFlowDiagram = ({ selectedView = 'planta-completa' }: ScadaFlowDiagram
     }
 
     return { nodes: filteredNodes, edges: filteredEdges };
-  }, [selectedView]);
+  }, [selectedView, allNodes]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(filteredData.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(filteredData.edges);
 
-  // Update nodes when view changes
+  // Update nodes when view changes or when new data loads
   useEffect(() => {
     setNodes(filteredData.nodes);
     setEdges(filteredData.edges);
   }, [filteredData, setNodes, setEdges]);
-
-  // Simulate real-time data updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (node.type === 'tank') {
-            const variation = (Math.random() - 0.5) * 4;
-            const newLevel = Math.max(5, Math.min(95, (node.data.level as number) + variation));
-            const tempVariation = (Math.random() - 0.5) * 1;
-            const newTemp = Math.max(20, Math.min(60, (node.data.temperature as number) + tempVariation));
-            return {
-              ...node,
-              data: { ...node.data, level: Math.round(newLevel * 10) / 10, temperature: Math.round(newTemp * 10) / 10 },
-            };
-          }
-          if (node.type === 'pump') {
-            const rpmVariation = (Math.random() - 0.5) * 20;
-            const newRpm = Math.max(1200, Math.min(1600, (node.data.rpm as number) + rpmVariation));
-            return {
-              ...node,
-              data: { ...node.data, rpm: Math.round(newRpm) },
-            };
-          }
-          if (node.type === 'sensor') {
-            let variation = 0;
-            if (node.data.type === 'temperature') {
-              variation = (Math.random() - 0.5) * 2;
-            } else if (node.data.type === 'pressure') {
-              variation = (Math.random() - 0.5) * 0.3;
-            } else if (node.data.type === 'flow') {
-              variation = (Math.random() - 0.5) * 2;
-            }
-            const newValue = Math.max(0, (node.data.value as number) + variation);
-            return {
-              ...node,
-              data: { ...node.data, value: Math.round(newValue * 10) / 10 },
-            };
-          }
-          if (node.type === 'valve') {
-            const flowVariation = (Math.random() - 0.5) * 1;
-            const newFlow = Math.max(0, (node.data.flowRate as number) + flowVariation);
-            return {
-              ...node,
-              data: { ...node.data, flowRate: Math.round(newFlow * 10) / 10 },
-            };
-          }
-          if (node.type === 'mixer') {
-            const speedVariation = (Math.random() - 0.5) * 5;
-            const newSpeed = Math.max(80, Math.min(150, (node.data.speed as number) + speedVariation));
-            const tempVariation = (Math.random() - 0.5) * 1;
-            const newTemp = Math.max(35, Math.min(55, (node.data.temperature as number) + tempVariation));
-            return {
-              ...node,
-              data: { ...node.data, speed: Math.round(newSpeed), temperature: Math.round(newTemp * 10) / 10 },
-            };
-          }
-          return node;
-        })
-      );
-    }, 1500);
-
-    return () => clearInterval(interval);
-  }, [setNodes]);
 
   return (
     <div className="w-full h-[500px] rounded-lg overflow-hidden border border-border bg-background/30">

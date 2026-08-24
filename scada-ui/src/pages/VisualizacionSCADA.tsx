@@ -5,25 +5,108 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { toast } from "sonner";
+import apiFetch from "@/lib/api";
 import ScadaFlowDiagram, { systemDefinitions, machineDefinitions } from "@/components/scada/ScadaFlowDiagram";
 
 const VisualizacionSCADA = () => {
   const [isRunning, setIsRunning] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedView, setSelectedView] = useState('planta-completa');
+  const [dispositivos, setDispositivos] = useState<any[]>([]);
+
+  // Cargar dispositivos reales
+  const loadDispositivos = async () => {
+    try {
+      const resp = await apiFetch("/api/v1/dispositivos/");
+      if (resp.ok) {
+        const data = await resp.json();
+        const list = Array.isArray(data) ? data : data.results || [];
+        setDispositivos(list);
+      }
+    } catch (e) {
+      // silent
+    }
+  };
+
+  useEffect(() => {
+    loadDispositivos();
+    const interval = setInterval(loadDispositivos, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Enviar comando manual al backend
+  const handleControlClick = async (deviceId: string, actionLabel: string) => {
+    // Traducir etiqueta visual a comando
+    let comando = "";
+    if (actionLabel === "Abrir") comando = "abrir";
+    if (actionLabel === "Cerrar") comando = "cerrar";
+    if (actionLabel === "Iniciar") comando = "iniciar";
+    if (actionLabel === "Detener") comando = "detener";
+
+    if (!comando) return;
+
+    try {
+      toast.info(`Enviando comando '${actionLabel}'...`);
+      const resp = await apiFetch(`/api/v1/dispositivos/${deviceId}/control/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comando }),
+      });
+
+      if (resp.ok) {
+        toast.success(`Comando '${actionLabel}' enviado correctamente`);
+        // Forzar refresco
+        loadDispositivos();
+      } else {
+        const errData = await resp.json();
+        toast.error(`Error al enviar comando: ${errData.error || resp.statusText}`);
+      }
+    } catch (e) {
+      toast.error("Error de conexión al enviar el comando");
+    }
+  };
 
   // Get relevant controls based on selected view
   const relevantControls = useMemo(() => {
-    const allControls = [
-      { id: 'valve-1', label: 'Válvula V1', status: 'Abierta', statusColor: 'outline', actions: ['Cerrar', 'Auto'] },
-      { id: 'valve-2', label: 'Válvula V2', status: 'Abierta', statusColor: 'outline', actions: ['Cerrar', 'Auto'] },
-      { id: 'pump-1', label: 'Bomba P1', status: 'Activa', statusColor: 'success', actions: ['Detener', 'Auto'] },
-      { id: 'mixer-1', label: 'Mezclador M1', status: 'Activo', statusColor: 'success', actions: ['Detener', 'Auto'] },
+    // Declaramos controles base (fallbacks)
+    const fallbacks = [
+      { id: 'valve-1', label: 'Válvula V1', status: 'Cerrada', statusColor: 'outline', actions: ['Abrir'] },
+      { id: 'valve-2', label: 'Válvula V2', status: 'Cerrada', statusColor: 'outline', actions: ['Abrir'] },
+      { id: 'pump-1', label: 'Bomba P1', status: 'Detenida', statusColor: 'outline', actions: ['Iniciar'] },
+      { id: 'mixer-1', label: 'Mezclador M1', status: 'Detenido', statusColor: 'outline', actions: ['Iniciar'] },
     ];
 
+    // Mapear los dispositivos reales que corresponden a los controles
+    const mappedControls = fallbacks.map(fb => {
+      const dev = dispositivos.find(d => d.numero_serie === fb.id);
+      if (!dev) return fb;
+
+      const isActivo = dev.valor_lectura === 1 || dev.valor_lectura === "open" || dev.valor_lectura === "running" || String(dev.valor_lectura) === "1.0" || String(dev.valor_lectura) === "true";
+      
+      if (dev.categoria === 'VALVULA') {
+        return {
+          id: dev.numero_serie,
+          label: dev.nombre || fb.label,
+          status: isActivo ? 'Abierta' : 'Cerrada',
+          statusColor: isActivo ? 'success' : 'outline',
+          actions: isActivo ? ['Cerrar'] : ['Abrir']
+        };
+      } else {
+        // Bomba o Mezcladora
+        return {
+          id: dev.numero_serie,
+          label: dev.nombre || fb.label,
+          status: isActivo ? 'Activo' : 'Detenido',
+          statusColor: isActivo ? 'success' : 'outline',
+          actions: isActivo ? ['Detener'] : ['Iniciar']
+        };
+      }
+    });
+
     if (selectedView === 'planta-completa') {
-      return allControls;
+      return mappedControls;
     }
 
     let visibleNodeIds: string[] = [];
@@ -35,8 +118,8 @@ const VisualizacionSCADA = () => {
       visibleNodeIds = [selectedView, ...machine.connectedNodes];
     }
 
-    return allControls.filter(control => visibleNodeIds.includes(control.id));
-  }, [selectedView]);
+    return mappedControls.filter(control => visibleNodeIds.includes(control.id));
+  }, [selectedView, dispositivos]);
 
   // Get current view label
   const currentViewLabel = useMemo(() => {
@@ -127,7 +210,7 @@ const VisualizacionSCADA = () => {
                   </div>
                   
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+                    <Button variant="outline" size="sm" onClick={() => loadDispositivos()}>
                       <RotateCcw className="h-4 w-4 mr-2" />
                       Actualizar
                     </Button>
@@ -256,7 +339,6 @@ const VisualizacionSCADA = () => {
                         <span className="text-foreground">Mezclado</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Progreso</span>
                         <span className="text-foreground font-mono">67%</span>
                       </div>
                       <div className="flex justify-between text-sm">
@@ -312,10 +394,8 @@ const VisualizacionSCADA = () => {
                                 variant="outline" 
                                 className={`text-xs ${
                                   control.statusColor === 'success' 
-                                    ? 'bg-success/20 text-success' 
-                                    : control.statusColor === 'warning'
-                                    ? 'bg-warning/20 text-warning'
-                                    : ''
+                                    ? 'bg-success/20 text-success border-success/30' 
+                                    : 'bg-muted text-muted-foreground border-muted'
                                 }`}
                               >
                                 {control.status}
@@ -323,7 +403,13 @@ const VisualizacionSCADA = () => {
                             </div>
                             <div className="flex gap-2">
                               {control.actions.map((action) => (
-                                <Button key={action} variant="outline" size="sm" className="flex-1">
+                                <Button 
+                                  key={action} 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="flex-1 hover:bg-primary hover:text-primary-foreground"
+                                  onClick={() => handleControlClick(control.id, action)}
+                                >
                                   {action}
                                 </Button>
                               ))}
