@@ -136,6 +136,48 @@ class DispositivoSCADAViewSet(viewsets.ModelViewSet):
     serializer_class = DispositivoSCADASerializer
     permission_classes = [IsAuthenticated]
 
+    from rest_framework.decorators import action
+    import paho.mqtt.publish as publish
+
+    @action(detail=True, methods=['post'])
+    def control(self, request, pk=None):
+        dispositivo = self.get_object()
+        comando = request.data.get('comando') # 'abrir', 'cerrar', 'iniciar', 'detener'
+        
+        if not comando:
+            return Response({'error': 'Comando no especificado'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        valor_mqtt = "0"
+        if comando in ['abrir', 'iniciar']:
+            valor_mqtt = "1"
+        elif comando in ['cerrar', 'detener']:
+            valor_mqtt = "0"
+            
+        gateway = dispositivo.gateway_id or 'gw1'
+        topic = f"scada/{gateway}/cmd/{dispositivo.numero_serie}"
+        
+        try:
+            publish.single(
+                topic, 
+                payload=valor_mqtt, 
+                hostname="mosquitto", 
+                port=1883,
+                client_id="django-backend-control"
+            )
+            
+            models.RegistroAuditoria.objects.create(
+                usuario=request.user,
+                accion='CONTROL_MANUAL',
+                modulo='SCADA',
+                objeto=dispositivo.numero_serie,
+                descripcion=f"Enviado comando manual '{comando}' (MQTT: {valor_mqtt}) a dispositivo {dispositivo.nombre}",
+                ip_origen=request.META.get('REMOTE_ADDR') or '127.0.0.1'
+            )
+            
+            return Response({'status': 'Comando enviado', 'topic': topic, 'valor': valor_mqtt})
+        except Exception as e:
+            return Response({'error': f'Error al publicar en MQTT: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class LecturaSensorViewSet(viewsets.ModelViewSet):
     """CRUD para lecturas de sensores"""
@@ -149,6 +191,26 @@ class TopicMQTTViewSet(viewsets.ModelViewSet):
     queryset = TopicMQTT.objects.all().order_by('id')
     serializer_class = TopicMQTTSerializer
     permission_classes = [IsAuthenticated]
+
+
+class MetricaConfiguracionViewSet(viewsets.ModelViewSet):
+    """CRUD para la configuración conceptual de métricas"""
+    queryset = models.MetricaConfiguracion.objects.all().order_by('nombre')
+    serializer_class = serializers.MetricaConfiguracionSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class VariableVinculadaViewSet(viewsets.ModelViewSet):
+    """CRUD para asociar métricas a sensores reales por planta"""
+    serializer_class = serializers.VariableVinculadaSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = models.VariableVinculada.objects.all().order_by('id')
+        fabrica_id = self.request.query_params.get('fabrica')
+        if fabrica_id:
+            queryset = queryset.filter(fabrica_id=fabrica_id)
+        return queryset
 
 # =============================================================================
 # Vistas tradicionales
@@ -376,12 +438,33 @@ class RegistroMantenimientoViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 
+from rest_framework.pagination import PageNumberPagination
+
+class AuditoriaPageNumberPagination(PageNumberPagination):
+    page_size = 25
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 class RegistroAuditoriaViewSet(viewsets.ModelViewSet):
     """ViewSet para registros de auditoría: creación por usuarios autenticados
     y lectura por administradores.
     """
-    queryset = models.RegistroAuditoria.objects.all().order_by('-timestamp')
     serializer_class = serializers.RegistroAuditoriaSerializer
+    pagination_class = AuditoriaPageNumberPagination
+    search_fields = ['accion', 'modulo', 'descripcion', 'ip_origen', 'usuario__username']
+    filterset_fields = ['modulo', 'accion']
+    ordering_fields = ['timestamp', 'modulo', 'accion', 'usuario__username']
+
+    def get_queryset(self):
+        queryset = models.RegistroAuditoria.objects.all().order_by('-timestamp')
+        fecha_desde = self.request.query_params.get('fecha_desde')
+        fecha_hasta = self.request.query_params.get('fecha_hasta')
+        if fecha_desde:
+            queryset = queryset.filter(timestamp__gte=fecha_desde)
+        if fecha_hasta:
+            queryset = queryset.filter(timestamp__lte=fecha_hasta)
+        return queryset
+    
     def get_permissions(self):
         from rest_framework.permissions import IsAdminUser
         # Crear: cualquier usuario autenticado puede reportar una acción.
@@ -562,4 +645,15 @@ def api_root(request, format=None):
             'url': base + 'api/v1/auth/password/reset/confirm/',
             'description': 'Confirmación de reseteo (token + new password)',
         },
+        'alarmas': {
+            'url': base + 'api/v1/alarmas/',
+            'description': 'Lista y gestión de alarmas industriales del SCADA',
+        },
     })
+
+
+class AlarmaViewSet(viewsets.ModelViewSet):
+    queryset = models.Alarma.objects.all().order_by('-fecha_hora')
+    serializer_class = serializers.AlarmaSerializer
+    filterset_fields = ['planta', 'seccion', 'estado', 'severidad']
+    search_fields = ['descripcion', 'sensor_maquina']

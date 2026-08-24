@@ -1,5 +1,6 @@
 from django.urls import path, include
 from . import views
+from . import views_analisis
 from rest_framework import routers
 
 # Router DRF para viewsets — rutas relativas al include en project urls
@@ -28,6 +29,9 @@ router.register(r'comunicaciones-mqtt', views.ComunicacionMQTTViewSet, basename=
 router.register(r'users', views.UserViewSet, basename='user')
 router.register(r'profiles', views.ProfileViewSet, basename='profile')
 router.register(r'auditoria', views.RegistroAuditoriaViewSet, basename='auditoria')
+router.register(r'metricas-config', views.MetricaConfiguracionViewSet, basename='metricasconfig')
+router.register(r'variables-vinculadas', views.VariableVinculadaViewSet, basename='variablesvinculadas')
+router.register(r'alarmas', views.AlarmaViewSet, basename='alarma')
 
 urlpatterns = [
     # Rutas automáticas de DRF (registradas en router) — raíz de la API de la app
@@ -44,4 +48,6 @@ urlpatterns = [
     path('auth/register/', views.RegisterAPIView.as_view(), name='auth_register'),
     # Fallback para confirmación de email desde SPA (GET, sin CSRF)
     path('auth/registration/verify-email-get/', views.verify_email_get, name='auth_verify_email_get'),
+    # Endpoint de analítica y estadísticas agregadas
+    path('analisis/estadisticas/', views_analisis.obtener_estadisticas, name='analisis_estadisticas'),
 ]

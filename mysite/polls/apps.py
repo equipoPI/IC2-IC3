@@ -30,6 +30,9 @@ class PollsConfig(AppConfig):
     name = 'polls'
 
     def ready(self):
+        # Importar señales de auditoría para su registro en Django
+        import polls.signals
+        
         # Parchear el generador de URL por defecto usado por dj-rest-auth
         try:
             import dj_rest_auth.forms as _dj_forms

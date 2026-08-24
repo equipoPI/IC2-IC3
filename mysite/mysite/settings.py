@@ -68,6 +68,7 @@ MIDDLEWARE = [
     'allauth.account.middleware.AccountMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'polls.middleware.AuditMiddleware',
 ]
 
 ROOT_URLCONF = 'mysite.urls'
@@ -295,6 +296,10 @@ ACCOUNT_UNIQUE_EMAIL = True
 
 # Use custom serializer for registration to enforce registration_key
 REST_AUTH_REGISTER_SERIALIZER = 'polls.serializers.CustomRegisterSerializer'
+
+REST_AUTH = {
+    'USER_DETAILS_SERIALIZER': 'polls.serializers.UserSerializer',
+}
 
 # Usar adaptador personalizado para construir correctamente el enlace de
 # confirmación (apunta al frontend SPA con ?key=...)

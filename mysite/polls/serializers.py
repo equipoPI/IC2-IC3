@@ -199,12 +199,27 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer(read_only=True)
+    empleado = serializers.SerializerMethodField(read_only=True)
     password = serializers.CharField(write_only=True, required=True)
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'password', 'is_active', 'profile']
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'password', 'is_active', 'is_superuser', 'profile', 'empleado']
         extra_kwargs = {'is_active': {'read_only': True}}
+
+    def get_empleado(self, obj):
+        try:
+            emp = getattr(obj, 'empleado', None)
+            if emp:
+                return {
+                    'id': emp.id,
+                    'rango': emp.rango,
+                    'fabrica': emp.fabrica.id if getattr(emp, 'fabrica', None) else None,
+                    'seccion': emp.seccion.id if getattr(emp, 'seccion', None) else None,
+                }
+        except Exception:
+            pass
+        return None
 
     def create(self, validated_data):
         password = validated_data.pop('password')
@@ -225,14 +240,65 @@ class UserSerializer(serializers.ModelSerializer):
 # Serializers Básicos
 # =============================================================================
 
+class MetricaConfiguracionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.MetricaConfiguracion
+        fields = '__all__'
+
+
+class VariableVinculadaSerializer(serializers.ModelSerializer):
+    metrica_nombre = serializers.CharField(source='metrica_config.nombre', read_only=True)
+    metrica_unidad = serializers.CharField(source='metrica_config.unidad_medida', read_only=True)
+    metrica_icono = serializers.CharField(source='metrica_config.icono', read_only=True)
+    sensor_nombre = serializers.CharField(source='sensor.nombre', read_only=True)
+    valor_lectura = serializers.SerializerMethodField(read_only=True)
+    unidad_lectura = serializers.SerializerMethodField(read_only=True)
+    estado_alerta = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = models.VariableVinculada
+        fields = '__all__'
+
+    def get_valor_lectura(self, obj):
+        if obj.sensor:
+            lectura = obj.sensor.lecturas.first()
+            return lectura.valor if lectura else None
+        return None
+
+    def get_unidad_lectura(self, obj):
+        if obj.sensor:
+            lectura = obj.sensor.lecturas.first()
+            return lectura.unidad if lectura else "N/A"
+        return "N/A"
+
+    def get_estado_alerta(self, obj):
+        if not obj.sensor:
+            return "normal"
+        lectura = obj.sensor.lecturas.first()
+        if not lectura:
+            return "normal"
+        val = lectura.valor
+        
+        if obj.umbral_critico is not None and val >= obj.umbral_critico:
+            return "critico"
+        if obj.umbral_advertencia is not None and val >= obj.umbral_advertencia:
+            return "advertencia"
+        return "normal"
+
+
 class FabricaSerializer(serializers.ModelSerializer):
     """Serializer para Plantas/Fábricas con métricas SCADA"""
     from datetime import datetime as _datetime
     fecha_creacion = serializers.SerializerMethodField(read_only=True)
+    variables_vinculadas = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Fabrica
         fields = '__all__'
+
+    def get_variables_vinculadas(self, obj):
+        vins = obj.variables_vinculadas.filter(activo=True)
+        return VariableVinculadaSerializer(vins, many=True).data
 
     def get_fecha_creacion(self, obj):
         val = getattr(obj, 'fecha_creacion', None)
@@ -300,10 +366,20 @@ class DispositivoSCADASerializer(serializers.ModelSerializer):
     sistema_nombre = serializers.CharField(source='sistema.nombre', read_only=True)
     seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
     inventario_nombre = serializers.CharField(source='inventario.nombre', read_only=True)
+    valor_lectura = serializers.SerializerMethodField(read_only=True)
+    unidad_lectura = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = models.DispositivoSCADA
         fields = '__all__'
+
+    def get_valor_lectura(self, obj):
+        lectura = obj.lecturas.first()
+        return lectura.valor if lectura else None
+
+    def get_unidad_lectura(self, obj):
+        lectura = obj.lecturas.first()
+        return lectura.unidad if lectura else "N/A"
 
 
 class DispositivoSCADAListSerializer(serializers.ModelSerializer):
@@ -825,6 +901,7 @@ class RegistroMantenimientoSerializer(serializers.ModelSerializer):
 
 class RegistroAuditoriaSerializer(serializers.ModelSerializer):
     usuario_username = serializers.CharField(source='usuario.username', read_only=True)
+    timestamp = serializers.DateTimeField(format="%Y-%m-%dT%H:%M:%SZ", read_only=True)
 
     class Meta:
         model = models.RegistroAuditoria
@@ -967,3 +1044,13 @@ class TopicMQTTSerializer(serializers.ModelSerializer):
 #     alarmas_activas = serializers.IntegerField()
 #     ordenes_pendientes = serializers.IntegerField()
 #     ordenes_en_proceso = serializers.IntegerField()
+
+
+class AlarmaSerializer(serializers.ModelSerializer):
+    planta_nombre = serializers.ReadOnlyField(source='planta.nombre')
+    seccion_nombre = serializers.ReadOnlyField(source='seccion.nombre')
+    fecha_hora = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+
+    class Meta:
+        model = models.Alarma
+        fields = '__all__'
