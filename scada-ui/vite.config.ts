@@ -8,6 +8,9 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    watch: {
+      usePolling: true,
+    },
     // Permitir peticiones desde contenedores (host.docker.internal)
     allowedHosts: ['host.docker.internal'],
     proxy: {

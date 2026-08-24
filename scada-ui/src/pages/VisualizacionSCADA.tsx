@@ -16,6 +16,17 @@ const VisualizacionSCADA = () => {
   const [selectedView, setSelectedView] = useState('planta-completa');
   const [dispositivos, setDispositivos] = useState<any[]>([]);
 
+  // Obtener datos del dispositivo de proceso
+  const procesoDev = dispositivos.find(d => d.numero_serie === 'proceso');
+  const totalMin = procesoDev?.valor_lectura !== null ? Number(procesoDev?.valor_lectura) : null;
+  const tiempoEst = totalMin !== null && !isNaN(totalMin)
+    ? `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`
+    : "0h 0m";
+  const faseProceso = procesoDev && totalMin && totalMin > 0 ? "Mezclado" : "Detenido";
+  const progresoProceso = procesoDev && totalMin && totalMin > 0 
+    ? `${Math.max(0, Math.min(100, Math.round(100 - (totalMin / 150) * 100)))}%` 
+    : "0%";
+
   // Cargar dispositivos reales
   const loadDispositivos = async () => {
     try {
@@ -332,18 +343,19 @@ const VisualizacionSCADA = () => {
                     <div className="space-y-3">
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Receta</span>
-                        <span className="text-foreground">REC-001</span>
+                        <span className="text-foreground">{procesoDev && totalMin && totalMin > 0 ? "REC-001" : "Ninguna"}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Fase</span>
-                        <span className="text-foreground">Mezclado</span>
+                        <span className="text-foreground">{faseProceso}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-foreground font-mono">67%</span>
+                        <span className="text-muted-foreground">Progreso</span>
+                        <span className="text-foreground font-mono">{progresoProceso}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Tiempo Est.</span>
-                        <span className="text-foreground font-mono">1h 23m</span>
+                        <span className="text-foreground font-mono">{tiempoEst}</span>
                       </div>
                     </div>
                     <Separator />

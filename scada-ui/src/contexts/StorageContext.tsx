@@ -108,6 +108,8 @@ export const StorageProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     loadData();
+    const interval = setInterval(loadData, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   const updateStorageUnit = async (updatedUnit: StorageUnit) => {

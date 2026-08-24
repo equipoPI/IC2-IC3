@@ -63,7 +63,7 @@ const ConfiguracionMQTT = () => {
   const [formConexion, setFormConexion] = useState({ nombre: "", ip: "", puerto: "1883", usuario: "", password: "" });
   const [formTopic, setFormTopic] = useState({ configuracion: "", topic: "", tipo: "suscripcion" as "suscripcion" | "publicacion", tipoDato: "string", descripcion: "" });
 
-  const handleSaveConexion = () => {
+  const handleSaveConexion = async () => {
     if (!formConexion.nombre || !formConexion.ip || !formConexion.puerto) {
       toast({ title: "Error", description: "Complete todos los campos", variant: "destructive" });
       return;
@@ -76,51 +76,97 @@ const ConfiguracionMQTT = () => {
       usuario: formConexion.usuario || null,
       password: formConexion.password || null
     };
-    if (editingConexion && editingConexion.id) {
-      apiFetch(`/api/v1/configuraciones-mqtt/${editingConexion.id}/`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-        .then(r => r.json())
-        .then((data) => {
+
+    try {
+      if (editingConexion && editingConexion.id) {
+        const resp = await apiFetch(`/api/v1/configuraciones-mqtt/${editingConexion.id}/`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (resp.ok) {
+          const data = await resp.json();
           setConexiones(conexiones.map(c => c.id === String(data.id) ? { ...c, nombre: data.nombre, ip: data.broker_url, puerto: data.puerto, usuario: data.usuario } : c));
           toast({ title: 'Conexión actualizada', description: 'La conexión se ha actualizado correctamente' });
+        } else {
+          const errData = await resp.json();
+          const detail = errData.detail || Object.entries(errData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`).join(" | ") || "Error al actualizar la conexión";
+          toast({ title: 'Error', description: detail, variant: "destructive" });
+          return;
+        }
+      } else {
+        const resp = await apiFetch('/api/v1/configuraciones-mqtt/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
-    } else {
-      apiFetch('/api/v1/configuraciones-mqtt/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-        .then(r => r.json())
-        .then((data) => {
+        if (resp.ok) {
+          const data = await resp.json();
           setConexiones([...conexiones, { id: String(data.id), nombre: data.nombre, ip: data.broker_url, puerto: data.puerto, estado: 'desconectado', usuario: data.usuario }]);
           toast({ title: 'Conexión creada', description: 'La conexión se ha creado correctamente' });
-        });
+        } else {
+          const errData = await resp.json();
+          const detail = errData.detail || Object.entries(errData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`).join(" | ") || "Error al crear la conexión";
+          toast({ title: 'Error', description: detail, variant: "destructive" });
+          return;
+        }
+      }
+      setDialogConexion(false);
+      setEditingConexion(null);
+      setFormConexion({ nombre: "", ip: "", puerto: "1883", usuario: "", password: "" });
+    } catch (e) {
+      toast({ title: 'Error', description: 'Error de red con el servidor', variant: "destructive" });
     }
-    setDialogConexion(false);
-    setEditingConexion(null);
-    setFormConexion({ nombre: "", ip: "", puerto: "1883", usuario: "", password: "" });
   };
 
-  const handleSaveTopic = () => {
+  const handleSaveTopic = async () => {
     if (!formTopic.configuracion || !formTopic.topic || !formTopic.tipoDato) {
       toast({ title: "Error", description: "Complete todos los campos", variant: "destructive" });
       return;
     }
 
     const payload: any = { configuracion: formTopic.configuracion, topic: formTopic.topic, tipo: formTopic.tipo === 'suscripcion' ? 'SUSCRIPCION' : 'PUBLICACION', tipo_dato: formTopic.tipoDato, descripcion: formTopic.descripcion };
-    if (editingTopic && editingTopic.id) {
-      apiFetch(`/api/v1/mqtt-topics/${editingTopic.id}/`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-        .then(r => r.json())
-        .then((data) => {
+    
+    try {
+      if (editingTopic && editingTopic.id) {
+        const resp = await apiFetch(`/api/v1/mqtt-topics/${editingTopic.id}/`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (resp.ok) {
+          const data = await resp.json();
           setTopics(topics.map(t => t.id === String(data.id) ? { id: String(data.id), configuracion: String(data.configuracion), topic: data.topic, tipo: (data.tipo || '').toString().toLowerCase(), tipoDato: data.tipo_dato, descripcion: data.descripcion } : t));
           toast({ title: 'Topic actualizado', description: 'El topic se ha actualizado correctamente' });
+        } else {
+          const errData = await resp.json();
+          const detail = errData.detail || Object.entries(errData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`).join(" | ") || "Error al actualizar el topic";
+          toast({ title: 'Error', description: detail, variant: "destructive" });
+          return;
+        }
+      } else {
+        const resp = await apiFetch('/api/v1/mqtt-topics/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
-    } else {
-      apiFetch('/api/v1/mqtt-topics/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-        .then(r => r.json())
-        .then((data) => {
+        if (resp.ok) {
+          const data = await resp.json();
           setTopics([...topics, { id: String(data.id), configuracion: String(data.configuracion), topic: data.topic, tipo: (data.tipo || '').toString().toLowerCase(), tipoDato: data.tipo_dato, descripcion: data.descripcion }]);
           toast({ title: 'Topic creado', description: 'El topic se ha creado correctamente' });
-        });
+        } else {
+          const errData = await resp.json();
+          const detail = errData.detail || Object.entries(errData).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`).join(" | ") || "Error al crear el topic";
+          toast({ title: 'Error', description: detail, variant: "destructive" });
+          return;
+        }
+      }
+      setDialogTopic(false);
+      setEditingTopic(null);
+      setFormTopic({ configuracion: "", topic: "", tipo: "suscripcion", tipoDato: "string", descripcion: "" });
+    } catch (e) {
+      toast({ title: 'Error', description: 'Error de red con el servidor', variant: "destructive" });
     }
-    setDialogTopic(false);
-    setEditingTopic(null);
-    setFormTopic({ configuracion: "", topic: "", tipo: "suscripcion", tipoDato: "string", descripcion: "" });
   };
 
   const handleEditConexion = (conexion: ConexionMQTT) => {
@@ -160,18 +206,31 @@ const ConfiguracionMQTT = () => {
   useEffect(() => {
     apiFetch('/api/v1/configuraciones-mqtt/')
       .then(r => r.json())
-      .then((data) => setConexiones(data.map((c: any) => ({ 
-        id: String(c.id), 
-        nombre: c.nombre, 
-        ip: c.broker_url, 
-        puerto: c.puerto, 
-        estado: c.activo ? 'conectado' : 'desconectado',
-        usuario: c.usuario
-      }))));
+      .then((data) => {
+        const list = Array.isArray(data) ? data : data.results || [];
+        setConexiones(list.map((c: any) => ({ 
+          id: String(c.id), 
+          nombre: c.nombre, 
+          ip: c.broker_url, 
+          puerto: c.puerto, 
+          estado: c.activo ? 'conectado' : 'desconectado',
+          usuario: c.usuario
+        })));
+      });
 
     apiFetch('/api/v1/mqtt-topics/')
       .then(r => r.json())
-      .then((data) => setTopics(data.map((t: any) => ({ id: String(t.id), configuracion: String(t.configuracion), topic: t.topic, tipo: (t.tipo || '').toString().toLowerCase(), tipoDato: t.tipo_dato, descripcion: t.descripcion }))));
+      .then((data) => {
+        const list = Array.isArray(data) ? data : data.results || [];
+        setTopics(list.map((t: any) => ({ 
+          id: String(t.id), 
+          configuracion: String(t.configuracion), 
+          topic: t.topic, 
+          tipo: (t.tipo || '').toString().toLowerCase(), 
+          tipoDato: t.tipo_dato, 
+          descripcion: t.descripcion 
+        })));
+      });
   }, []);
 
   const getEstadoConfig = (estado: ConexionMQTT["estado"]): { label: string; className: string } => {
