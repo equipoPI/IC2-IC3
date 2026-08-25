@@ -60,6 +60,12 @@ arduino_protocol:
   - index: 16
     name: estado_proceso
     type: int
+  - index: 17
+    name: estado_electrovalvula1
+    type: bool
+  - index: 18
+    name: estado_electrovalvula2
+    type: bool
   send_commands:
     continuar: A
     detener: D

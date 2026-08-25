@@ -432,6 +432,8 @@ void caudal() {
 void frenadoReposicion() {
   flagParadaR = 1;
   EBombaR = 0;
+  EValvula1 = 0;
+  EValvula2 = 0;
   
   // Apagar bomba de reposición
   digitalWrite(9, HIGH);
@@ -470,12 +472,15 @@ void activacion() {
 
       if (valorMaxReposicion > Fporcentaje1 && Fporcentaje1 < 100) {
         EBombaR = 1;
+        EValvula1 = 1;
+        EValvula2 = 0;
         digitalWrite(10, LOW);  // Encender electroválvula Bombo 1
         digitalWrite(9, LOW);   // Encender bomba reposición
       }
 
       if (valorMaxReposicion <= Fporcentaje1) {
         EBombaR = 0;
+        EValvula1 = 0;
         flagParadaR = 1;
         valorMaxReposicion = 0;
         digitalWrite(9, HIGH);   // Apagar bomba reposición
@@ -492,12 +497,15 @@ void activacion() {
 
       if (valorMaxReposicion > Fporcentaje2 && Fporcentaje2 < 100) {
         EBombaR = 1;
+        EValvula1 = 0;
+        EValvula2 = 1;
         digitalWrite(9, LOW);  // Encender bomba reposición
         digitalWrite(8, LOW);  // Encender electroválvula Bombo 2
       }
 
       if (valorMaxReposicion <= Fporcentaje2 || Fporcentaje2 == 100) {
         EBombaR = 0;
+        EValvula2 = 0;
         flagParadaR = 1;
         valorMaxReposicion = 0;
         digitalWrite(9, HIGH);  // Apagar bomba reposición
@@ -663,7 +671,11 @@ void enviarValores() {
   RASPBERRY_SERIAL.print(",");
   RASPBERRY_SERIAL.print(minRest);
   RASPBERRY_SERIAL.print(",");
-  RASPBERRY_SERIAL.println(EProceso);
+  RASPBERRY_SERIAL.print(EProceso);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(EValvula1);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.println(EValvula2);
 }
 
 

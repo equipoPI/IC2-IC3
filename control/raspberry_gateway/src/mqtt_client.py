@@ -569,6 +569,11 @@ class MQTTClient:
                 "estado": int(bool(sensor_data.get("estado_mezclador", False))),
                 "timestamp": ts
             })
+            self.publish_structured(sector, system, "actuadores", "electrovalvulas", {
+                "electrovalvula1": int(bool(sensor_data.get("estado_electrovalvula1", False))),
+                "electrovalvula2": int(bool(sensor_data.get("estado_electrovalvula2", False))),
+                "timestamp": ts
+            })
 
             # 4. Proceso (Estado y tiempo restante)
             self.publish_structured(sector, system, "proceso", "mezclado", {
