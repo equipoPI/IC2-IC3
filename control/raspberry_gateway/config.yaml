@@ -129,14 +129,14 @@ logging:
 mqtt:
   broker: 192.168.137.1
   client_id: ''
-  default_sector: ala_este
+  default_sector: A1
   default_system: linea_mezclado_1
   gateway_id: ''
   keepalive: 60
   password: admin
   port: 1883
   qos: 1
-  tenant: rafaela
+  tenant: Rafaela_S.A
   tls:
     ca_certs: /etc/ssl/certs/ca-certificates.crt
     certfile: null

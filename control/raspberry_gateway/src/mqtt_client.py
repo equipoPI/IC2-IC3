@@ -135,6 +135,37 @@ class MQTTClient:
 
         return unique_filters
 
+    def rebuild_subscribe_filters(self):
+        """
+        Reconstruye los filtros de suscripción cuando cambian tenant o gateway_id.
+        Esto es necesario cuando se actualizan los parámetros en tiempo de ejecución.
+        """
+        try:
+            self.subscribe_filters = self._build_subscribe_filters(
+                self.mqtt_config.get("topics", {}).get("subscribe_filters", [])
+            )
+            logger.info(f"Filtros de suscripción actualizados. Topic prefix: {self.topic_prefix}")
+            
+            # Si ya está conectado, re-suscribirse con los nuevos filtros
+            if self.connected and self.client:
+                # Desuscribirse de los antiguos tópicos
+                try:
+                    self.client.unsubscribe("#")
+                except Exception as e:
+                    logger.warning(f"Error desuscribiendo de tópicos antiguos: {e}")
+                
+                # Suscribirse a los nuevos
+                for topic_filter in self.subscribe_filters:
+                    try:
+                        self.client.subscribe(topic_filter, qos=self.qos)
+                        logger.debug(f"Suscrito a: {topic_filter}")
+                    except Exception as e:
+                        logger.error(f"Error suscribiendo a {topic_filter}: {e}")
+                        self.stats["errors"] += 1
+        except Exception as e:
+            logger.error(f"Error reconstruyendo filtros de suscripción: {e}")
+            self.stats["errors"] += 1
+
     def _extract_command_meta(self, topic: str) -> Optional[Dict[str, str]]:
         prefix = f"{self.topic_prefix}/cmd/"
         if not topic.startswith(prefix):

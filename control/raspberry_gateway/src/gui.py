@@ -380,6 +380,13 @@ class GatewayGUI:
                     self.gateway.mqtt.tenant = self.gateway.mqtt._sanitize_token(tenant)
                     self.gateway.mqtt.default_sector = self.gateway.mqtt._sanitize_token(sector)
                     self.gateway.mqtt.default_system = self.gateway.mqtt._sanitize_token(system)
+                    
+                    # Reconstruir filtros de suscripción con los nuevos parámetros
+                    try:
+                        self.gateway.mqtt.rebuild_subscribe_filters()
+                    except Exception as e:
+                        print(f"Error reconstruyendo filtros: {e}")
+                    
                     # apply username/password if present
                     try:
                         self.gateway.mqtt.username = self.mqtt_username.get().strip() or None
