@@ -14,6 +14,11 @@ import time
 import yaml
 import uuid
 
+try:
+    from serial.tools.list_ports import comports
+except ImportError:
+    comports = None
+
 
 class GatewayGUI:
     def __init__(self, gateway):
@@ -36,91 +41,108 @@ class GatewayGUI:
         self.mac_var = tk.StringVar(value=self._get_mac())
         ttk.Label(frm, textvariable=self.mac_var).grid(column=1, row=0, sticky='w')
 
-        ttk.Label(frm, text="Estado:").grid(column=0, row=1, sticky='w')
-        self.state_var = tk.StringVar(value='Iniciando')
-        ttk.Label(frm, textvariable=self.state_var).grid(column=1, row=1, sticky='w')
-
-        ttk.Label(frm, text="Uptime (s):").grid(column=0, row=2, sticky='w')
+        ttk.Label(frm, text="Uptime (s):").grid(column=0, row=1, sticky='w')
         self.uptime_var = tk.StringVar(value='0')
-        ttk.Label(frm, textvariable=self.uptime_var).grid(column=1, row=2, sticky='w')
+        ttk.Label(frm, textvariable=self.uptime_var).grid(column=1, row=1, sticky='w')
 
-        ttk.Label(frm, text="Mensajes procesados:").grid(column=0, row=3, sticky='w')
+        ttk.Label(frm, text="Mensajes procesados:").grid(column=0, row=2, sticky='w')
         self.msgs_var = tk.StringVar(value='0')
-        ttk.Label(frm, textvariable=self.msgs_var).grid(column=1, row=3, sticky='w')
+        ttk.Label(frm, textvariable=self.msgs_var).grid(column=1, row=2, sticky='w')
+
+        # Arduino connection status
+        ttk.Label(frm, text="Arduino:").grid(column=0, row=3, sticky='w')
+        self.arduino_status_var = tk.StringVar(value='Desconocido')
+        self.arduino_status_lbl = ttk.Label(frm, textvariable=self.arduino_status_var, foreground='orange')
+        self.arduino_status_lbl.grid(column=1, row=3, sticky='w')
 
         # MQTT connection status
-        ttk.Label(frm, text="MQTT:").grid(column=0, row=3, sticky='e')
+        ttk.Label(frm, text="MQTT:").grid(column=0, row=4, sticky='w')
         self.mqtt_status_var = tk.StringVar(value='Desconocido')
         self.mqtt_status_lbl = ttk.Label(frm, textvariable=self.mqtt_status_var, foreground='orange')
-        self.mqtt_status_lbl.grid(column=1, row=3, sticky='w')
+        self.mqtt_status_lbl.grid(column=1, row=4, sticky='w')
 
-        ttk.Label(frm, text="Comandos enviados:").grid(column=0, row=4, sticky='w')
+        ttk.Label(frm, text="Comandos enviados:").grid(column=0, row=5, sticky='w')
         self.cmds_var = tk.StringVar(value='0')
-        ttk.Label(frm, textvariable=self.cmds_var).grid(column=1, row=4, sticky='w')
+        ttk.Label(frm, textvariable=self.cmds_var).grid(column=1, row=5, sticky='w')
 
-        ttk.Label(frm, text="Errores:").grid(column=0, row=5, sticky='w')
+        ttk.Label(frm, text="Errores:").grid(column=0, row=6, sticky='w')
         self.err_var = tk.StringVar(value='0')
-        ttk.Label(frm, textvariable=self.err_var).grid(column=1, row=5, sticky='w')
+        ttk.Label(frm, textvariable=self.err_var).grid(column=1, row=6, sticky='w')
 
         # Controls
         btn_frame = ttk.Frame(frm)
-        btn_frame.grid(column=0, row=6, columnspan=2, pady=(8,0))
+        btn_frame.grid(column=0, row=7, columnspan=2, pady=(8,0))
 
         self.pause_btn = ttk.Button(btn_frame, text='Pausar', command=self._toggle_pause)
         self.pause_btn.grid(column=0, row=0, padx=4)
 
+        self.reconnect_arduino_btn = ttk.Button(btn_frame, text='Reconectar Arduino', command=self._reconnect_arduino)
+        self.reconnect_arduino_btn.grid(column=1, row=0, padx=4)
+
         self.reconnect_btn = ttk.Button(btn_frame, text='Reconectar MQTT', command=self._reconnect_mqtt)
-        self.reconnect_btn.grid(column=3, row=0, padx=4)
+        self.reconnect_btn.grid(column=2, row=0, padx=4)
 
         self.save_btn = ttk.Button(btn_frame, text='Guardar config', command=self._save_config)
-        self.save_btn.grid(column=1, row=0, padx=4)
+        self.save_btn.grid(column=3, row=0, padx=4)
 
         self.quit_btn = ttk.Button(btn_frame, text='Salir', command=self._on_quit)
-        self.quit_btn.grid(column=2, row=0, padx=4)
+        self.quit_btn.grid(column=4, row=0, padx=4)
 
         # Config editable
         sep = ttk.Separator(frm, orient='horizontal')
-        sep.grid(column=0, row=7, columnspan=2, sticky='ew', pady=(8,8))
+        sep.grid(column=0, row=8, columnspan=2, sticky='ew', pady=(8,8))
 
-        ttk.Label(frm, text='MQTT Broker:').grid(column=0, row=8, sticky='w')
+        ttk.Label(frm, text='MQTT Broker:').grid(column=0, row=9, sticky='w')
         self.mqtt_broker = tk.StringVar(value=self.gateway.config.get('mqtt', {}).get('broker', ''))
-        ttk.Entry(frm, textvariable=self.mqtt_broker, width=30).grid(column=1, row=8, sticky='w')
+        ttk.Entry(frm, textvariable=self.mqtt_broker, width=30).grid(column=1, row=9, sticky='w')
 
-        ttk.Label(frm, text='MQTT Port:').grid(column=0, row=9, sticky='w')
+        ttk.Label(frm, text='MQTT Port:').grid(column=0, row=10, sticky='w')
         self.mqtt_port = tk.StringVar(value=str(self.gateway.config.get('mqtt', {}).get('port', 1883)))
-        ttk.Entry(frm, textvariable=self.mqtt_port, width=10).grid(column=1, row=9, sticky='w')
+        ttk.Entry(frm, textvariable=self.mqtt_port, width=10).grid(column=1, row=10, sticky='w')
 
-        ttk.Label(frm, text='MQTT Username:').grid(column=0, row=10, sticky='w')
+        ttk.Label(frm, text='MQTT Username:').grid(column=0, row=11, sticky='w')
         self.mqtt_username = tk.StringVar(value=self.gateway.config.get('mqtt', {}).get('username', ''))
-        ttk.Entry(frm, textvariable=self.mqtt_username, width=20).grid(column=1, row=10, sticky='w')
+        ttk.Entry(frm, textvariable=self.mqtt_username, width=20).grid(column=1, row=11, sticky='w')
 
-        ttk.Label(frm, text='MQTT Password:').grid(column=0, row=11, sticky='w')
+        ttk.Label(frm, text='MQTT Password:').grid(column=0, row=12, sticky='w')
         self.mqtt_password = tk.StringVar(value=self.gateway.config.get('mqtt', {}).get('password', ''))
-        ttk.Entry(frm, textvariable=self.mqtt_password, width=20, show='*').grid(column=1, row=11, sticky='w')
+        ttk.Entry(frm, textvariable=self.mqtt_password, width=20, show='*').grid(column=1, row=12, sticky='w')
 
-        ttk.Label(frm, text='Serial Port:').grid(column=0, row=12, sticky='w')
+        ttk.Label(frm, text='Serial Port:').grid(column=0, row=13, sticky='w')
+        port_frame = ttk.Frame(frm)
+        port_frame.grid(column=1, row=13, sticky='w')
+        
         self.serial_port = tk.StringVar(value=self.gateway.config.get('serial', {}).get('port', ''))
-        ttk.Entry(frm, textvariable=self.serial_port, width=20).grid(column=1, row=12, sticky='w')
+        self.port_combo = ttk.Combobox(port_frame, textvariable=self.serial_port, width=17, state='readonly')
+        self.port_combo.pack(side=tk.LEFT, padx=(0, 4))
+        self._refresh_ports()
+        
+        self.refresh_ports_btn = ttk.Button(port_frame, text='↻ Detectar', command=self._refresh_ports, width=10)
+        self.refresh_ports_btn.pack(side=tk.LEFT)
 
-        ttk.Label(frm, text='Baudrate:').grid(column=0, row=13, sticky='w')
+        ttk.Label(frm, text='Baudrate:').grid(column=0, row=14, sticky='w')
+        baud_frame = ttk.Frame(frm)
+        baud_frame.grid(column=1, row=14, sticky='w')
+        
         self.baudrate = tk.StringVar(value=str(self.gateway.config.get('serial', {}).get('baudrate', 115200)))
-        ttk.Entry(frm, textvariable=self.baudrate, width=10).grid(column=1, row=13, sticky='w')
+        self.baud_combo = ttk.Combobox(baud_frame, textvariable=self.baudrate, width=12, values=['9600', '19200', '38400', '57600', '115200', '230400'], state='readonly')
+        self.baud_combo.pack(side=tk.LEFT)
 
-        ttk.Label(frm, text='Planta (Tenant):').grid(column=0, row=14, sticky='w')
+        ttk.Label(frm, text='Planta (Tenant):').grid(column=0, row=15, sticky='w')
         self.mqtt_tenant = tk.StringVar(value=self.gateway.config.get('mqtt', {}).get('tenant', 'rafaela'))
-        ttk.Entry(frm, textvariable=self.mqtt_tenant, width=20).grid(column=1, row=14, sticky='w')
+        ttk.Entry(frm, textvariable=self.mqtt_tenant, width=20).grid(column=1, row=15, sticky='w')
 
-        ttk.Label(frm, text='Sección (Sector):').grid(column=0, row=15, sticky='w')
+        ttk.Label(frm, text='Sección (Sector):').grid(column=0, row=16, sticky='w')
         self.mqtt_sector = tk.StringVar(value=self.gateway.config.get('mqtt', {}).get('default_sector', 'ala_este'))
-        ttk.Entry(frm, textvariable=self.mqtt_sector, width=20).grid(column=1, row=15, sticky='w')
+        ttk.Entry(frm, textvariable=self.mqtt_sector, width=20).grid(column=1, row=16, sticky='w')
 
-        ttk.Label(frm, text='Sistema (System):').grid(column=0, row=16, sticky='w')
+        ttk.Label(frm, text='Sistema (System):').grid(column=0, row=17, sticky='w')
         self.mqtt_system = tk.StringVar(value=self.gateway.config.get('mqtt', {}).get('default_system', 'linea_mezclado_1'))
-        ttk.Entry(frm, textvariable=self.mqtt_system, width=20).grid(column=1, row=16, sticky='w')
+        ttk.Entry(frm, textvariable=self.mqtt_system, width=20).grid(column=1, row=17, sticky='w')
 
         # Buttons frame - topics and last data buttons side by side
         self.btn_frame_toggles = ttk.Frame(frm)
-        self.btn_frame_toggles.grid(column=0, row=17, columnspan=2, pady=(8,0))
+        self.btn_frame_toggles.grid(column=0, row=18, columnspan=2, pady=(8,0))
 
         # Button to toggle topics view
         self.topics_shown = False
@@ -210,7 +232,7 @@ class GatewayGUI:
             return
 
         # Show the frame initially
-        self.last_data_frame.grid(column=0, row=18, columnspan=2, pady=(8,0))
+        self.last_data_frame.grid(column=0, row=19, columnspan=2, pady=(8,0))
         self.show_last_data_btn.config(text='Ocultar últimos datos')
         self.last_data_shown = True
         self._last_data_has_content = False
@@ -321,6 +343,33 @@ class GatewayGUI:
             return f"{mac_int:012x}"
         except Exception:
             return 'unknown'
+
+    def _refresh_ports(self):
+        """
+        Detecta los puertos seriales disponibles y los agrega al Combobox
+        """
+        try:
+            if comports is None:
+                self.port_combo['values'] = ['(pyserial no disponible)']
+                return
+            
+            available_ports = [port.device for port in comports()]
+            
+            # Si no hay puertos, mostrar lista vacía pero permitir escribir
+            if not available_ports:
+                available_ports = ['(ninguno detectado)']
+            
+            self.port_combo['values'] = available_ports
+            
+            # Si el puerto actual no está en la lista, agregarlo
+            current = self.serial_port.get()
+            if current and current not in available_ports:
+                values = list(self.port_combo['values'])
+                values.insert(0, current)
+                self.port_combo['values'] = values
+        
+        except Exception as e:
+            self.port_combo['values'] = [f'Error: {str(e)[:30]}']
 
     def _toggle_pause(self):
         self.gateway.processing_paused = not getattr(self.gateway, 'processing_paused', False)
@@ -435,6 +484,26 @@ class GatewayGUI:
                     else:
                         messagebox.showerror('MQTT', 'No se pudo reconectar al broker MQTT')
         except Exception as e:
+            messagebox.showerror('Error', f'Error reconectando MQTT: {e}')
+
+    def _reconnect_arduino(self):
+        """
+        Desconecta y reconecta el Arduino Serial
+        """
+        try:
+            if self.gateway.arduino:
+                # Detener y reconectar
+                self.gateway.arduino.stop()
+                time.sleep(1)
+                ok = self.gateway.arduino.connect()
+                if ok:
+                    messagebox.showinfo('Arduino', 'Reconectado con éxito en ' + self.gateway.config.get('serial', {}).get('port', 'puerto desconocido'))
+                else:
+                    messagebox.showerror('Arduino', 'No se pudo conectar al Arduino. Verifica el puerto y que el dispositivo esté conectado.')
+            else:
+                messagebox.showerror('Arduino', 'Arduino no inicializado')
+        except Exception as e:
+            messagebox.showerror('Error', f'Error reconectando Arduino: {e}')
             messagebox.showerror('MQTT', f'Error reconectando: {e}')
 
     def _update_loop(self):
@@ -443,11 +512,25 @@ class GatewayGUI:
         try:
             stats = self.gateway.get_stats()
             self.mac_var.set(self._get_mac())
-            self.state_var.set('Activo' if stats.get('running') else 'Inactivo')
             self.uptime_var.set(str(int(stats.get('uptime_seconds', 0))))
             self.msgs_var.set(str(stats.get('messages_processed', 0)))
             self.cmds_var.set(str(stats.get('commands_sent', 0)))
             self.err_var.set(str(stats.get('errors', 0)))
+            
+            # Arduino status
+            try:
+                arduino_stats = stats.get('arduino', {})
+                connected = arduino_stats.get('connected')
+                if connected:
+                    self.arduino_status_var.set('Conectado')
+                    self.arduino_status_lbl.configure(foreground='green')
+                else:
+                    self.arduino_status_var.set('Desconectado')
+                    self.arduino_status_lbl.configure(foreground='red')
+            except Exception:
+                self.arduino_status_var.set('Desconocido')
+                self.arduino_status_lbl.configure(foreground='orange')
+            
             # MQTT status
             try:
                 mqtt_stats = stats.get('mqtt', {})
