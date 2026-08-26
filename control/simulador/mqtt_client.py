@@ -51,7 +51,7 @@ class MQTTClient:
         random_suffix = f"_{uuid.uuid4().hex[:6]}"
         self.client_id = self.mqtt_config.get("client_id") or f"rpi_{self.gateway_id}{random_suffix}"
 
-        # Defaults para publicar telemetría estructurada
+        # Defaults para publicar telemetría prestigiosa
         self.default_sector = self._sanitize_token(self.mqtt_config.get("default_sector", "sector_general"))
         self.default_system = self._sanitize_token(self.mqtt_config.get("default_system", "sistema_general"))
 
@@ -137,37 +137,6 @@ class MQTTClient:
 
         return unique_filters
 
-    def rebuild_subscribe_filters(self):
-        """
-        Reconstruye los filtros de suscripción cuando cambian tenant o gateway_id.
-        Esto es necesario cuando se actualizan los parámetros en tiempo de ejecución.
-        """
-        try:
-            self.subscribe_filters = self._build_subscribe_filters(
-                self.mqtt_config.get("topics", {}).get("subscribe_filters", [])
-            )
-            logger.info(f"Filtros de suscripción actualizados. Topic prefix: {self.topic_prefix}")
-            
-            # Si ya está conectado, re-suscribirse con los nuevos filtros
-            if self.connected and self.client:
-                # Desuscribirse de los antiguos tópicos
-                try:
-                    self.client.unsubscribe("#")
-                except Exception as e:
-                    logger.warning(f"Error desuscribiendo de tópicos antiguos: {e}")
-                
-                # Suscribirse a los nuevos
-                for topic_filter in self.subscribe_filters:
-                    try:
-                        self.client.subscribe(topic_filter, qos=self.qos)
-                        logger.debug(f"Suscrito a: {topic_filter}")
-                    except Exception as e:
-                        logger.error(f"Error suscribiendo a {topic_filter}: {e}")
-                        self.stats["errors"] += 1
-        except Exception as e:
-            logger.error(f"Error reconstruyendo filtros de suscripción: {e}")
-            self.stats["errors"] += 1
-
     def _extract_command_meta(self, topic: str) -> Optional[Dict[str, str]]:
         prefix = f"{self.topic_prefix}/cmd/"
         if not topic.startswith(prefix):
@@ -239,7 +208,6 @@ class MQTTClient:
         Callback cuando se desconecta del broker MQTT
         """
         self.connected = False
-        # registrar código de desconexión si aplica
         try:
             self.last_conn_rc = rc
         except Exception:
@@ -390,7 +358,6 @@ class MQTTClient:
                 
                 return True
             else:
-                # Si hubo un código de retorno específico, loguearlo
                 if self.last_conn_rc is not None:
                     logger.error(f"Conexión MQTT fallida, rc={self.last_conn_rc}")
                 else:
@@ -442,15 +409,6 @@ class MQTTClient:
     def publish(self, topic_name: str, data: Any, retain: bool = False, qos: Optional[int] = None) -> bool:
         """
         Publica datos en un topic MQTT
-        
-        Args:
-            topic_name: Nombre del topic (relativo o completo)
-            data: Datos a publicar (dict se convierte a JSON)
-            retain: Si el mensaje debe ser retenido por el broker
-            qos: Quality of Service (None usa el configurado)
-            
-        Returns:
-            True si la publicación fue exitosa
         """
         try:
             if not self.connected:
@@ -555,12 +513,6 @@ class MQTTClient:
         return self.publish(response_topic, payload, retain=False, qos=self.qos)
     
     def publish_sensor_data(self, sensor_data: Dict[str, Any]):
-        """
-        Publica datos de sensores agrupados en formato JSON en los topics correspondientes
-        
-        Args:
-            sensor_data: Diccionario con datos del Arduino parseados
-        """
         try:
             sector = self.default_sector
             system = self.default_system
@@ -629,7 +581,6 @@ class MQTTClient:
             self.stats["errors"] += 1
 
     def _publish_legacy_sensor_data(self, sensor_data: Dict[str, Any]):
-        # Publicar estado general
         general_state = {
             "timestamp": sensor_data.get("timestamp"),
             "conectado": self.connected,
@@ -637,7 +588,6 @@ class MQTTClient:
         }
         self.publish("estado_general", general_state)
 
-        # Publicar niveles de bombos
         self.publish(
             "nivel_bombo1",
             {
@@ -663,11 +613,9 @@ class MQTTClient:
             },
         )
 
-        # Publicar caudales
         self.publish("caudal_1", {"caudal": sensor_data.get("caudal_1"), "timestamp": sensor_data.get("timestamp")})
         self.publish("caudal_2", {"caudal": sensor_data.get("caudal_2"), "timestamp": sensor_data.get("timestamp")})
 
-        # Publicar estados de actuadores
         self.publish("bomba1", {"estado": sensor_data.get("estado_bomba1"), "timestamp": sensor_data.get("timestamp")})
         self.publish("bomba2", {"estado": sensor_data.get("estado_bomba2"), "timestamp": sensor_data.get("timestamp")})
         self.publish(
@@ -697,23 +645,10 @@ class MQTTClient:
             )
     
     def register_command_callback(self, command_type: str, callback: Callable):
-        """
-        Registra un callback para un tipo de comando
-        
-        Args:
-            command_type: Tipo de comando (reposicion, mezcla, control, etc.)
-            callback: Función a llamar cuando se reciba el comando
-        """
         self.command_callbacks[command_type] = callback
         logger.info(f"Callback registrado para comando: {command_type}")
     
     def get_stats(self) -> Dict[str, Any]:
-        """
-        Obtiene estadísticas del cliente MQTT
-        
-        Returns:
-            Diccionario con estadísticas
-        """
         return {
             **self.stats,
             'connected': self.connected,
@@ -724,7 +659,6 @@ class MQTTClient:
         }
 
 
-# Ejemplo de uso
 if __name__ == "__main__":
     logger.add("logs/mqtt.log", rotation="10 MB")
 
