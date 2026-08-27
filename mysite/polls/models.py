@@ -56,6 +56,7 @@ class Seccion(models.Model):
     capacidad_trabajadores = models.PositiveIntegerField()
     tamano_seccion = models.FloatField()  # Tamaño en m²
     agenda = models.TextField(blank=True, null=True)  # Cronograma o agenda de actividades
+    creado_el = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = ('nombre', 'fabrica')
@@ -505,6 +506,7 @@ class DispositivoSCADA(models.Model):
     topic_mqtt = models.CharField(max_length=255, blank=True, null=True, help_text="Topic MQTT para este dispositivo")
     gateway_id = models.CharField(max_length=100, blank=True, null=True, help_text="ID del gateway/Raspberry asignado")
     fecha_instalacion = models.DateField(default=now)
+    creado_el = models.DateTimeField(auto_now_add=True)
     ultima_lectura = models.DateTimeField(null=True, blank=True)
     descripcion = models.TextField(blank=True, null=True)
 

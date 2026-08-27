@@ -153,8 +153,14 @@ class DispositivoSCADAViewSet(viewsets.ModelViewSet):
         elif comando in ['cerrar', 'detener']:
             valor_mqtt = "0"
             
+        tenant = "scada"
+        if dispositivo.seccion and dispositivo.seccion.fabrica:
+            tenant = dispositivo.seccion.fabrica.nombre
+        elif dispositivo.sistema and dispositivo.sistema.seccion and dispositivo.sistema.seccion.fabrica:
+            tenant = dispositivo.sistema.seccion.fabrica.nombre
+            
         gateway = dispositivo.gateway_id or 'gw1'
-        topic = f"scada/{gateway}/cmd/{dispositivo.numero_serie}"
+        topic = f"{tenant}/{gateway}/cmd/{dispositivo.numero_serie}"
         
         try:
             publish.single(

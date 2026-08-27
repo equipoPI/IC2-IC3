@@ -101,11 +101,9 @@ class Command(BaseCommand):
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             self.stdout.write(self.style.SUCCESS("Conectado exitosamente al broker MQTT"))
-            # Suscribirse a disponibilidad de gateways
-            client.subscribe("+/+/status", qos=1)
-            # Suscribirse a telemetría estructurada
-            client.subscribe("+/+/+/+/+/+", qos=1)
-            self.stdout.write("Suscrito a los tópicos de control y telemetría estructurada")
+            # Suscribirse a todos los tópicos para no perder ningún mensaje
+            client.subscribe("#", qos=1)
+            self.stdout.write("Suscrito a todos los tópicos (#) de control y telemetría SCADA")
         else:
             self.stdout.write(self.style.ERROR(f"Conexión MQTT fallida con código de retorno: {rc}"))
 
@@ -116,87 +114,221 @@ class Command(BaseCommand):
         try:
             topic = msg.topic
             payload_str = msg.payload.decode('utf-8').strip()
-            # logger.info(f"Mensaje recibido en {topic}: {payload_str}")
 
             # 1. Procesar Heartbeat / Disponibilidad
-            # Formato: tenant/gateway_id/status
+            # Formatos: tenant/gateway_id/status  O  scada/{planta}/estado/gateway
             status_match = re.match(r"^([^/]+)/([^/]+)/status$", topic)
+            gateway_match = re.match(r"^([^/]+)/([^/]+)/estado/gateway$", topic)
+            
             if status_match:
                 tenant, gateway_id = status_match.groups()
                 estado_dispo = "ONLINE" if payload_str.lower() == "online" else "OFFLINE"
-                
-                # Actualizar el estado de todos los sensores vinculados a este gateway
                 updated = DispositivoSCADA.objects.filter(gateway_id=gateway_id).update(
                     estado=estado_dispo,
                     ultima_lectura=timezone.now()
                 )
                 if updated > 0:
                     self.stdout.write(f"[Heartbeat] Gateway '{gateway_id}' -> {payload_str}. {updated} dispositivos marcados como {estado_dispo}.")
-                         # 2. Procesar Telemetría
-            # Formatos soportados:
-            # - Nuevo (Agrupado): tenant/gateway_id/sector/system/category/device (con payload JSON)
-            # - Legacy: tenant/gateway_id/sector/system/device/variable (con payload float)
-            telemetria_parts = topic.split('/')
-            if len(telemetria_parts) == 6:
-                part5 = telemetria_parts[4].lower()
+                return
+
+            if gateway_match:
+                tenant, gateway_id = gateway_match.groups()
+                try:
+                    payload_dict = json.loads(payload_str)
+                    is_online = payload_dict.get('online', True)
+                except Exception:
+                    is_online = payload_str.lower() == "online"
                 
-                if part5 in ['sensores', 'actuadores', 'proceso']:
+                estado_dispo = "ONLINE" if is_online else "OFFLINE"
+                updated = DispositivoSCADA.objects.filter(gateway_id=gateway_id).update(
+                    estado=estado_dispo,
+                    ultima_lectura=timezone.now()
+                )
+                self.stdout.write(f"[Heartbeat Gateway] Tópico '{topic}' -> {estado_dispo}.")
+                      # 2. Procesar Telemetría
+            telemetria_parts = topic.split('/')
+            
+            if len(telemetria_parts) in [4, 5, 6]:
+                if len(telemetria_parts) == 4:
+                    # Formato 4 partes: scada/planta1/actuadores/bomba1
+                    tenant = telemetria_parts[0]
+                    gateway_id = telemetria_parts[1]
+                    sector = 'general'
+                    system = 'general'
+                    category = telemetria_parts[2].lower()
+                    device_id = telemetria_parts[3]
+                elif len(telemetria_parts) == 5:
+                    # Formato 5 partes: scada/planta1/sensores/nivel/bombo1
+                    tenant = telemetria_parts[0]
+                    gateway_id = telemetria_parts[1]
+                    sector = 'general'
+                    system = 'general'
+                    category = telemetria_parts[2].lower()
+                    device_id = telemetria_parts[4]
+                else:
+                    # Formato 6 partes: tenant/gateway_id/sector/system/category/device
+                    tenant, gateway_id, sector, system, category, device_id = telemetria_parts
+                    category = category.lower()
+
+                if category in ['sensores', 'actuadores', 'proceso', 'nivel', 'caudal']:
                     # =========================================================================
-                    # NUEVO FORMATO AGRUPADO
+                    # PROCESADOR UNIFICADO DE TELEMETRÍA
                     # =========================================================================
-                    category = telemetria_parts[4]
-                    device_id = telemetria_parts[5]
-                    
                     try:
                         payload_dict = json.loads(payload_str)
                     except json.JSONDecodeError:
-                        logger.warning(f"Payload no JSON en tópico agrupado {topic}: {payload_str}")
-                        return
+                        try:
+                            # Reparar llaves sin comillas ({estado: true} -> {"estado": true})
+                            repaired = re.sub(r'([{\s,])([a-zA-Z0-9_]+)\s*:', r'\1"\2":', payload_str)
+                            repaired = repaired.replace("True", "true").replace("False", "false")
+                            payload_dict = json.loads(repaired)
+                        except Exception:
+                            # Si el payload es un valor numérico simple (float/int) o boolean
+                            try:
+                                val_float = float(payload_str)
+                                payload_dict = {'value': val_float}
+                            except ValueError:
+                                if payload_str.lower() in ['true', 'open', 'on']:
+                                    payload_dict = {'estado': 1}
+                                elif payload_str.lower() in ['false', 'close', 'off']:
+                                    payload_dict = {'estado': 0}
+                                else:
+                                    logger.warning(f"Payload no procesable en {topic}: {payload_str}")
+                                    return
                     
-                    # Buscar o crear dispositivo (Auto-Discovery)
-                    dispositivo, created = DispositivoSCADA.objects.get_or_create(
-                        numero_serie=device_id,
+                    from polls.models import Fabrica, Seccion, Sistema, UnidadAlmacenamiento
+                    
+                    # 1. Resolver/Crear Fábrica, Sección y Sistema
+                    fabrica, _ = Fabrica.objects.get_or_create(
+                        nombre=tenant,
                         defaults={
-                            'nombre': f"Auto-detected {device_id}",
-                            'categoria': 'MOTOR' if 'motor' in device_id else 'BOMBA' if 'bomba' in device_id else 'VALVULA' if 'valv' in device_id else 'OTRO',
-                            'estado': 'ONLINE',
-                            'gateway_id': gateway_id,
-                            'topic_mqtt': topic,
-                            'descripcion': f"Dispositivo detectado automáticamente por MQTT agrupado en: {topic}"
+                            'pais': 'Argentina',
+                            'ubicacion': 'No especificada',
+                            'estado': 'OPERATIVO'
                         }
                     )
                     
-                    updated_fields = []
-                    if not dispositivo.gateway_id:
-                        dispositivo.gateway_id = gateway_id
-                        updated_fields.append('gateway_id')
-                    if not dispositivo.topic_mqtt:
-                        dispositivo.topic_mqtt = topic
-                        updated_fields.append('topic_mqtt')
+                    seccion, _ = Seccion.objects.get_or_create(
+                        nombre=sector,
+                        fabrica=fabrica,
+                        defaults={
+                            'capacidad_trabajadores': 10,
+                            'tamano_seccion': 100.0,
+                            'agenda': "Configuración inicial"
+                        }
+                    )
                     
-                    dispositivo.ultima_lectura = timezone.now()
-                    dispositivo.estado = "ONLINE"
-                    updated_fields.extend(['ultima_lectura', 'estado'])
-                    dispositivo.save(update_fields=updated_fields)
+                    sistema, _ = Sistema.objects.get_or_create(
+                        nombre=system,
+                        fabrica=fabrica,
+                        defaults={
+                            'descripcion': f"Sistema {system} auto-detectado"
+                        }
+                    )
+
+                    # Auxiliar para obtener o crear dispositivos con la seccion y sistema correspondientes
+                    def get_or_create_device(num_serie, name_default, cat_default):
+                        dev, created = DispositivoSCADA.objects.get_or_create(
+                            numero_serie=num_serie,
+                            defaults={
+                                'nombre': name_default,
+                                'categoria': cat_default,
+                                'estado': 'ONLINE',
+                                'gateway_id': gateway_id,
+                                'topic_mqtt': topic,
+                                'seccion': seccion,
+                                'sistema': sistema,
+                                'descripcion': f"Dispositivo detectado automáticamente por MQTT en: {topic}"
+                            }
+                        )
+                        # Actualizar metadatos si es necesario
+                        updated = []
+                        if dev.seccion != seccion:
+                            dev.seccion = seccion
+                            updated.append('seccion')
+                        if dev.sistema != sistema:
+                            dev.sistema = sistema
+                            updated.append('sistema')
+                        if dev.gateway_id != gateway_id:
+                            dev.gateway_id = gateway_id
+                            updated.append('gateway_id')
+                        if dev.topic_mqtt != topic:
+                            dev.topic_mqtt = topic
+                            updated.append('topic_mqtt')
+                        
+                        dev.ultima_lectura = timezone.now()
+                        dev.estado = "ONLINE"
+                        updated.extend(['ultima_lectura', 'estado'])
+                        dev.save(update_fields=updated)
+                        return dev
 
                     # Extraer metadatos
                     timestamp_sender = payload_dict.pop('timestamp', None)
                     
-                    # Manejar caso especial: proceso/tiempo_restante
+                    # 2. Sincronizar niveles de bombos con Unidades de Almacenamiento en BD (usando porcentaje)
+                    # Y registrar la lectura física de nivel (usando nivel)
+                    tank_mapping = {
+                        'bombo1': ('tank-1', 'sensor_nivel_bombo1', 'Sensor Nivel Bombo 1'),
+                        'bombo2': ('tank-2', 'sensor_nivel_bombo2', 'Sensor Nivel Bombo 2'),
+                        'mezcla': ('tank-3', 'sensor_nivel_mezcla', 'Sensor Nivel Mezcla')
+                    }
+                    
+                    if device_id in tank_mapping:
+                        node_id, sensor_serie, sensor_nombre = tank_mapping[device_id]
+                        porcentaje = payload_dict.get('porcentaje')
+                        nivel = payload_dict.get('nivel')
+                        
+                        # Actualizar almacenamiento
+                        if porcentaje is not None:
+                            try:
+                                from polls.models import Inventario
+                                inventario, _ = Inventario.objects.get_or_create(
+                                    fabrica=fabrica,
+                                    defaults={
+                                        'nombre': f"Inventario General {fabrica.nombre}",
+                                        'capacidad_m2': 500.0,
+                                    }
+                                )
+                                tank, created = UnidadAlmacenamiento.objects.get_or_create(
+                                    node_id=node_id,
+                                    defaults={
+                                        'inventario': inventario,
+                                        'nombre': 'Tanque A (Aceite)' if device_id == 'bombo1' else 'Tanque B (Agua)' if device_id == 'bombo2' else 'Tanque Salida (Mezcla)',
+                                        'tipo': 'TANK',
+                                        'contenido': 'Aceite de Oliva' if device_id == 'bombo1' else 'Agua Destilada' if device_id == 'bombo2' else 'Mezcla de Jabón',
+                                        'capacidad': 1000.0 if device_id == 'bombo1' else 800.0 if device_id == 'bombo2' else 1500.0,
+                                        'volumen_actual': 0,
+                                        'unidad': 'L',
+                                        'estado': 'ACTIVE',
+                                    }
+                                )
+                                tank.volumen_actual = round(tank.capacidad * (float(porcentaje) / 100.0), 2)
+                                tank.save(update_fields=['volumen_actual'])
+                            except Exception as ex:
+                                logger.error(f"Error actualizando UnidadAlmacenamiento {node_id}: {ex}")
+                                
+                        # Registrar lectura física en dispositivo sensor de nivel
+                        if nivel is not None:
+                            try:
+                                val = float(nivel)
+                                sensor_dev = get_or_create_device(sensor_serie, sensor_nombre, 'SENSOR_NIVEL')
+                                LecturaSensor.objects.create(
+                                    dispositivo=sensor_dev,
+                                    valor=val,
+                                    unidad='cm',
+                                    calidad='BUENA'
+                                )
+                            except (ValueError, TypeError):
+                                pass
+                        return
+
+                    # 3. Procesar tiempo de proceso restante
                     if device_id == 'tiempo_restante' and part5 == 'proceso':
                         horas = payload_dict.get('horas', 0)
                         minutos = payload_dict.get('minutos', 0)
                         total_minutos = int(horas) * 60 + int(minutos)
                         
-                        proc_dispo, _ = DispositivoSCADA.objects.get_or_create(
-                            numero_serie='proceso',
-                            defaults={
-                                'nombre': 'Proceso Mezclador',
-                                'categoria': 'PLC',
-                                'estado': 'ONLINE',
-                                'gateway_id': gateway_id
-                            }
-                        )
+                        proc_dispo = get_or_create_device('proceso', 'Proceso Mezclador', 'PLC')
                         LecturaSensor.objects.create(
                             dispositivo=proc_dispo,
                             valor=float(total_minutos),
@@ -205,13 +337,113 @@ class Command(BaseCommand):
                         )
                         return
 
-                    # Procesar variables genéricas agrupadas
+                    # 4. Procesar caudalímetros
+                    if device_id == 'caudal':
+                        # caudal_1 -> sensor-3 (Sensor de Flujo Tubería A)
+                        # caudal_2 -> sensor_caudal_02 (Sensor de Flujo Tubería B)
+                        caudal_1 = payload_dict.get('caudal_1')
+                        caudal_2 = payload_dict.get('caudal_2')
+                        
+                        if caudal_1 is not None:
+                            try:
+                                val = float(caudal_1)
+                                dev = get_or_create_device('sensor-3', 'Sensor de Flujo Tubería A', 'SENSOR_FLUJO')
+                                LecturaSensor.objects.create(
+                                    dispositivo=dev,
+                                    valor=val,
+                                    unidad='L/min',
+                                    calidad='BUENA'
+                                )
+                            except (ValueError, TypeError):
+                                pass
+                        if caudal_2 is not None:
+                            try:
+                                val = float(caudal_2)
+                                dev = get_or_create_device('sensor_caudal_02', 'Sensor de Flujo Tubería B', 'SENSOR_FLUJO')
+                                LecturaSensor.objects.create(
+                                    dispositivo=dev,
+                                    valor=val,
+                                    unidad='L/min',
+                                    calidad='BUENA'
+                                )
+                            except (ValueError, TypeError):
+                                pass
+                        return
+
+                    # 5. Procesar actuadores (Bombas, Mezclador y Electroválvulas)
+                    if device_id == 'electrovalvulas':
+                        valvulas_map = {
+                            'electrovalvula1': ('electrovalvula-1', 'Válvula Rep. A', 'VALVULA'),
+                            'electrovalvula2': ('electrovalvula-2', 'Válvula Rep. B', 'VALVULA')
+                        }
+                        for var_name, var_value in payload_dict.items():
+                            if var_name in valvulas_map:
+                                try:
+                                    val = float(var_value)
+                                    serie, name, cat = valvulas_map[var_name]
+                                    dev = get_or_create_device(serie, name, cat)
+                                    LecturaSensor.objects.create(
+                                        dispositivo=dev,
+                                        valor=val,
+                                        unidad='',
+                                        calidad='BUENA'
+                                    )
+                                except (ValueError, TypeError):
+                                    pass
+                        return
+
+                    if device_id == 'bombas':
+                        # bomba1 -> pump-1
+                        # bomba2 -> pump-2
+                        # bomba_mezcla -> bomba_mezcla
+                        # bomba_reposicion -> bomba_reposicion
+                        bombas_map = {
+                            'bomba1': ('pump-1', 'Bomba Principal P1', 'BOMBA'),
+                            'bomba2': ('pump-2', 'Bomba P2', 'BOMBA'),
+                            'bomba_mezcla': ('bomba_mezcla', 'Bomba de Mezcla', 'BOMBA'),
+                            'bomba_reposicion': ('bomba_reposicion', 'Bomba de Reposición', 'BOMBA')
+                        }
+                        for var_name, var_value in payload_dict.items():
+                            if var_name in bombas_map:
+                                try:
+                                    val = float(var_value)
+                                    serie, name, cat = bombas_map[var_name]
+                                    dev = get_or_create_device(serie, name, cat)
+                                    LecturaSensor.objects.create(
+                                        dispositivo=dev,
+                                        valor=val,
+                                        unidad='',
+                                        calidad='BUENA'
+                                    )
+                                except (ValueError, TypeError):
+                                    pass
+                        return
+
+                    if device_id == 'mezclador':
+                        estado = payload_dict.get('estado')
+                        if estado is not None:
+                            try:
+                                val = float(estado)
+                                dev = get_or_create_device('mixer-1', 'Mezclador M1', 'MEZCLADORA')
+                                LecturaSensor.objects.create(
+                                    dispositivo=dev,
+                                    valor=val,
+                                    unidad='',
+                                    calidad='BUENA'
+                                )
+                            except (ValueError, TypeError):
+                                pass
+                        return
+
+                    # 6. Procesar cualquier otro dispositivo genérico agrupado
+                    dispositivo = get_or_create_device(
+                        device_id,
+                        f"Auto-detected {device_id}",
+                        'MOTOR' if 'motor' in device_id else 'BOMBA' if 'bomba' in device_id else 'VALVULA' if 'valv' in device_id else 'OTRO'
+                    )
                     for var_name, var_value in payload_dict.items():
                         try:
-                            if isinstance(var_value, bool):
-                                val = float(var_value)
-                            else:
-                                val = float(var_value)
+                            val = float(var_value)
                         except (ValueError, TypeError):
                             continue
                         
@@ -221,28 +453,9 @@ class Command(BaseCommand):
                             unidad=get_unidad_from_variable(var_name),
                             calidad='BUENA'
                         )
-                        
-                    # Sincronizar niveles de bombos con Unidades de Almacenamiento en BD
-                    tank_mapping = {
-                        'bombo1': 'tank-1',
-                        'bombo2': 'tank-2',
-                        'mezcla': 'tank-3'
-                    }
-                    if device_id in tank_mapping:
-                        node_id = tank_mapping[device_id]
-                        porcentaje = payload_dict.get('porcentaje')
-                        
-                        if porcentaje is not None:
-                            try:
-                                from polls.models import UnidadAlmacenamiento
-                                tank = UnidadAlmacenamiento.objects.filter(node_id=node_id).first()
-                                if tank:
-                                    tank.volumen_actual = round(tank.capacidad * (float(porcentaje) / 100.0), 2)
-                                    tank.save(update_fields=['volumen_actual'])
-                            except Exception as ex:
-                                logger.error(f"Error actualizando UnidadAlmacenamiento {node_id}: {ex}")
+                    self.stdout.write(f"[Telemetría SCADA] Tópico '{topic}' -> {payload_dict}")
 
-                else:
+                elif len(telemetria_parts) == 6:
                     # =========================================================================
                     # FORMATO ANTIGUO (Legacy de 6 niveles con variable plana)
                     # =========================================================================
