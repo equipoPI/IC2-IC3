@@ -11,6 +11,7 @@ interface Seccion {
   fabrica_nombre?: string;
   capacidad_trabajadores: number;
   tamano_seccion: number;
+  creado_el?: string;
 }
 
 const GestionSecciones = () => {
@@ -31,6 +32,7 @@ const GestionSecciones = () => {
         fabrica_nombre: s.fabrica_nombre || '',
         capacidad_trabajadores: s.capacidad_trabajadores || 0,
         tamano_seccion: s.tamano_seccion || 0,
+        creado_el: s.creado_el || '',
       })));
     } catch (err) {
       toast.error('No se pudieron cargar las ubicaciones internas');
@@ -92,6 +94,7 @@ const GestionSecciones = () => {
             fabrica_nombre: created.fabrica_nombre || '',
             capacidad_trabajadores: created.capacidad_trabajadores || 0,
             tamano_seccion: created.tamano_seccion || 0,
+            creado_el: created.creado_el || '',
           }]);
           toast.success('Ubicación creada correctamente');
         }
@@ -109,6 +112,17 @@ const GestionSecciones = () => {
     { key: 'id', header: 'ID', className: 'w-20' },
     { key: 'nombre', header: 'Nombre del Sector / Ubicación Interna' },
     { key: 'fabrica_nombre', header: 'Planta / Fábrica Asignada' },
+    { 
+      key: 'creado_el', 
+      header: 'Fecha de Creación',
+      render: (item) => item.creado_el ? new Date(item.creado_el).toLocaleString('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }) : 'N/A'
+    },
   ];
 
   return (

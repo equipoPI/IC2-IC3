@@ -19,6 +19,7 @@ interface Sensor {
   gateway_id?: string;
   topic_mqtt?: string;
   descripcion?: string;
+  creado_el?: string;
 }
 
 const categoriasMap: Record<string, string> = {
@@ -137,6 +138,17 @@ const GestionSensores = () => {
       header: "Gateway ID",
       className: "font-mono",
       render: (item) => item.gateway_id || "-",
+    },
+    {
+      key: "creado_el",
+      header: "Fecha de Creación",
+      render: (item) => item.creado_el ? new Date(item.creado_el).toLocaleString('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }) : 'N/A',
     },
   ];
 

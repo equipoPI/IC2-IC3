@@ -1,31 +1,51 @@
-import { Activity, Settings, Play, Pause, RotateCcw, Maximize2, Filter, Layers } from "lucide-react";
+import { Activity, Settings, Play, Pause, RotateCcw, Maximize2, Filter, Layers, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import apiFetch from "@/lib/api";
-import ScadaFlowDiagram, { systemDefinitions, machineDefinitions } from "@/components/scada/ScadaFlowDiagram";
+import ScadaFlowDiagram from "@/components/scada/ScadaFlowDiagram";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const VisualizacionSCADA = () => {
-  const [isRunning, setIsRunning] = useState(true);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [selectedView, setSelectedView] = useState('planta-completa');
   const [dispositivos, setDispositivos] = useState<any[]>([]);
 
-  // Obtener datos del dispositivo de proceso
-  const procesoDev = dispositivos.find(d => d.numero_serie === 'proceso');
-  const totalMin = procesoDev?.valor_lectura !== null ? Number(procesoDev?.valor_lectura) : null;
-  const tiempoEst = totalMin !== null && !isNaN(totalMin)
-    ? `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`
-    : "0h 0m";
-  const faseProceso = procesoDev && totalMin && totalMin > 0 ? "Mezclado" : "Detenido";
-  const progresoProceso = procesoDev && totalMin && totalMin > 0 
-    ? `${Math.max(0, Math.min(100, Math.round(100 - (totalMin / 150) * 100)))}%` 
-    : "0%";
+  // Filter lists fetched from database
+  const [plantas, setPlantas] = useState<any[]>([]);
+  const [secciones, setSecciones] = useState<any[]>([]);
+  const [sistemas, setSistemas] = useState<any[]>([]);
+
+  // Active filter selections
+  const [selectedPlanta, setSelectedPlanta] = useState<string>('todas');
+  const [selectedSeccion, setSelectedSeccion] = useState<string>('todas');
+  const [selectedSistema, setSelectedSistema] = useState<string>('todas');
+
+  // MQTT Config modal states
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [activeConfig, setActiveConfig] = useState<any | null>(null);
+  const [nombreConfig, setNombreConfig] = useState('');
+  const [brokerUrl, setBrokerUrl] = useState('');
+  const [puerto, setPuerto] = useState(1883);
+  const [usuario, setUsuario] = useState('');
+  const [password, setPassword] = useState('');
+  const [usarTls, setUsarTls] = useState(false);
+  const [keepAlive, setKeepAlive] = useState(60);
+  const [topicBase, setTopicBase] = useState('scada/');
 
   // Cargar dispositivos reales
   const loadDispositivos = async () => {
@@ -41,15 +61,80 @@ const VisualizacionSCADA = () => {
     }
   };
 
+  // Cargar Planta / Sección / Sistema desde DB
+  const loadFiltros = async () => {
+    try {
+      const [rPlantas, rSecciones, rSistemas] = await Promise.all([
+        apiFetch("/api/v1/fabricas/"),
+        apiFetch("/api/v1/secciones/"),
+        apiFetch("/api/v1/sistemas/"),
+      ]);
+
+      if (rPlantas.ok) {
+        const data = await rPlantas.json();
+        const list = Array.isArray(data) ? data : data.results || [];
+        setPlantas(list);
+      }
+      if (rSecciones.ok) {
+        const data = await rSecciones.json();
+        const list = Array.isArray(data) ? data : data.results || [];
+        setSecciones(list);
+      }
+      if (rSistemas.ok) {
+        const data = await rSistemas.json();
+        const list = Array.isArray(data) ? data : data.results || [];
+        setSistemas(list);
+      }
+    } catch (e) {
+      // silent
+    }
+  };
+
+  // Cargar configuración de MQTT activa
+  const loadMqttConfig = async () => {
+    try {
+      const resp = await apiFetch("/api/v1/configuraciones-mqtt/");
+      if (resp.ok) {
+        const data = await resp.json();
+        const list = Array.isArray(data) ? data : data.results || [];
+        const active = list.find((c: any) => c.activo) || list[0] || null;
+        setActiveConfig(active);
+        
+        if (active) {
+          setNombreConfig(active.nombre || '');
+          setBrokerUrl(active.broker_url || '');
+          setPuerto(active.puerto || 1883);
+          setUsuario(active.usuario || '');
+          setPassword(active.password || '');
+          setUsarTls(active.usar_tls || false);
+          setKeepAlive(active.keep_alive || 60);
+          setTopicBase(active.topic_base || 'scada/');
+        }
+      }
+    } catch (e) {
+      // silent
+    }
+  };
+
   useEffect(() => {
     loadDispositivos();
+    loadFiltros();
+    loadMqttConfig();
     const interval = setInterval(loadDispositivos, 3000);
     return () => clearInterval(interval);
   }, []);
 
+  // Fullscreen event listener
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFsChange);
+    return () => document.removeEventListener("fullscreenchange", handleFsChange);
+  }, []);
+
   // Enviar comando manual al backend
   const handleControlClick = async (deviceId: string, actionLabel: string) => {
-    // Traducir etiqueta visual a comando
     let comando = "";
     if (actionLabel === "Abrir") comando = "abrir";
     if (actionLabel === "Cerrar") comando = "cerrar";
@@ -68,7 +153,6 @@ const VisualizacionSCADA = () => {
 
       if (resp.ok) {
         toast.success(`Comando '${actionLabel}' enviado correctamente`);
-        // Forzar refresco
         loadDispositivos();
       } else {
         const errData = await resp.json();
@@ -79,17 +163,98 @@ const VisualizacionSCADA = () => {
     }
   };
 
-  // Get relevant controls based on selected view
+  // Guardar cambios del broker MQTT
+  const handleSaveMqttConfig = async () => {
+    try {
+      toast.info("Guardando configuración MQTT...");
+      const body = {
+        nombre: nombreConfig || "Configuración SCADA Activa",
+        broker_url: brokerUrl,
+        puerto: Number(puerto),
+        usuario: usuario || null,
+        password: password || null,
+        usar_tls: usarTls,
+        keep_alive: Number(keepAlive),
+        topic_base: topicBase,
+        activo: true,
+      };
+
+      let resp;
+      if (activeConfig?.id) {
+        resp = await apiFetch(`/api/v1/configuraciones-mqtt/${activeConfig.id}/`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      } else {
+        resp = await apiFetch(`/api/v1/configuraciones-mqtt/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      }
+
+      if (resp.ok) {
+        toast.success("Configuración MQTT guardada y activada con éxito");
+        setIsConfigOpen(false);
+        loadMqttConfig();
+      } else {
+        const errData = await resp.json();
+        toast.error(`Error al guardar: ${JSON.stringify(errData)}`);
+      }
+    } catch (e) {
+      toast.error("Error al conectar con la API de configuración");
+    }
+  };
+
+  // Toggle fullscreen
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch(() => {
+        setIsFullscreen(true);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  // Obtener datos del dispositivo de proceso
+  const procesoDev = dispositivos.find(d => d.numero_serie === 'proceso');
+  const totalMin = procesoDev?.valor_lectura !== null ? Number(procesoDev?.valor_lectura) : null;
+  const tiempoEst = totalMin !== null && !isNaN(totalMin)
+    ? `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`
+    : "0h 0m";
+  
+  const isRunning = totalMin !== null && totalMin > 0;
+  const faseProceso = isRunning ? "Mezclado" : "Detenido";
+  const progresoProceso = procesoDev && totalMin && totalMin > 0 
+    ? `${Math.max(0, Math.min(100, Math.round(100 - (totalMin / 150) * 100)))}%` 
+    : "0%";
+
+  // Filtros dinámicos basados en la selección de Planta
+  const filteredSecciones = useMemo(() => {
+    if (selectedPlanta === 'todas') return secciones;
+    return secciones.filter(s => String(s.fabrica) === selectedPlanta);
+  }, [secciones, selectedPlanta]);
+
+  const filteredSistemas = useMemo(() => {
+    if (selectedPlanta === 'todas') return sistemas;
+    return sistemas.filter(sys => String(sys.fabrica) === selectedPlanta);
+  }, [sistemas, selectedPlanta]);
+
+  // Get relevant controls based on selected filters
   const relevantControls = useMemo(() => {
-    // Declaramos controles base (fallbacks)
     const fallbacks = [
-      { id: 'valve-1', label: 'Válvula V1', status: 'Cerrada', statusColor: 'outline', actions: ['Abrir'] },
-      { id: 'valve-2', label: 'Válvula V2', status: 'Cerrada', statusColor: 'outline', actions: ['Abrir'] },
-      { id: 'pump-1', label: 'Bomba P1', status: 'Detenida', statusColor: 'outline', actions: ['Iniciar'] },
+      { id: 'bomba_reposicion', label: 'Bomba Reposición', status: 'Detenida', statusColor: 'outline', actions: ['Iniciar'] },
+      { id: 'electrovalvula-1', label: 'Válvula Rep. A', status: 'Cerrada', statusColor: 'outline', actions: ['Abrir'] },
+      { id: 'electrovalvula-2', label: 'Válvula Rep. B', status: 'Cerrada', statusColor: 'outline', actions: ['Abrir'] },
+      { id: 'pump-1', label: 'Bomba A', status: 'Detenida', statusColor: 'outline', actions: ['Iniciar'] },
+      { id: 'pump-2', label: 'Bomba B', status: 'Detenida', statusColor: 'outline', actions: ['Iniciar'] },
       { id: 'mixer-1', label: 'Mezclador M1', status: 'Detenido', statusColor: 'outline', actions: ['Iniciar'] },
+      { id: 'bomba_mezcla', label: 'Bomba de Mezcla', status: 'Detenida', statusColor: 'outline', actions: ['Iniciar'] },
     ];
 
-    // Mapear los dispositivos reales que corresponden a los controles
     const mappedControls = fallbacks.map(fb => {
       const dev = dispositivos.find(d => d.numero_serie === fb.id);
       if (!dev) return fb;
@@ -105,7 +270,6 @@ const VisualizacionSCADA = () => {
           actions: isActivo ? ['Cerrar'] : ['Abrir']
         };
       } else {
-        // Bomba o Mezcladora
         return {
           id: dev.numero_serie,
           label: dev.nombre || fb.label,
@@ -116,119 +280,114 @@ const VisualizacionSCADA = () => {
       }
     });
 
-    if (selectedView === 'planta-completa') {
-      return mappedControls;
-    }
+    // Filtrar controles por la sección seleccionada
+    return mappedControls.filter(control => {
+      if (selectedSeccion === 'todas') return true;
+      const dev = dispositivos.find(d => d.numero_serie === control.id);
+      if (!dev) return false;
+      if (String(dev.seccion) !== selectedSeccion) return false;
+      if (selectedSistema !== 'todas' && String(dev.sistema) !== selectedSistema) return false;
+      return true;
+    });
+  }, [selectedSeccion, selectedSistema, dispositivos]);
 
-    let visibleNodeIds: string[] = [];
-    
-    if (selectedView in systemDefinitions) {
-      visibleNodeIds = systemDefinitions[selectedView as keyof typeof systemDefinitions].nodeIds;
-    } else if (selectedView in machineDefinitions) {
-      const machine = machineDefinitions[selectedView as keyof typeof machineDefinitions];
-      visibleNodeIds = [selectedView, ...machine.connectedNodes];
-    }
-
-    return mappedControls.filter(control => visibleNodeIds.includes(control.id));
-  }, [selectedView, dispositivos]);
-
-  // Get current view label
   const currentViewLabel = useMemo(() => {
-    if (selectedView in systemDefinitions) {
-      return systemDefinitions[selectedView as keyof typeof systemDefinitions].label;
+    if (selectedSistema !== 'todas') {
+      const sys = sistemas.find(s => String(s.id) === selectedSistema);
+      return sys ? `Sistema: ${sys.nombre}` : 'Todos los Sistemas';
     }
-    if (selectedView in machineDefinitions) {
-      return machineDefinitions[selectedView as keyof typeof machineDefinitions].label;
+    if (selectedSeccion !== 'todas') {
+      const sec = secciones.find(s => String(s.id) === selectedSeccion);
+      return sec ? `Sección: ${sec.nombre}` : 'Todas las Secciones';
     }
-    return 'Vista Desconocida';
-  }, [selectedView]);
+    if (selectedPlanta !== 'todas') {
+      const pl = plantas.find(p => String(p.id) === selectedPlanta);
+      return pl ? `Planta: ${pl.nombre}` : 'Todas las Plantas';
+    }
+    return 'Planta Completa';
+  }, [selectedPlanta, selectedSeccion, selectedSistema, plantas, secciones, sistemas]);
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">
+          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary-foreground bg-clip-text text-transparent">
             Visualización SCADA
           </h1>
-          <p className="text-muted-foreground mt-1">
-            Diagrama de proceso en tiempo real
+          <p className="text-muted-foreground text-sm">
+            Monitoreo en tiempo real de variables físicas y control de actuadores
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-success/20 text-success border-success/30">
-            <div className="w-2 h-2 rounded-full bg-success mr-2 animate-pulse" />
-            Conectado
-          </Badge>
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-        {/* Main Diagram Area */}
+        {/* Main SCADA Diagram & Process Controls */}
         <div className="xl:col-span-3 space-y-4">
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-3">
+          <Card className="bg-card border-border shadow-md" ref={containerRef}>
+            <CardHeader className="pb-3 bg-card border-b border-border/50">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle className="text-lg font-medium flex items-center gap-2">
                   <Activity className="h-5 w-5 text-primary" />
                   Diagrama de Proceso en Tiempo Real
                 </CardTitle>
                 
-                {/* Hierarchical View Selector */}
+                {/* Real Database Dropdown Selectors */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-2 bg-background/50 rounded-lg p-1 border border-border">
-                    <Layers className="h-4 w-4 text-muted-foreground ml-2" />
-                    <Select value={selectedView} onValueChange={setSelectedView}>
-                      <SelectTrigger className="w-[200px] border-0 bg-transparent focus:ring-0">
-                        <SelectValue placeholder="Seleccionar vista" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-card border-border">
-                        {/* Plant Level */}
-                        <SelectItem value="planta-completa" className="font-semibold">
-                          🏭 Planta Completa
-                        </SelectItem>
-                        
-                        {/* Systems */}
-                        <div className="px-2 py-1 text-xs text-muted-foreground font-medium border-t border-border mt-1 pt-2">
-                          SISTEMAS
-                        </div>
-                        <SelectItem value="sistema-preparacion">
-                          ⚙️ Sistema de Preparación
-                        </SelectItem>
-                        <SelectItem value="sistema-mezclado">
-                          ⚙️ Sistema de Mezclado
-                        </SelectItem>
-                        <SelectItem value="sistema-salida">
-                          ⚙️ Sistema de Salida
-                        </SelectItem>
-                        
-                        {/* Individual Machines */}
-                        <div className="px-2 py-1 text-xs text-muted-foreground font-medium border-t border-border mt-1 pt-2">
-                          MÁQUINAS
-                        </div>
-                        <SelectItem value="tank-1">🛢️ Tanque A</SelectItem>
-                        <SelectItem value="tank-2">🛢️ Tanque B</SelectItem>
-                        <SelectItem value="tank-3">🛢️ Tanque Salida</SelectItem>
-                        <SelectItem value="valve-1">🔧 Válvula V1</SelectItem>
-                        <SelectItem value="valve-2">🔧 Válvula V2</SelectItem>
-                        <SelectItem value="pump-1">⚡ Bomba P1</SelectItem>
-                        <SelectItem value="mixer-1">🔄 Mezclador M1</SelectItem>
-                        <SelectItem value="sensor-1">📡 Sensor Temp</SelectItem>
-                        <SelectItem value="sensor-2">📡 Sensor Presión</SelectItem>
-                        <SelectItem value="sensor-3">📡 Sensor Flujo</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => loadDispositivos()}>
-                      <RotateCcw className="h-4 w-4 mr-2" />
-                      Actualizar
+                  {/* Select Planta */}
+                  <Select value={selectedPlanta} onValueChange={(val) => {
+                    setSelectedPlanta(val);
+                    setSelectedSeccion('todas');
+                    setSelectedSistema('todas');
+                  }}>
+                    <SelectTrigger className="w-[170px] bg-background border-border h-9 text-xs">
+                      <SelectValue placeholder="Planta: Todas" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border">
+                      <SelectItem value="todas">🏭 Todas las Plantas</SelectItem>
+                      {plantas.map(p => (
+                        <SelectItem key={p.id} value={String(p.id)}>🏭 {p.nombre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Select Sección */}
+                  <Select value={selectedSeccion} onValueChange={(val) => {
+                    setSelectedSeccion(val);
+                    setSelectedSistema('todas');
+                  }} disabled={selectedPlanta === 'todas'}>
+                    <SelectTrigger className="w-[170px] bg-background border-border h-9 text-xs">
+                      <SelectValue placeholder="Sección: Todas" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border">
+                      <SelectItem value="todas">📂 Todas las Secciones</SelectItem>
+                      {filteredSecciones.map(s => (
+                        <SelectItem key={s.id} value={String(s.id)}>📂 {s.nombre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Select Sistema */}
+                  <Select value={selectedSistema} onValueChange={setSelectedSistema} disabled={selectedSeccion === 'todas'}>
+                    <SelectTrigger className="w-[170px] bg-background border-border h-9 text-xs">
+                      <SelectValue placeholder="Sistema: Todos" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-card border-border">
+                      <SelectItem value="todas">⚙️ Todos los Sistemas</SelectItem>
+                      {filteredSistemas.map(sys => (
+                        <SelectItem key={sys.id} value={String(sys.id)}>⚙️ {sys.nombre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <div className="flex items-center gap-1 border-l border-border pl-2 ml-1">
+                    <Button variant="outline" size="sm" onClick={() => loadDispositivos()} className="h-9 px-3">
+                      <RotateCcw className="h-4 w-4" />
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => setIsFullscreen(!isFullscreen)}>
+                    <Button variant="outline" size="sm" onClick={toggleFullscreen} className="h-9 px-3">
                       <Maximize2 className="h-4 w-4" />
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" onClick={() => setIsConfigOpen(true)} className="h-9 px-3">
                       <Settings className="h-4 w-4" />
                     </Button>
                   </div>
@@ -237,15 +396,21 @@ const VisualizacionSCADA = () => {
               
               {/* Current View Badge */}
               <div className="flex items-center gap-2 mt-2">
-                <Badge variant="secondary" className="text-xs">
-                  <Filter className="h-3 w-3 mr-1" />
-                  Vista: {currentViewLabel}
+                <Badge variant="secondary" className="text-xs bg-muted/50 border border-border">
+                  <Filter className="h-3 w-3 mr-1 text-primary" />
+                  Ubicación: {currentViewLabel}
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className={isFullscreen ? "p-6 h-[85vh] bg-card" : "p-6"}>
               {/* Dynamic SCADA Flow Diagram */}
-              <ScadaFlowDiagram selectedView={selectedView} />
+              <ScadaFlowDiagram 
+                selectedView="planta-completa" 
+                selectedPlanta={selectedPlanta} 
+                selectedSeccion={selectedSeccion} 
+                selectedSistema={selectedSistema} 
+                secciones={secciones}
+              />
               
               {/* Legend */}
               <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
@@ -274,7 +439,7 @@ const VisualizacionSCADA = () => {
           </Card>
 
           {/* Process Controls */}
-          <Card className="bg-card border-border">
+          <Card className="bg-card border-border shadow-sm">
             <CardContent className="p-4">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
@@ -289,7 +454,7 @@ const VisualizacionSCADA = () => {
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={() => setIsRunning(false)}
+                    onClick={() => handleControlClick('proceso', 'Detener')}
                     disabled={!isRunning}
                   >
                     <Pause className="h-4 w-4 mr-2" />
@@ -297,7 +462,7 @@ const VisualizacionSCADA = () => {
                   </Button>
                   <Button 
                     size="sm"
-                    onClick={() => setIsRunning(true)}
+                    onClick={() => handleControlClick('proceso', 'Iniciar')}
                     disabled={isRunning}
                   >
                     <Play className="h-4 w-4 mr-2" />
@@ -311,7 +476,7 @@ const VisualizacionSCADA = () => {
 
         {/* Right Side Panel */}
         <div className="xl:col-span-1 space-y-4">
-          <Card className="bg-card border-border">
+          <Card className="bg-card border-border shadow-md">
             <CardContent className="p-0">
               <Tabs defaultValue="receta" className="w-full">
                 <TabsList className="w-full grid grid-cols-2 rounded-none border-b border-border bg-transparent h-auto p-0">
@@ -394,12 +559,12 @@ const VisualizacionSCADA = () => {
                     
                     {relevantControls.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground text-sm">
-                        No hay controles disponibles para esta vista
+                        No hay controles disponibles para esta ubicación/sección
                       </div>
                     ) : (
                       <div className="space-y-3">
                         {relevantControls.map((control) => (
-                          <div key={control.id} className="p-3 rounded-lg bg-background/50 border border-border">
+                          <div key={control.id} className="p-3 rounded-lg bg-background/50 border border-border shadow-xs">
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-sm text-foreground">{control.label}</span>
                               <Badge 
@@ -437,6 +602,105 @@ const VisualizacionSCADA = () => {
           </Card>
         </div>
       </div>
+
+      {/* MQTT Configuration Modal */}
+      <Dialog open={isConfigOpen} onOpenChange={setIsConfigOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5 text-primary" />
+              Configuración del Broker MQTT
+            </DialogTitle>
+            <DialogDescription>
+              Configura los parámetros del broker MQTT activo para la comunicación en tiempo real con los gateways.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="nombre" className="text-right text-xs">
+                Nombre
+              </Label>
+              <Input
+                id="nombre"
+                value={nombreConfig}
+                onChange={(e) => setNombreConfig(e.target.value)}
+                placeholder="Configuración Activa"
+                className="col-span-3 bg-background border-border h-9 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="broker" className="text-right text-xs">
+                Broker URL
+              </Label>
+              <Input
+                id="broker"
+                value={brokerUrl}
+                onChange={(e) => setBrokerUrl(e.target.value)}
+                placeholder="mosquitto"
+                className="col-span-3 bg-background border-border h-9 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="port" className="text-right text-xs">
+                Puerto
+              </Label>
+              <Input
+                id="port"
+                type="number"
+                value={puerto}
+                onChange={(e) => setPuerto(Number(e.target.value))}
+                placeholder="1883"
+                className="col-span-3 bg-background border-border h-9 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="user" className="text-right text-xs">
+                Usuario
+              </Label>
+              <Input
+                id="user"
+                value={usuario}
+                onChange={(e) => setUsuario(e.target.value)}
+                placeholder="Opcional"
+                className="col-span-3 bg-background border-border h-9 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="pass" className="text-right text-xs">
+                Contraseña
+              </Label>
+              <Input
+                id="pass"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Opcional"
+                className="col-span-3 bg-background border-border h-9 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="base" className="text-right text-xs">
+                Topic Base
+              </Label>
+              <Input
+                id="base"
+                value={topicBase}
+                onChange={(e) => setTopicBase(e.target.value)}
+                placeholder="scada/"
+                className="col-span-3 bg-background border-border h-9 text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsConfigOpen(false)} className="h-9">
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveMqttConfig} className="h-9">
+              Guardar Cambios
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

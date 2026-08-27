@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Database, Plus, Edit, Trash2, Search, Droplets, Thermometer } from "lucide-react";
+import { Database, Plus, Edit, Trash2, Search, Droplets, Thermometer, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,10 @@ const typeLabels = {
 const AdministracionAlmacenamiento = () => {
   const { storageUnits, updateStorageUnit, addStorageUnit, deleteStorageUnit } = useStorage();
   const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<string>("");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [filterType, setFilterType] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<StorageUnit | null>(null);
 
@@ -63,10 +67,70 @@ const AdministracionAlmacenamiento = () => {
     status: 'active',
   });
 
-  const filteredUnits = storageUnits.filter((unit) =>
-    unit.name.toLowerCase().includes(search.toLowerCase()) ||
-    unit.content.toLowerCase().includes(search.toLowerCase())
-  );
+  const handleHeaderClick = (key: string) => {
+    if (sortKey === key) {
+      if (sortOrder === "asc") {
+        setSortOrder("desc");
+      } else {
+        setSortKey("");
+      }
+    } else {
+      setSortKey(key);
+      setSortOrder("asc");
+    }
+  };
+
+  const renderSortIcon = (key: string) => {
+    if (sortKey !== key) {
+      return <ArrowUpDown className="h-3.5 w-3.5 ml-1 text-muted-foreground/30 hover:text-muted-foreground/80 transition-colors" />;
+    }
+    return sortOrder === "asc" ? (
+      <ArrowUp className="h-3.5 w-3.5 ml-1 text-primary" />
+    ) : (
+      <ArrowDown className="h-3.5 w-3.5 ml-1 text-primary" />
+    );
+  };
+
+  // Filter and sort logic
+  let processedUnits = [...storageUnits];
+
+  if (search) {
+    processedUnits = processedUnits.filter((unit) =>
+      unit.name.toLowerCase().includes(search.toLowerCase()) ||
+      unit.content.toLowerCase().includes(search.toLowerCase())
+    );
+  }
+
+  if (filterType !== "all") {
+    processedUnits = processedUnits.filter((unit) => unit.type === filterType);
+  }
+
+  if (filterStatus !== "all") {
+    processedUnits = processedUnits.filter((unit) => unit.status === filterStatus);
+  }
+
+  if (sortKey) {
+    processedUnits.sort((a, b) => {
+      let valA = a[sortKey as keyof StorageUnit];
+      let valB = b[sortKey as keyof StorageUnit];
+
+      if (sortKey === "volume") {
+        valA = a.currentVolume;
+        valB = b.currentVolume;
+      }
+
+      if (valA === null || valA === undefined) return sortOrder === "asc" ? 1 : -1;
+      if (valB === null || valB === undefined) return sortOrder === "asc" ? -1 : 1;
+
+      if (typeof valA === "number" && typeof valB === "number") {
+        return sortOrder === "asc" ? valA - valB : valB - valA;
+      }
+
+      const strA = String(valA).toLowerCase();
+      const strB = String(valB).toLowerCase();
+      return sortOrder === "asc" ? strA.localeCompare(strB) : strB.localeCompare(strA);
+    });
+  }
 
   const availableNodes = Object.entries(machineDefinitions)
     .filter(([id]) => id.startsWith('tank'))
@@ -209,8 +273,8 @@ const AdministracionAlmacenamiento = () => {
           </Button>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-4 mb-4">
-            <div className="relative flex-1 max-w-xs">
+          <div className="flex flex-col sm:flex-row gap-2 mb-4 flex-wrap items-center">
+            <div className="relative w-full sm:w-60">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar por nombre o contenido..."
@@ -219,25 +283,113 @@ const AdministracionAlmacenamiento = () => {
                 className="pl-9 bg-background border-border"
               />
             </div>
+
+            {/* Type Filter */}
+            <div className="w-full sm:w-40">
+              <Select value={filterType} onValueChange={(value) => setFilterType(value)}>
+                <SelectTrigger className="bg-background border-border">
+                  <SelectValue placeholder="Tipo..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los Tipos</SelectItem>
+                  <SelectItem value="tank">Tanque</SelectItem>
+                  <SelectItem value="silo">Silo</SelectItem>
+                  <SelectItem value="deposit">Depósito</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Status Filter */}
+            <div className="w-full sm:w-40">
+              <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value)}>
+                <SelectTrigger className="bg-background border-border">
+                  <SelectValue placeholder="Estado..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los Estados</SelectItem>
+                  <SelectItem value="active">Activo</SelectItem>
+                  <SelectItem value="inactive">Inactivo</SelectItem>
+                  <SelectItem value="warning">Advertencia</SelectItem>
+                  <SelectItem value="error">Error</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="rounded-lg border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
-                  <TableHead className="text-muted-foreground">Nombre</TableHead>
-                  <TableHead className="text-muted-foreground">Tipo</TableHead>
-                  <TableHead className="text-muted-foreground">Contenido</TableHead>
-                  <TableHead className="text-muted-foreground">Volumen / Capacidad</TableHead>
-                  <TableHead className="text-muted-foreground">Nivel</TableHead>
-                  <TableHead className="text-muted-foreground">Temp.</TableHead>
-                  <TableHead className="text-muted-foreground">Estado</TableHead>
-                  <TableHead className="text-muted-foreground">Nodo SCADA</TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('name')}
+                  >
+                    <div className="flex items-center">
+                      Nombre {renderSortIcon('name')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('type')}
+                  >
+                    <div className="flex items-center">
+                      Tipo {renderSortIcon('type')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('content')}
+                  >
+                    <div className="flex items-center">
+                      Contenido {renderSortIcon('content')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('capacity')}
+                  >
+                    <div className="flex items-center">
+                      Volumen / Capacidad {renderSortIcon('capacity')}
+                    </div>
+                  </TableHead>
+                  <TableHead className="text-muted-foreground select-none">Nivel</TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('temperature')}
+                  >
+                    <div className="flex items-center">
+                      Temp. {renderSortIcon('temperature')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('status')}
+                  >
+                    <div className="flex items-center">
+                      Estado {renderSortIcon('status')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('nodeId')}
+                  >
+                    <div className="flex items-center">
+                      Nodo SCADA {renderSortIcon('nodeId')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('creado_el')}
+                  >
+                    <div className="flex items-center">
+                      Fecha de Creación {renderSortIcon('creado_el')}
+                    </div>
+                  </TableHead>
                   <TableHead className="text-muted-foreground">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredUnits.map((unit) => {
+                {processedUnits.map((unit) => {
                   const levelPercent = (unit.currentVolume / unit.capacity) * 100;
                   return (
                     <TableRow key={unit.id}>
@@ -265,6 +417,15 @@ const AdministracionAlmacenamiento = () => {
                       </TableCell>
                       <TableCell className="text-muted-foreground font-mono text-xs">
                         {unit.nodeId}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground font-mono text-xs">
+                        {unit.creado_el ? new Date(unit.creado_el).toLocaleString('es-AR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        }) : 'N/A'}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">

@@ -12,6 +12,7 @@ export interface StorageUnit {
   unit: string;
   temperature?: number;
   status: 'active' | 'inactive' | 'warning' | 'error';
+  creado_el?: string;
 }
 
 export interface Ingredient {
@@ -63,6 +64,7 @@ export const StorageProvider = ({ children }: { children: ReactNode }) => {
     unit: item.unidad || "L",
     temperature: item.temperatura || undefined,
     status: (item.estado || "ACTIVE").toLowerCase() as 'active' | 'inactive' | 'warning' | 'error',
+    creado_el: item.created_at || "",
   });
 
   // Mapear unidad de almacenamiento de frontend a backend
