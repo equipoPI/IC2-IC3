@@ -212,7 +212,10 @@ class SCADAGateway:
             return False
 
     def _start_gui_if_possible(self):
-        """Inicia la UI Tkinter solo si hay un entorno gráfico disponible."""
+        """
+        Inicia la UI Tkinter como thread NON-DAEMON.
+        Tkinter necesita un thread completo para procesar eventos correctamente.
+        """
         try:
             import os
             import threading
@@ -225,9 +228,10 @@ class SCADAGateway:
                 logger.warning("No hay DISPLAY configurado; se omite la GUI Tkinter")
                 return False
 
-            self._gui_thread = threading.Thread(target=start_gui, args=(self,), daemon=True)
+            # IMPORTANTE: daemon=False para que Tkinter procese eventos correctamente
+            self._gui_thread = threading.Thread(target=start_gui, args=(self,), daemon=False, name="TkinterGUI")
             self._gui_thread.start()
-            logger.info("GUI iniciada (Tkinter)")
+            logger.info("GUI iniciada (Tkinter - thread no-daemon)")
             return True
         except Exception as e:
             logger.warning(f"No se pudo iniciar GUI: {e}")
@@ -729,12 +733,20 @@ class SCADAGateway:
 
 def signal_handler(signum, frame):
     """
-    Manejador de señales para cierre graceful
+    Manejador de señales para cierre graceful.
+    Responde inmediatamente a SIGINT (Ctrl+C) y SIGTERM
     """
     global gateway
-    logger.info(f"Señal {signum} recibida, cerrando gateway...")
+    signal_name = "SIGINT (Ctrl+C)" if signum == signal.SIGINT else f"SIGTERM ({signum})"
+    logger.info(f"\n{signal_name} recibida, cerrando gateway de forma segura...")
+    
     if gateway:
-        gateway.stop()
+        try:
+            gateway.stop()
+        except Exception as e:
+            logger.error(f"Error en stop(): {e}")
+    
+    logger.success("Gateway cerrado")
     sys.exit(0)
 
 
@@ -759,14 +771,42 @@ def main():
         if gateway.start():
             logger.success("Gateway operativo")
             
-            # Loop principal
+            # Loop principal - Responde rápido a Ctrl+C
+            # El sleep de 1s es lo suficientemente corto para ser responsivo con signals
+            status_counter = 0
             while gateway.running:
-                time.sleep(10)
-                gateway._try_reconnect_mqtt()
-                gateway.print_status()
+                time.sleep(1)
+                status_counter += 1
+                
+                # Intentar reconectar MQTT cada 30 segundos
+                if status_counter % 30 == 0:
+                    gateway._try_reconnect_mqtt()
+                
+                # Mostrar estado cada 60 segundos
+                if status_counter % 60 == 0:
+                    gateway.print_status()
+            
+            # Si hay thread GUI, esperar a que termine (cuando usuario cierra ventana)
+            if gateway._gui_thread and gateway._gui_thread.is_alive():
+                logger.info("Esperando a que se cierre la GUI...")
+                gateway._gui_thread.join(timeout=5)
+        
         else:
             logger.error("No se pudo iniciar el gateway")
             sys.exit(1)
+    
+    except KeyboardInterrupt:
+        # Por si acaso Ctrl+C llega directamente aquí
+        logger.info("\nCtrl+C recibido en main(), cerrando...")
+        if gateway:
+            try:
+                gateway.stop()
+                # Esperar al thread GUI si existe
+                if gateway._gui_thread and gateway._gui_thread.is_alive():
+                    gateway._gui_thread.join(timeout=2)
+            except Exception as e:
+                logger.error(f"Error en stop(): {e}")
+        sys.exit(0)
     
     except Exception as e:
         logger.critical(f"Error fatal: {e}")

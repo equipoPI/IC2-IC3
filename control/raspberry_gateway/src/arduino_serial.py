@@ -95,14 +95,36 @@ class ArduinoSerial:
             self.serial_conn.reset_output_buffer()
             
             self.connected = True
-            logger.success(f"Conectado a Arduino en {self.port}")
+            logger.success(f"Conectado a Arduino en {self.port} @ {self.baudrate} bps")
             return True
             
-        except serial.SerialException as e:
-            logger.error(f"Error al conectar con Arduino: {e}")
+        except FileNotFoundError:
+            error_msg = f"Puerto {self.port} no encontrado. Verifica que el Arduino esté conectado."
+            logger.error(error_msg)
             self.connected = False
             if self.error_callback:
-                self.error_callback({'type': 'connection_error', 'error': str(e)})
+                self.error_callback({'type': 'port_not_found', 'error': error_msg})
+            return False
+        except PermissionError:
+            error_msg = f"Permiso denegado en puerto {self.port}. Intenta: sudo chmod 666 {self.port}"
+            logger.error(error_msg)
+            self.connected = False
+            if self.error_callback:
+                self.error_callback({'type': 'permission_denied', 'error': error_msg})
+            return False
+        except serial.SerialException as e:
+            error_msg = f"Error al conectar con Arduino: {str(e)}"
+            logger.error(error_msg)
+            self.connected = False
+            if self.error_callback:
+                self.error_callback({'type': 'connection_error', 'error': error_msg})
+            return False
+        except Exception as e:
+            error_msg = f"Error inesperado al conectar: {str(e)}"
+            logger.error(error_msg)
+            self.connected = False
+            if self.error_callback:
+                self.error_callback({'type': 'unknown_error', 'error': error_msg})
             return False
     
     def disconnect(self):
@@ -117,23 +139,38 @@ class ArduinoSerial:
     def start(self):
         """
         Inicia los hilos de lectura y escritura
+        
+        Returns:
+            True si los threads se iniciaron correctamente
         """
-        if not self.connected:
-            if not self.connect():
+        try:
+            if not self.connected:
+                if not self.connect():
+                    logger.error("No se pudo conectar al Arduino en start()")
+                    return False
+            
+            # Verificar que el puerto está abierto
+            if not self.serial_conn or not self.serial_conn.is_open:
+                logger.error("Puerto serial no está abierto")
                 return False
+            
+            self.running = True
+            
+            # Iniciar hilo de lectura
+            self.read_thread = threading.Thread(target=self._read_loop, daemon=True, name="Arduino-Read")
+            self.read_thread.start()
+            
+            # Iniciar hilo de escritura
+            self.write_thread = threading.Thread(target=self._write_loop, daemon=True, name="Arduino-Write")
+            self.write_thread.start()
+            
+            logger.success("Hilos de comunicación serial iniciados exitosamente")
+            return True
         
-        self.running = True
-        
-        # Iniciar hilo de lectura
-        self.read_thread = threading.Thread(target=self._read_loop, daemon=True)
-        self.read_thread.start()
-        
-        # Iniciar hilo de escritura
-        self.write_thread = threading.Thread(target=self._write_loop, daemon=True)
-        self.write_thread.start()
-        
-        logger.info("Hilos de comunicación serial iniciados")
-        return True
+        except Exception as e:
+            logger.error(f"Error iniciando threads de Arduino: {e}")
+            self.running = False
+            return False
     
     def stop(self):
         """

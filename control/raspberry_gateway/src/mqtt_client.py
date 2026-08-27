@@ -345,21 +345,14 @@ class MQTTClient:
                 )
             
             # Configurar will (mensaje de última voluntad) en estándar
+            # NOTA: Solo se puede tener UN will_set() por cliente en paho-mqtt
+            # El topic estándar es el que Django worker espera para actualizar estado
             self.client.will_set(
                 f"{self.topic_prefix}/status",
                 payload="offline",
                 qos=self.qos,
                 retain=True,
             )
-
-            # Will legacy opcional
-            if self.enable_legacy_topics:
-                self.client.will_set(
-                    f"{self.legacy_base_topic}/estado/gateway",
-                    payload=json.dumps({"online": False, "timestamp": time.time()}),
-                    qos=self.qos,
-                    retain=True,
-                )
             
             # Conectar
             self.client.connect(self.broker, self.port, self.keepalive)
@@ -471,6 +464,9 @@ class MQTTClient:
             else:
                 payload = str(data)
             
+            # Debug: log el topic que se va a publicar
+            logger.debug(f"Publicando en: {full_topic}")
+            
             # Publicar
             result = self.client.publish(
                 full_topic,
@@ -489,15 +485,15 @@ class MQTTClient:
                         "timestamp": time.time(),
                         "retain": retain
                     }
-                logger.debug(f"Publicado en {full_topic}: {payload[:100]}")
+                logger.debug(f"Publicado OK en {full_topic}: {payload[:100]}")
                 return True
             else:
-                logger.error(f"Error publicando en {full_topic}: {result.rc}")
+                logger.error(f"Error publicando en {full_topic}: rc={result.rc}, payload_size={len(payload)}")
                 self.stats["errors"] += 1
                 return False
         
         except Exception as e:
-            logger.error(f"Error en publish: {e}")
+            logger.error(f"Error en publish de {topic_name}: {e}")
             self.stats["errors"] += 1
             return False
 
@@ -566,6 +562,8 @@ class MQTTClient:
             system = self.default_system
             ts = sensor_data.get("timestamp") or time.time()
 
+            logger.debug(f"Publishing sensor data to: {self.topic_prefix}/{sector}/{system}/...")
+
             # 1. Sensores de Nivel (Bombos)
             self.publish_structured(sector, system, "sensores", "bombo1", {
                 "nivel": sensor_data.get("nivel_bombo1", 0.0),
@@ -623,6 +621,8 @@ class MQTTClient:
             # Compatibilidad legacy opcional
             if self.enable_legacy_topics:
                 self._publish_legacy_sensor_data(sensor_data)
+            
+            logger.debug(f"Sensor data published successfully")
         
         except Exception as e:
             logger.error(f"Error publicando datos de sensores: {e}")
