@@ -131,7 +131,7 @@ mqtt:
   client_id: ''
   default_sector: A1
   default_system: linea_mezclado_1
-  gateway_id: 'd83add60dbb0'
+  gateway_id: d83add60dbb0
   keepalive: 60
   password: admin
   port: 1883
@@ -197,7 +197,7 @@ recovery:
 serial:
   baudrate: 115200
   max_reconnect_attempts: 10
-  port: /dev/ttyACM1
+  port: /dev/ttyACM0
   read_interval: 0.1
   reconnect_delay: 5
   timeout: 1.0
