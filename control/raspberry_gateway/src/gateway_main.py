@@ -490,11 +490,39 @@ class SCADAGateway:
                 logger.info("Gateway en pausa: ignorando comando de control recibido por MQTT")
                 return
             accion = data.get('accion', '').upper()
+
+            if accion == 'REPOSICION':
+                bombo = int(data.get('bombo', 1))
+                limite = int(data.get('limite_porcentaje', data.get('limite', 80)))
+                # Calcular combinacion esperada por Arduino (1000+limite o 2000+limite)
+                convinacion = (1000 + limite) if bombo == 1 else (2000 + limite)
+                if self.arduino.send_command('reposicion', valor=convinacion):
+                    logger.info(f"Comando REPOSICION enviado al Arduino: Bombo {bombo}, Limite {limite}% (Combo {convinacion})")
+                    self.storage.save_event('comando', f'Reposicion Bombo {bombo} ({limite}%)', data, 'mqtt')
+                    self.stats['commands_sent'] += 1
+                    self._publish_command_response(data, topic, status="executed", code=0, result={"accion": accion, "convinacion": convinacion})
+                else:
+                    self._publish_command_response(data, topic, status="failed", code=3, result={}, error="No se pudo enviar comando de reposicion al Arduino")
+                return
+
+            if accion in ('FRENO_REPOSICION', 'PARAR_REPOSICION'):
+                if self.arduino.send_command('frenar'):
+                    logger.info("Comando FRENO REPOSICION (F) enviado al Arduino")
+                    self.storage.save_event('comando', 'Freno Reposicion', data, 'mqtt')
+                    self.stats['commands_sent'] += 1
+                    self._publish_command_response(data, topic, status="executed", code=0, result={"accion": accion})
+                else:
+                    self._publish_command_response(data, topic, status="failed", code=3, result={}, error="No se pudo enviar freno de reposicion al Arduino")
+                return
             
             command_map = {
                 'CONTINUAR': 'continuar',
+                'REANUDAR': 'continuar',
                 'PARAR': 'frenar',
+                'PAUSAR': 'detener',
                 'DETENER': 'detener',
+                'DESECHAR': 'desechar',
+                'DESCARTAR': 'desechar',
                 'VACIAR': 'vaciar'
             }
             

@@ -68,13 +68,16 @@ arduino_protocol:
     type: bool
   send_commands:
     continuar: A
+    descartar: X
+    desechar: X
     detener: D
     frenar: F
     hora: H{valor}
     liquido_1: L1{valor}
     liquido_2: L2{valor}
     minuto: M{valor}
-    reposicion: R{bombo}{valor}
+    reanudar: A
+    reposicion: R{valor}
     vaciar: V
 database:
   auto_vacuum: true
