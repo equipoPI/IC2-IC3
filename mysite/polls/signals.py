@@ -64,22 +64,33 @@ def get_objeto_representation(instance):
     return f"ID: {instance.id}" if hasattr(instance, 'id') else str(instance)
 
 
+IGNORE_AUDIT_FIELDS = (
+    'fecha_creacion', 'fecha_actualizacion', 'timestamp', 'last_seen',
+    'ultima_lectura', 'estado', 'valor_lectura', 'nivel_actual',
+    'volumen_actual', 'porcentaje', 'ultima_actualizacion', 'progreso',
+    'latitud', 'longitud'
+)
+
 @receiver(pre_save)
 def audit_pre_save(sender, instance, **kwargs):
     if sender not in AUDITED_MODELS:
         return
 
+    # Omitir cambios automáticos generados por tareas/workers en segundo plano sin usuario humano
+    usuario = get_current_user()
+    if not usuario or usuario.is_anonymous:
+        return
+
     # Si la instancia ya posee llave primaria, comparamos contra el estado previo en DB
     if instance.pk:
         try:
-            # Obtener el registro original sin disparar lógica de caché/relacionada
             original = sender.objects.get(pk=instance.pk)
             cambios = {}
             for field in instance._meta.fields:
                 field_name = field.name
                 
-                # Ignorar campos autogenerados de fecha de actualización, etc.
-                if field_name in ('fecha_creacion', 'fecha_actualizacion', 'timestamp', 'last_seen'):
+                # Ignorar campos autogenerados, telemetría y estados automáticos
+                if field_name in IGNORE_AUDIT_FIELDS:
                     continue
                 
                 val_orig = getattr(original, field_name, None)
@@ -103,20 +114,15 @@ def audit_pre_save(sender, instance, **kwargs):
 @receiver(post_save)
 def audit_post_save(sender, instance, created, **kwargs):
     # Solo auditar si el modelo está en nuestra lista de interés
-    if sender not in AUDITED_MODELS:
-        return
-
-    # Evitar bucles infinitos si guardáramos auditorías (que no están en la lista, pero por seguridad)
-    if sender == RegistroAuditoria:
+    if sender not in AUDITED_MODELS or sender == RegistroAuditoria:
         return
 
     usuario = get_current_user()
     
-    # Si no hay usuario en el hilo (por ejemplo, llamadas de comandos por consola o workers backend),
-    # intentamos usar 'Sistema' o dejarlo nulo.
-    # Pero si el usuario actual es AnonymousUser (de Django REST API pública), lo seteamos como None.
-    if usuario and usuario.is_anonymous:
-        usuario = None
+    # SI ES UNA OPERACIÓN AUTOMÁTICA EN SEGUNDO PLANO (SIN USUARIO HUMANO AUTENTICADO),
+    # NO AUDITAR PARA EVITAR SATURACIÓN DE REGISTROS EN LA BASE DE DATOS.
+    if not usuario or usuario.is_anonymous:
+        return
 
     accion = 'Creación' if created else 'Modificación'
     modulo = get_modulo_name(instance)
@@ -130,7 +136,7 @@ def audit_post_save(sender, instance, created, **kwargs):
         datos_cambios = {}
         for field in instance._meta.fields:
             field_name = field.name
-            if field_name in ('fecha_creacion', 'fecha_actualizacion', 'timestamp', 'last_seen', 'password'):
+            if field_name in IGNORE_AUDIT_FIELDS or field_name == 'password':
                 continue
             val = getattr(instance, field_name, None)
             if val is not None:
@@ -141,6 +147,9 @@ def audit_post_save(sender, instance, created, **kwargs):
     else:
         if hasattr(_local_diffs, 'pending') and id(instance) in _local_diffs.pending:
             datos_cambios = _local_diffs.pending.pop(id(instance))
+        else:
+            # Si no hay cambios significativos registrados, no auditamos la modificación
+            return
 
     RegistroAuditoria.objects.create(
         usuario=usuario,
@@ -159,8 +168,8 @@ def audit_post_delete(sender, instance, **kwargs):
         return
 
     usuario = get_current_user()
-    if usuario and usuario.is_anonymous:
-        usuario = None
+    if not usuario or usuario.is_anonymous:
+        return
 
     modulo = get_modulo_name(instance)
     objeto = get_objeto_representation(instance)
