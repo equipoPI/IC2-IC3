@@ -1,39 +1,54 @@
-# Simulador SCADA MQTT
+# Simulador SCADA MQTT Interactivo & GUI
 
 Este es el simulador interactivo para pruebas locales y remotas del sistema SCADA. Permite simular los sensores físicos de los bombos de ingredientes, el mezclador, los caudales de las tuberías y responder de forma interactiva a comandos de control desde otra PC.
 
-## Requisitos previos
+---
 
-Asegúrate de tener instalado Python 3.8 o superior.
+## 🚀 Opciones de Ejecución
 
-## Instalación de dependencias
+### 1. Interfaz Gráfica Visual GUI (Recomendado para Pruebas Multisitio)
 
-Instala los paquetes necesarios ejecutando el siguiente comando en tu consola:
+Para abrir la ventana interactiva visual con sliders en vivo, luces LED de actuadores y MAC/Gateway ID editable libremente:
 
 ```bash
-pip install -r requirements.txt
+python gui_simulador.py
 ```
 
-## Configuración
+#### Características de la GUI (`gui_simulador.py`):
+- **Gateway ID / MAC Editable**: Permite cambiar manualmente la dirección MAC o identificador de pasarela (ej: `d83add60dbb0`, `sim_gw_01`).
+- **Pestaña Telemetría & Sliders**: Control manual de Temperatura, Presión, Niveles de Bombos (% Bombo 1, % Bombo 2, % Mezcla) y Caudales en tiempo real, o modo aleatorio sintético.
+- **Pestaña Actuadores & Luces LED**: Muestra en pantalla con luces LED virtuales (🟢 Verde / ⚪ Gris) cuando se reciben órdenes de control desde la web (`/scada`, `/control` o `/planificacion`).
 
-Antes de correr el simulador, edita el archivo `config.yaml` para configurar los datos de conexión al broker MQTT:
+---
 
-```yaml
-mqtt:
-  broker: 192.168.137.1      # Dirección IP de la PC que corre el Broker MQTT (Mosquitto)
-  port: 1883                 # Puerto MQTT (por defecto 1883)
-  tenant: rafaela            # Nombre del tenant (fábrica) asignado en la web
-  gateway_id: 199bff3c7542   # MAC o ID del gateway
-  username: admin            # Usuario MQTT
-  password: admin            # Contraseña MQTT
-```
+### 2. Ejecución en Modo Consola CLI Daemon
 
-## Ejecución
-
-Para iniciar el simulador interactivo de telemetría y actuadores, ejecuta:
+Para iniciar el simulador en segundo plano desde consola de texto:
 
 ```bash
 python mock_mqtt_gateway.py
 ```
 
-El simulador comenzará a publicar datos simulados interactivos de forma inmediata y escuchará en caliente comandos enviados desde el frontend del SCADA (como encender o apagar bombas, detener el proceso, etc.).
+---
+
+## 🛠️ Requisitos Previos e Instalación de Dependencias
+
+Asegúrate de tener instalado Python 3.8 o superior. Instala las dependencias ejecutando:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Configuración Predeterminada (`config.yaml`)
+
+El archivo `config.yaml` contiene los datos predeterminados de conexión al broker Mosquitto:
+
+```yaml
+mqtt:
+  broker: localhost          # Dirección IP del Broker MQTT (Mosquitto)
+  port: 1883                 # Puerto MQTT
+  tenant: rafaela_sa         # Tenant / Organización asignada
+  gateway_id: d83add60dbb0   # MAC o ID del gateway predeterminado
+  username: admin            # Usuario MQTT
+  password: admin            # Contraseña MQTT
+```
