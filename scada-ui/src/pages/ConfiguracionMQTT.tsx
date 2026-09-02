@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Wifi, Plus, Edit, Trash2, Save, X } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Wifi, Plus, Edit, Trash2, Save, X, Search, SlidersHorizontal, Cpu } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -50,18 +51,54 @@ interface TopicMQTT {
   activo?: boolean;
 }
 
+interface MapeoAccion {
+  id: string | number;
+  nombre: string;
+  tipo_sistema: string;
+  tipo_sistema_display?: string;
+  nombre_accion: string;
+  plantilla_topico: string;
+  plantilla_payload_json: string;
+  activo?: boolean;
+}
+
 const tiposDato = ["string", "integer", "float", "boolean", "json"];
 
 const ConfiguracionMQTT = () => {
   const [conexiones, setConexiones] = useState<ConexionMQTT[]>([]);
   const [topics, setTopics] = useState<TopicMQTT[]>([]);
+  const [mapeos, setMapeos] = useState<MapeoAccion[]>([]);
   const [dialogConexion, setDialogConexion] = useState(false);
   const [dialogTopic, setDialogTopic] = useState(false);
+  const [dialogMapeo, setDialogMapeo] = useState(false);
   const [editingConexion, setEditingConexion] = useState<ConexionMQTT | null>(null);
   const [editingTopic, setEditingTopic] = useState<TopicMQTT | null>(null);
+  const [editingMapeo, setEditingMapeo] = useState<MapeoAccion | null>(null);
 
   const [formConexion, setFormConexion] = useState({ nombre: "", ip: "", puerto: "1883", usuario: "", password: "" });
   const [formTopic, setFormTopic] = useState({ configuracion: "", topic: "", tipo: "suscripcion" as "suscripcion" | "publicacion", tipoDato: "string", descripcion: "" });
+  const [formMapeo, setFormMapeo] = useState({
+    nombre: "",
+    tipo_sistema: "FLUIDOS",
+    nombre_accion: "reposicion",
+    plantilla_topico: "scada/{planta}/{gateway}/{seccion}/{sistema}/accion",
+    plantilla_payload_json: '{"accion": "{accion}", "parametros": {}}'
+  });
+
+  const [searchMapeo, setSearchMapeo] = useState("");
+  const [filterTipoSistema, setFilterTipoSistema] = useState("TODOS");
+
+  const mapeosFiltrados = useMemo(() => {
+    return mapeos.filter((m) => {
+      const matchTipo = filterTipoSistema === "TODOS" || m.tipo_sistema === filterTipoSistema;
+      const matchSearch =
+        !searchMapeo ||
+        m.nombre.toLowerCase().includes(searchMapeo.toLowerCase()) ||
+        m.nombre_accion.toLowerCase().includes(searchMapeo.toLowerCase()) ||
+        m.plantilla_topico.toLowerCase().includes(searchMapeo.toLowerCase());
+      return matchTipo && matchSearch;
+    });
+  }, [mapeos, filterTipoSistema, searchMapeo]);
 
   const handleSaveConexion = async () => {
     if (!formConexion.nombre || !formConexion.ip || !formConexion.puerto) {
@@ -187,19 +224,127 @@ const ConfiguracionMQTT = () => {
     setDialogTopic(true);
   };
 
-  const handleDeleteConexion = (id: string) => {
-    apiFetch(`/api/v1/configuraciones-mqtt/${id}/`, { method: 'DELETE' }).then(() => {
-      setConexiones(conexiones.filter(c => c.id !== id));
-      setTopics(topics.filter(t => t.configuracion !== id));
+  const [deleteConfirmConexionId, setDeleteConfirmConexionId] = useState<string | null>(null);
+  const [deleteConfirmMapeoId, setDeleteConfirmMapeoId] = useState<string | null>(null);
+
+  const confirmDeleteConexion = (id: string) => {
+    setDeleteConfirmConexionId(id);
+  };
+
+  const executeDeleteConexion = async () => {
+    if (!deleteConfirmConexionId) return;
+    const id = deleteConfirmConexionId;
+    try {
+      await apiFetch(`/api/v1/configuraciones-mqtt/${id}/`, { method: 'DELETE' });
+      setConexiones(conexiones.filter(c => String(c.id) !== id));
+      setTopics(topics.filter(t => String(t.configuracion) !== id));
       toast({ title: 'Conexión eliminada', description: 'La conexión y sus topics han sido eliminados' });
-    });
+    } catch (e) {
+      toast({ title: 'Error', description: 'No se pudo eliminar la conexión' });
+    } finally {
+      setDeleteConfirmConexionId(null);
+    }
   };
 
   const handleDeleteTopic = (id: string) => {
     apiFetch(`/api/v1/mqtt-topics/${id}/`, { method: 'DELETE' }).then(() => {
-      setTopics(topics.filter(t => t.id !== id));
+      setTopics(topics.filter(t => String(t.id) !== id));
       toast({ title: 'Topic eliminado', description: 'El topic ha sido eliminado' });
     });
+  };
+
+  const fetchMapeos = async () => {
+    try {
+      const res = await apiFetch("/api/v1/mapeos-acciones-mqtt/");
+      if (res.ok) {
+        const data = await res.json();
+        setMapeos(Array.isArray(data) ? data : data.results || []);
+      }
+    } catch (e) {
+      console.warn("No se pudieron cargar los mapeos de acciones MQTT:", e);
+    }
+  };
+
+  const handleNuevoMapeo = () => {
+    setEditingMapeo(null);
+    setFormMapeo({
+      nombre: "",
+      tipo_sistema: "FLUIDOS",
+      nombre_accion: "reposicion",
+      plantilla_topico: "{tenant}/{gateway}/{seccion}/{sistema}/accion",
+      plantilla_payload_json: '{"accion": "{accion}", "parametros": {}}'
+    });
+    setDialogMapeo(true);
+  };
+
+  const handleEditMapeo = (m: MapeoAccion) => {
+    setEditingMapeo(m);
+    setFormMapeo({
+      nombre: m.nombre,
+      tipo_sistema: m.tipo_sistema,
+      nombre_accion: m.nombre_accion,
+      plantilla_topico: m.plantilla_topico,
+      plantilla_payload_json: m.plantilla_payload_json
+    });
+    setDialogMapeo(true);
+  };
+
+  const handleSaveMapeo = async () => {
+    if (!formMapeo.nombre || !formMapeo.nombre_accion || !formMapeo.plantilla_topico) {
+      toast({ title: "Error", description: "Complete los campos obligatorios del mapeo", variant: "destructive" });
+      return;
+    }
+
+    try {
+      if (editingMapeo && editingMapeo.id) {
+        const resp = await apiFetch(`/api/v1/mapeos-acciones-mqtt/${editingMapeo.id}/`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formMapeo)
+        });
+        if (resp.ok) {
+          toast({ title: "Plantilla actualizada", description: "La plantilla de acción MQTT se actualizó correctamente" });
+          fetchMapeos();
+        } else {
+          toast({ title: "Error", description: "No se pudo actualizar la plantilla", variant: "destructive" });
+        }
+      } else {
+        const resp = await apiFetch("/api/v1/mapeos-acciones-mqtt/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formMapeo)
+        });
+        if (resp.ok) {
+          toast({ title: "Plantilla creada", description: "La plantilla de acción MQTT fue guardada exitosamente" });
+          fetchMapeos();
+        } else {
+          toast({ title: "Error", description: "No se pudo crear la plantilla", variant: "destructive" });
+        }
+      }
+      setDialogMapeo(false);
+    } catch (e) {
+      toast({ title: "Error", description: "Error de red con la API", variant: "destructive" });
+    }
+  };
+
+  const confirmDeleteMapeo = (id: string) => {
+    setDeleteConfirmMapeoId(id);
+  };
+
+  const executeDeleteMapeo = async () => {
+    if (!deleteConfirmMapeoId) return;
+    const id = deleteConfirmMapeoId;
+    try {
+      const resp = await apiFetch(`/api/v1/mapeos-acciones-mqtt/${id}/`, { method: "DELETE" });
+      if (resp.ok) {
+        setMapeos(mapeos.filter(m => String(m.id) !== id));
+        toast({ title: "Plantilla eliminada", description: "Se eliminó el mapeo de acción MQTT" });
+      }
+    } catch (e) {
+      toast({ title: "Error", description: "No se pudo eliminar la plantilla", variant: "destructive" });
+    } finally {
+      setDeleteConfirmMapeoId(null);
+    }
   };
 
   // cargar desde backend
@@ -231,6 +376,8 @@ const ConfiguracionMQTT = () => {
           descripcion: t.descripcion 
         })));
       });
+
+    fetchMapeos();
   }, []);
 
   const getEstadoConfig = (estado: ConexionMQTT["estado"]): { label: string; className: string } => {
@@ -258,7 +405,7 @@ const ConfiguracionMQTT = () => {
                 <Wifi className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Total Conexiones</p>
+                <p className="text-sm text-muted-foreground">Brokers Conectados</p>
                 <p className="text-2xl font-bold text-foreground">{conexiones.length}</p>
               </div>
             </div>
@@ -271,8 +418,10 @@ const ConfiguracionMQTT = () => {
                 <Wifi className="h-5 w-5 text-success" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Conectadas</p>
-                <p className="text-2xl font-bold text-foreground">{conexiones.filter(c => c.estado === "conectado").length}</p>
+                <p className="text-sm text-muted-foreground">Estado de Servidor</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {conexiones.filter(c => c.estado === "conectado").length > 0 ? "Online" : "Standby"}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -281,11 +430,11 @@ const ConfiguracionMQTT = () => {
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                <Wifi className="h-5 w-5 text-blue-400" />
+                <SlidersHorizontal className="h-5 w-5 text-blue-400" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Topics Suscritos</p>
-                <p className="text-2xl font-bold text-foreground">{topics.filter(t => t.tipo === "suscripcion").length}</p>
+                <p className="text-sm text-muted-foreground">Plantillas de Tópicos</p>
+                <p className="text-2xl font-bold text-foreground">{mapeos.length}</p>
               </div>
             </div>
           </CardContent>
@@ -294,11 +443,13 @@ const ConfiguracionMQTT = () => {
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-warning/20 flex items-center justify-center">
-                <Wifi className="h-5 w-5 text-warning" />
+                <Cpu className="h-5 w-5 text-warning" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Topics Publicación</p>
-                <p className="text-2xl font-bold text-foreground">{topics.filter(t => t.tipo === "publicacion").length}</p>
+                <p className="text-sm text-muted-foreground">Tipos de Procesos</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {new Set(mapeos.map(m => m.tipo_sistema)).size}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -344,7 +495,7 @@ const ConfiguracionMQTT = () => {
                         <Button variant="ghost" size="icon" onClick={() => handleEditConexion(conexion)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteConexion(String(conexion.id))}>
+                        <Button variant="ghost" size="icon" onClick={() => confirmDeleteConexion(String(conexion.id))}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -357,14 +508,48 @@ const ConfiguracionMQTT = () => {
         </CardContent>
       </Card>
 
-      {/* Topics */}
+      {/* Mapeos de Acciones y Tópicos por Tipo de Sistema */}
       <Card className="bg-card border-border">
-        <CardHeader className="flex flex-row items-center justify-between pb-4">
-          <CardTitle className="text-lg">Topics MQTT</CardTitle>
-          <Button size="sm" onClick={() => { setEditingTopic(null); setFormTopic({ configuracion: "", topic: "", tipo: "suscripcion", tipoDato: "string", descripcion: "" }); setDialogTopic(true); }}>
-            <Plus className="h-4 w-4 mr-2" />
-            Nuevo Topic
-          </Button>
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 gap-4">
+          <div>
+            <CardTitle className="text-lg">Configuración de Tópicos y Acciones por Tipo de Sistema</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Define la plantilla de tópicos ({`{planta}/{mac}/{seccion}/{sistema}/...`}) y comandos por tipo de proceso industrial
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            {/* Buscador de acciones/tópicos */}
+            <div className="relative flex-1 sm:w-64">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Buscar por nombre, código o tópico..."
+                className="pl-8 h-9 text-xs bg-background border-border"
+                value={searchMapeo}
+                onChange={(e) => setSearchMapeo(e.target.value)}
+              />
+            </div>
+
+            {/* Selector de filtro por tipo de sistema */}
+            <Select value={filterTipoSistema} onValueChange={setFilterTipoSistema}>
+              <SelectTrigger className="w-[160px] h-9 text-xs bg-background border-border">
+                <SelectValue placeholder="Tipo de Sistema" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="TODOS">Todos los Sistemas</SelectItem>
+                <SelectItem value="FLUIDOS">Fluidos / Líquidos</SelectItem>
+                <SelectItem value="SOLIDOS">Procesamiento Sólidos</SelectItem>
+                <SelectItem value="EMPAQUE">Empaquetado / Envasado</SelectItem>
+                <SelectItem value="TEMPERATURA">Control Temperatura</SelectItem>
+                <SelectItem value="GENERAL">Sistema General</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button size="sm" onClick={handleNuevoMapeo} className="h-9 px-3 gap-1">
+              <Plus className="h-4 w-4" />
+              Nueva Plantilla
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border border-border overflow-hidden">
@@ -372,39 +557,47 @@ const ConfiguracionMQTT = () => {
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
                   <TableHead className="text-muted-foreground">ID</TableHead>
-                  <TableHead className="text-muted-foreground">Conexión</TableHead>
-                  <TableHead className="text-muted-foreground">Topic</TableHead>
-                  <TableHead className="text-muted-foreground">Tipo</TableHead>
-                  <TableHead className="text-muted-foreground">Tipo de Dato</TableHead>
-                  <TableHead className="text-muted-foreground">Descripción</TableHead>
+                  <TableHead className="text-muted-foreground">Nombre de Acción</TableHead>
+                  <TableHead className="text-muted-foreground">Tipo de Sistema</TableHead>
+                  <TableHead className="text-muted-foreground">Código Acción</TableHead>
+                  <TableHead className="text-muted-foreground">Plantilla Tópico MQTT</TableHead>
+                  <TableHead className="text-muted-foreground">Payload Base (JSON)</TableHead>
                   <TableHead className="text-muted-foreground">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {topics.map((topic) => (
-                  <TableRow key={topic.id}>
-                    <TableCell className="font-mono text-foreground">{topic.id}</TableCell>
-                    <TableCell className="text-foreground">{conexiones.find(c => c.id === topic.configuracion)?.nombre || "-"}</TableCell>
-                    <TableCell className="font-mono text-foreground">{topic.topic}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={topic.tipo === "suscripcion" ? "bg-blue-500/20 text-blue-400 border-blue-500/30" : "bg-warning/20 text-warning border-warning/30"}>
-                        {topic.tipo === "suscripcion" ? "Suscripción" : "Publicación"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-foreground">{topic.tipoDato}</TableCell>
-                    <TableCell className="text-muted-foreground max-w-xs truncate">{topic.descripcion}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => handleEditTopic(topic)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteTopic(String(topic.id))}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
+                {mapeosFiltrados.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      No se encontraron plantillas de acción que coincidan con la búsqueda o filtro.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  mapeosFiltrados.map((m) => (
+                    <TableRow key={m.id}>
+                      <TableCell className="font-mono text-foreground">{m.id}</TableCell>
+                      <TableCell className="text-foreground font-medium">{m.nombre}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                          {m.tipo_sistema_display || m.tipo_sistema}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-emerald-400 font-bold">{m.nombre_accion}</TableCell>
+                      <TableCell className="font-mono text-xs text-foreground max-w-xs truncate">{m.plantilla_topico}</TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground max-w-xs truncate">{m.plantilla_payload_json}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => handleEditMapeo(m)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => confirmDeleteMapeo(String(m.id))}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
@@ -495,6 +688,94 @@ const ConfiguracionMQTT = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogTopic(false)}><X className="h-4 w-4 mr-2" />Cancelar</Button>
             <Button onClick={handleSaveTopic}><Save className="h-4 w-4 mr-2" />Guardar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Mapeo Acción */}
+      <Dialog open={dialogMapeo} onOpenChange={setDialogMapeo}>
+        <DialogContent className="bg-card border-border sm:max-w-[550px]">
+          <DialogHeader>
+            <DialogTitle>{editingMapeo ? "Editar Mapeo de Acción" : "Nuevo Mapeo de Acción y Tópico"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Nombre Descriptivo</Label>
+              <Input value={formMapeo.nombre} onChange={(e) => setFormMapeo({...formMapeo, nombre: e.target.value})} placeholder="Control de Reposición de Materia Prima" className="bg-background border-border" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Tipo de Sistema</Label>
+                <Select value={formMapeo.tipo_sistema} onValueChange={(v) => setFormMapeo({...formMapeo, tipo_sistema: v})}>
+                  <SelectTrigger className="bg-background border-border"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FLUIDOS">Fluidos / Líquidos</SelectItem>
+                    <SelectItem value="SOLIDOS">Procesamiento de Sólidos</SelectItem>
+                    <SelectItem value="EMPAQUE">Empaquetado y Envasado</SelectItem>
+                    <SelectItem value="TEMPERATURA">Control de Temperatura</SelectItem>
+                    <SelectItem value="GENERAL">Sistema General</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Código de Acción (Accion Payload)</Label>
+                <Input value={formMapeo.nombre_accion} onChange={(e) => setFormMapeo({...formMapeo, nombre_accion: e.target.value})} placeholder="reposicion" className="bg-background border-border" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Plantilla Tópico MQTT</Label>
+              <Input value={formMapeo.plantilla_topico} onChange={(e) => setFormMapeo({...formMapeo, plantilla_topico: e.target.value})} placeholder="scada/{planta}/{gateway}/{seccion}/{sistema}/accion" className="bg-background border-border font-mono text-xs" />
+              <p className="text-[11px] text-muted-foreground">Variables soportadas: {`{planta}`}, {`{mac}`}, {`{gateway}`}, {`{seccion}`}, {`{sistema}`}</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Payload Base (JSON)</Label>
+              <textarea
+                value={formMapeo.plantilla_payload_json}
+                onChange={(e) => setFormMapeo({...formMapeo, plantilla_payload_json: e.target.value})}
+                rows={4}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder='{"accion": "{accion}", "parametros": {}}'
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogMapeo(false)}><X className="h-4 w-4 mr-2" />Cancelar</Button>
+            <Button onClick={handleSaveMapeo}><Save className="h-4 w-4 mr-2" />Guardar Plantilla</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation Dialogs for Deletion */}
+      <Dialog open={!!deleteConfirmConexionId} onOpenChange={(open) => !open && setDeleteConfirmConexionId(null)}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-destructive font-bold flex items-center gap-2">
+              <Trash2 className="h-5 w-5" /> Confirmar Eliminación de Conexión MQTT
+            </DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas eliminar permanentemente esta conexión broker MQTT? Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setDeleteConfirmConexionId(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={executeDeleteConexion}>Eliminar Conexión</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteConfirmMapeoId} onOpenChange={(open) => !open && setDeleteConfirmMapeoId(null)}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-destructive font-bold flex items-center gap-2">
+              <Trash2 className="h-5 w-5" /> Confirmar Eliminación de Plantilla MQTT
+            </DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas eliminar permanentemente esta plantilla de acción MQTT? Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setDeleteConfirmMapeoId(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={executeDeleteMapeo}>Eliminar Plantilla</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

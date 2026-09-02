@@ -281,7 +281,9 @@ interface ScadaFlowDiagramProps {
   selectedPlanta: string;
   selectedSeccion: string;
   selectedSistema: string;
-  secciones: any[];
+  secciones?: any[];
+  sistemas?: any[];
+  plantas?: any[];
 }
 
 const ScadaFlowDiagram = ({ 
@@ -289,7 +291,9 @@ const ScadaFlowDiagram = ({
   selectedPlanta,
   selectedSeccion,
   selectedSistema,
-  secciones
+  secciones = [],
+  sistemas = [],
+  plantas = []
 }: ScadaFlowDiagramProps) => {
   const { storageUnits } = useStorage();
   const [dispositivos, setDispositivos] = useState<any[]>([]);
@@ -333,7 +337,7 @@ const ScadaFlowDiagram = ({
   const filteredDispositivos = useMemo(() => {
     return dispositivos.filter(d => {
       if (selectedPlanta !== 'todas') {
-        const seccionObj = secciones.find(s => s.id === d.seccion);
+        const seccionObj = secciones.find(s => String(s.id) === String(d.seccion));
         if (seccionObj && String(seccionObj.fabrica) !== selectedPlanta) {
           return false;
         }
@@ -361,31 +365,62 @@ const ScadaFlowDiagram = ({
   }, [storageUnits, dispositivos, nodePositions]);
 
   const filteredData = useMemo(() => {
-    // Si no filtramos por sección, mostrar todos los nodos
-    const filteredNodes = allNodes.filter(node => {
-      if (selectedSeccion === 'todas') return true;
+    const isGlobal = selectedPlanta === 'todas' && selectedSeccion === 'todas' && selectedSistema === 'todas';
 
-      // Filtro de tanques por sus sensores
-      if (node.id.startsWith('tank-')) {
-        let sensorSerie = '';
-        if (node.id === 'tank-1') sensorSerie = 'sensor_nivel_bombo1';
-        if (node.id === 'tank-2') sensorSerie = 'sensor_nivel_bombo2';
-        if (node.id === 'tank-3') sensorSerie = 'sensor_nivel_mezcla';
+    // Dispositivos devueltos por la BD en base al filtro seleccionado
+    const dbMatchIds = filteredDispositivos.map(d => d.numero_serie);
+    const initialNodesIds = new Set(createInitialNodes(storageUnits, []).map(n => n.id));
 
-        return filteredDispositivos.some(d => d.numero_serie === sensorSerie);
+    // Determinar si la selección corresponde a la Planta Principal / Línea Mezclador 1
+    const sysObj = selectedSistema !== 'todas' ? sistemas.find(s => String(s.id) === selectedSistema) : null;
+    const sysName = (sysObj?.nombre || '').toLowerCase();
+
+    const isDemoLineSelected = isGlobal || 
+      sysName.includes('mezcl') || 
+      sysName.includes('preparac') || 
+      sysName.includes('salida') || 
+      sysName.includes('fluido') ||
+      dbMatchIds.some(id => initialNodesIds.has(id));
+
+    let finalNodes: Node[] = [];
+
+    if (isDemoLineSelected) {
+      if (isGlobal) {
+        finalNodes = allNodes;
+      } else {
+        let systemMatchIds: string[] = [];
+        if (sysName.includes('preparac') || sysName.includes('llenado')) {
+          systemMatchIds = systemDefinitions['sistema-preparacion'].nodeIds;
+        } else if (sysName.includes('mezcl') || sysName.includes('solido') || sysName.includes('sólido')) {
+          systemMatchIds = systemDefinitions['sistema-mezclado'].nodeIds;
+        } else if (sysName.includes('salida') || sysName.includes('empaque') || sysName.includes('almacen')) {
+          systemMatchIds = systemDefinitions['sistema-salida'].nodeIds;
+        } else {
+          systemMatchIds = Array.from(initialNodesIds);
+        }
+
+        const validIds = new Set([...dbMatchIds, ...systemMatchIds]);
+        if (validIds.has('sensor_nivel_bombo1')) validIds.add('tank-1');
+        if (validIds.has('sensor_nivel_bombo2')) validIds.add('tank-2');
+        if (validIds.has('sensor_nivel_mezcla')) validIds.add('tank-3');
+
+        finalNodes = allNodes.filter(n => validIds.has(n.id));
       }
+    } else {
+      finalNodes = allNodes.filter(n => dbMatchIds.includes(n.id));
+    }
 
-      // Filtro de sensores/actuadores por existencia en el listado filtrado
-      return filteredDispositivos.some(d => d.numero_serie === node.id);
-    });
+    if (finalNodes.length === 0) {
+      finalNodes = allNodes;
+    }
 
-    const nodeIds = filteredNodes.map(n => n.id);
+    const nodeIds = finalNodes.map(n => n.id);
     const filteredEdges = allEdges.filter(edge => 
       nodeIds.includes(edge.source) && nodeIds.includes(edge.target)
     );
 
-    return { nodes: filteredNodes, edges: filteredEdges };
-  }, [allNodes, filteredDispositivos, selectedSeccion]);
+    return { nodes: finalNodes, edges: filteredEdges };
+  }, [allNodes, filteredDispositivos, selectedPlanta, selectedSeccion, selectedSistema, sistemas, storageUnits]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(filteredData.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(filteredData.edges);
@@ -423,33 +458,57 @@ const ScadaFlowDiagram = ({
     setEdges(animatedEdges);
   }, [filteredData, dispositivos, setNodes, setEdges]);
 
+  // Nombres para la barra jerárquica
+  const nombrePlanta = selectedPlanta !== 'todas' ? plantas.find(p => String(p.id) === selectedPlanta)?.nombre || 'Planta' : 'Todas las Plantas';
+  const nombreSeccion = selectedSeccion !== 'todas' ? secciones.find(s => String(s.id) === selectedSeccion)?.nombre || 'Sección' : 'Todas las Secciones';
+  const nombreSistema = selectedSistema !== 'todas' ? sistemas.find(sys => String(sys.id) === selectedSistema)?.nombre || 'Sistema' : 'Todos los Sistemas';
+
   return (
-    <div className="w-full h-[500px] rounded-lg overflow-hidden border border-border bg-background/30">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeDragStop={onNodeDragStop}
-        nodeTypes={nodeTypes}
-        fitView
-        minZoom={0.5}
-        maxZoom={2}
-        key="scada-react-flow"
-      >
-        <Background color="hsl(var(--muted-foreground))" gap={20} size={1} />
-        <Controls className="bg-card border-border" />
-        <MiniMap 
-          nodeColor={(node) => {
-            if (node.type === 'tank') return 'hsl(var(--primary))';
-            if (node.type === 'pump') return 'hsl(var(--success))';
-            if (node.type === 'valve') return 'hsl(var(--warning))';
-            if (node.type === 'mixer') return 'hsl(var(--info))';
-            return 'hsl(var(--muted-foreground))';
-          }}
-          className="bg-card border-border"
-        />
-      </ReactFlow>
+    <div className="w-full flex flex-col space-y-2">
+      {/* Barra de Jerarquía y Estado del Diagrama */}
+      <div className="flex items-center justify-between px-3 py-1.5 rounded-md bg-muted/40 border border-border text-xs">
+        <div className="flex items-center gap-2 font-mono text-muted-foreground">
+          <span className="font-semibold text-foreground">📍 Jerarquía Actual:</span>
+          <span>{nombrePlanta}</span>
+          <span>&gt;</span>
+          <span>{nombreSeccion}</span>
+          <span>&gt;</span>
+          <span className="text-primary font-bold">{nombreSistema}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-muted-foreground">
+            Componentes Visibles: <strong className="text-foreground">{nodes.length}</strong>
+          </span>
+        </div>
+      </div>
+
+      <div className="w-full h-[500px] rounded-lg overflow-hidden border border-border bg-background/30">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeDragStop={onNodeDragStop}
+          nodeTypes={nodeTypes}
+          fitView
+          minZoom={0.5}
+          maxZoom={2}
+          key="scada-react-flow"
+        >
+          <Background color="hsl(var(--muted-foreground))" gap={20} size={1} />
+          <Controls className="bg-card border-border" />
+          <MiniMap 
+            nodeColor={(node) => {
+              if (node.type === 'tank') return 'hsl(var(--primary))';
+              if (node.type === 'pump') return 'hsl(var(--success))';
+              if (node.type === 'valve') return 'hsl(var(--warning))';
+              if (node.type === 'mixer') return 'hsl(var(--info))';
+              return 'hsl(var(--muted-foreground))';
+            }}
+            className="bg-card border-border"
+          />
+        </ReactFlow>
+      </div>
     </div>
   );
 };

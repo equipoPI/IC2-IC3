@@ -1,4 +1,4 @@
-import { Activity, Settings, Play, Pause, RotateCcw, Maximize2, Filter, Layers, Check } from "lucide-react";
+import { Activity, Settings, Play, Pause, RotateCcw, Maximize2, Filter, Layers, Check, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import apiFetch from "@/lib/api";
 import ScadaFlowDiagram from "@/components/scada/ScadaFlowDiagram";
+import { ControlReposicionModal } from "@/components/scada/ControlReposicionModal";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ import { Label } from "@/components/ui/label";
 const VisualizacionSCADA = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isReposicionOpen, setIsReposicionOpen] = useState(false);
   const [dispositivos, setDispositivos] = useState<any[]>([]);
 
   // Filter lists fetched from database
@@ -133,33 +135,46 @@ const VisualizacionSCADA = () => {
     return () => document.removeEventListener("fullscreenchange", handleFsChange);
   }, []);
 
-  // Enviar comando manual al backend
+  // Enviar comando manual al backend vía MQTT
   const handleControlClick = async (deviceId: string, actionLabel: string) => {
     let comando = "";
-    if (actionLabel === "Abrir") comando = "abrir";
-    if (actionLabel === "Cerrar") comando = "cerrar";
-    if (actionLabel === "Iniciar") comando = "iniciar";
-    if (actionLabel === "Detener") comando = "detener";
+    const actUpper = actionLabel.toUpperCase();
+    if (actUpper.includes("ABRIR")) comando = "ABRIR";
+    else if (actUpper.includes("CERRAR")) comando = "CERRAR";
+    else if (actUpper.includes("INICIAR") || actUpper.includes("REANUDAR")) comando = "INICIAR";
+    else if (actUpper.includes("PAUSAR") || actUpper.includes("DETENER") || actUpper.includes("PARAR")) comando = "PAUSAR";
+    else if (actUpper.includes("VACIAR")) comando = "VACIAR";
+    else if (actUpper.includes("DESCARTAR") || actUpper.includes("DESECHAR")) comando = "DESCARTAR";
+    else comando = actionLabel.toLowerCase();
 
     if (!comando) return;
 
     try {
       toast.info(`Enviando comando '${actionLabel}'...`);
-      const resp = await apiFetch(`/api/v1/dispositivos/${deviceId}/control/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comando }),
-      });
+      let resp;
+      if (deviceId === 'proceso' && selectedSistema !== 'todas') {
+        resp = await apiFetch(`/api/v1/sistemas/${selectedSistema}/control/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ comando }),
+        });
+      } else {
+        resp = await apiFetch(`/api/v1/dispositivos/${deviceId}/control/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ comando }),
+        });
+      }
 
       if (resp.ok) {
-        toast.success(`Comando '${actionLabel}' enviado correctamente`);
+        toast.success(`Comando '${actionLabel}' publicado exitosamente en el bus MQTT`);
         loadDispositivos();
       } else {
-        const errData = await resp.json();
+        const errData = await resp.json().catch(() => ({}));
         toast.error(`Error al enviar comando: ${errData.error || resp.statusText}`);
       }
     } catch (e) {
-      toast.error("Error de conexión al enviar el comando");
+      toast.error("Error de conexión al comunicarse con la API SCADA");
     }
   };
 
@@ -280,13 +295,13 @@ const VisualizacionSCADA = () => {
       }
     });
 
-    // Filtrar controles por la sección seleccionada
+    // Filtrar controles por la sección/sistema seleccionados o mantener controles generales si no hay restricción estricta
     return mappedControls.filter(control => {
-      if (selectedSeccion === 'todas') return true;
+      if (selectedSeccion === 'todas' && selectedSistema === 'todas') return true;
       const dev = dispositivos.find(d => d.numero_serie === control.id);
-      if (!dev) return false;
-      if (String(dev.seccion) !== selectedSeccion) return false;
-      if (selectedSistema !== 'todas' && String(dev.sistema) !== selectedSistema) return false;
+      if (!dev) return true; // mantener fallbacks de control
+      if (selectedSeccion !== 'todas' && dev.seccion && String(dev.seccion) !== selectedSeccion) return false;
+      if (selectedSistema !== 'todas' && dev.sistema && String(dev.sistema) !== selectedSistema) return false;
       return true;
     });
   }, [selectedSeccion, selectedSistema, dispositivos]);
@@ -381,6 +396,16 @@ const VisualizacionSCADA = () => {
                   </Select>
 
                   <div className="flex items-center gap-1 border-l border-border pl-2 ml-1">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => setIsReposicionOpen(true)}
+                      className="h-9 px-3 gap-1.5 bg-primary text-primary-foreground font-medium"
+                      title="Abrir panel de control de reposición de materia prima (Bombos 1/2)"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Control de Reposición
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => loadDispositivos()} className="h-9 px-3">
                       <RotateCcw className="h-4 w-4" />
                     </Button>
@@ -410,6 +435,8 @@ const VisualizacionSCADA = () => {
                 selectedSeccion={selectedSeccion} 
                 selectedSistema={selectedSistema} 
                 secciones={secciones}
+                sistemas={sistemas}
+                plantas={plantas}
               />
               
               {/* Legend */}
