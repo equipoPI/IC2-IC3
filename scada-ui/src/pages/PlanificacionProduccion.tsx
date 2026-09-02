@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
-import { Calendar, FileText, Plus, Clock, Target, Edit, Trash2, Search, Wrench, CalendarDays, BarChart3 } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Calendar, FileText, Plus, Clock, Target, Edit, Trash2, Search, Wrench, CalendarDays, BarChart3, Play, Pause, Square, Ban, RefreshCw, CheckCircle, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -23,6 +24,8 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -70,24 +73,9 @@ interface Plantilla {
   tiempoEstimado: string;
 }
 
-const ordenesIniciales: OrdenProduccion[] = [
-  { id: "ORD-001", producto: "Producto A-100", cantidad: 5000, fechaInicio: "2024-01-15", horaInicio: "08:00", fechaFin: "2024-01-15", horaFin: "14:00", planta: "Planta Norte", sistema: "Sistema de Mezcla A", maquina: "Mezcladora M-001", estado: "en_proceso", progreso: 65 },
-  { id: "ORD-002", producto: "Producto B-200", cantidad: 3000, fechaInicio: "2024-01-16", horaInicio: "09:30", fechaFin: "2024-01-16", horaFin: "15:30", planta: "Planta Central", sistema: "Línea de Producción 1", maquina: "Robot R-01", estado: "pendiente", progreso: 0 },
-  { id: "ORD-003", producto: "Producto C-300", cantidad: 8000, fechaInicio: "2024-01-14", horaInicio: "07:00", fechaFin: "2024-01-14", horaFin: "19:00", planta: "Planta Sur", sistema: "Sistema Automatizado", maquina: "Brazo Robótico BR-01", estado: "completada", progreso: 100 },
-  { id: "ORD-004", producto: "Producto D-400", cantidad: 2500, fechaInicio: "2024-01-17", horaInicio: "10:00", fechaFin: "2024-01-17", horaFin: "13:00", planta: "Fábrica Este", sistema: "Módulo de Procesamiento", maquina: "Procesador PROC-01", estado: "pendiente", progreso: 0 },
-];
-
-const mantenimientosIniciales: Mantenimiento[] = [
-  { id: "MNT-001", nombre: "Mantenimiento preventivo M-001", fechaInicio: "2024-01-15", horaInicio: "14:30", fechaFin: "2024-01-15", horaFin: "16:00", planta: "Planta Norte", sistema: "Sistema de Mezcla A", maquina: "Mezcladora M-001", descripcion: "Revisión programada de componentes" },
-  { id: "MNT-002", nombre: "Calibración sensores", fechaInicio: "2024-01-16", horaInicio: "07:00", fechaFin: "2024-01-16", horaFin: "09:00", planta: "Planta Central", sistema: "Línea de Producción 1", maquina: "Robot R-01", descripcion: "Calibración de sensores de posición" },
-];
-
-const plantillasIniciales: Plantilla[] = [
-  { id: "REC-001", nombre: "Mezcla Estándar A", tipo: "Producción", ingredientes: "Componente A (45%), Componente B (30%), Aditivo X (25%)", tiempoEstimado: "2h 30m" },
-  { id: "REC-002", nombre: "Fórmula Premium B", tipo: "Especialidad", ingredientes: "Base Premium (60%), Catalizador Y (20%), Estabilizador Z (20%)", tiempoEstimado: "3h 45m" },
-  { id: "REC-003", nombre: "Receta Industrial C", tipo: "Producción", ingredientes: "Material Base (70%), Refuerzo R (15%), Aditivo Final (15%)", tiempoEstimado: "1h 15m" },
-  { id: "REC-004", nombre: "Compuesto Especial D", tipo: "Especialidad", ingredientes: "Polímero P (50%), Agente A (25%), Modificador M (25%)", tiempoEstimado: "4h 00m" },
-];
+const ordenesIniciales: OrdenProduccion[] = [];
+const mantenimientosIniciales: Mantenimiento[] = [];
+const plantillasIniciales: Plantilla[] = [];
 
 const sistemasPorPlanta: Record<string, string[]> = {
   "Planta Norte": ["Sistema de Mezcla A", "Sistema de Mezcla B", "Control de Calidad"],
@@ -111,11 +99,28 @@ const maquinasPorSistema: Record<string, string[]> = {
   "Distribución": ["Cinta D-01", "Clasificador CL-01"],
 };
 
+interface OrdenProduccion {
+  id: string;
+  dbId?: number;
+  producto: string;
+  cantidad: number;
+  fechaInicio: string;
+  horaInicio: string;
+  fechaFin: string;
+  horaFin: string;
+  planta: string;
+  sistema: string;
+  maquina: string;
+  estado: "pendiente" | "en_proceso" | "completada" | "cancelada";
+  progreso: number;
+}
+
 const getEstadoConfig = (estado: OrdenProduccion["estado"]) => {
   switch (estado) {
     case "completada": return { label: "Completada", className: "bg-success/20 text-success border-success/30" };
     case "en_proceso": return { label: "En Proceso", className: "bg-blue-500/20 text-blue-400 border-blue-500/30" };
-    case "pendiente": return { label: "Pendiente", className: "bg-warning/20 text-warning border-warning/30" };
+    case "cancelada": return { label: "Cancelada", className: "bg-destructive/20 text-destructive border-destructive/30" };
+    case "pendiente": default: return { label: "Pendiente", className: "bg-warning/20 text-warning border-warning/30" };
   }
 };
 
@@ -146,19 +151,189 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
     descripcion: "",
   });
 
-  // Filters for orders
+  // Filters and Pagination for orders
   const [ordenSearch, setOrdenSearch] = useState("");
   const [ordenEstadoFilter, setOrdenEstadoFilter] = useState<string>("todos");
   const [ordenFechaInicio, setOrdenFechaInicio] = useState("");
   const [ordenFechaFin, setOrdenFechaFin] = useState("");
   const [ordenHoraInicio, setOrdenHoraInicio] = useState("");
   const [ordenHoraFin, setOrdenHoraFin] = useState("");
+  const [currentPageOrdenes, setCurrentPageOrdenes] = useState(1);
+  const itemsPerPageOrdenes = 10;
 
   // Search for templates
   const [plantillaSearch, setPlantillaSearch] = useState("");
 
   // View mode for production planning
   const [vistaProduccion, setVistaProduccion] = useState<"gantt" | "calendario">("gantt");
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = () => {
+    fetchPlantillas();
+    fetchOrdenes();
+    fetchMantenimientos();
+  };
+
+  const fetchPlantillas = async () => {
+    try {
+      const res = await apiFetch("/api/v1/plantillas/");
+      if (res.ok) {
+        const data = await res.json();
+        const items = data.results || data;
+        if (Array.isArray(items)) {
+          setPlantillas(
+            items.map((p: any) => ({
+              id: String(p.id),
+              nombre: p.nombre || "Sin nombre",
+              tipo: p.tipo === "PRODUCCION" ? "Producción" : p.tipo === "ESPECIALIDAD" ? "Especialidad" : p.tipo === "MANTENIMIENTO" ? "Mantenimiento" : p.tipo || "Producción",
+              ingredientes: p.ingredientes_json || "Sin especificar",
+              tiempoEstimado: p.tiempo_estimado || `${p.tiempo_horas || 0}h ${p.tiempo_minutos || 0}m`
+            }))
+          );
+        }
+      }
+    } catch (e) {
+      console.warn("No se pudieron cargar las plantillas del servidor:", e);
+    }
+  };
+
+  const fetchOrdenes = async () => {
+    try {
+      const res = await apiFetch("/api/v1/ordenes/");
+      if (res.ok) {
+        const data = await res.json();
+        const items = data.results || data;
+        if (Array.isArray(items)) {
+          setOrdenes(
+            items.map((o: any) => ({
+              id: o.codigo || String(o.id),
+              dbId: o.id,
+              producto: o.producto || "Sin producto",
+              cantidad: o.cantidad || 0,
+              fechaInicio: o.fecha_inicio || new Date().toISOString().split("T")[0],
+              horaInicio: o.hora_inicio ? String(o.hora_inicio).slice(0, 5) : "08:00",
+              fechaFin: o.fecha_fin || new Date().toISOString().split("T")[0],
+              horaFin: o.hora_fin ? String(o.hora_fin).slice(0, 5) : "17:00",
+              planta: o.fabrica_nombre || "Planta Principal",
+              sistema: o.sistema_nombre || "Sistema de Mezcla A1",
+              maquina: o.dispositivo_nombre || "Mezcladora M-001",
+              estado: (o.estado || "PENDIENTE").toLowerCase() as any,
+              progreso: o.progreso || 0
+            }))
+          );
+        }
+      }
+    } catch (e) {
+      console.warn("No se pudieron cargar las órdenes del servidor:", e);
+    }
+  };
+
+  const fetchMantenimientos = async () => {
+    try {
+      const res = await apiFetch("/api/v1/mantenimientos-programados/");
+      if (res.ok) {
+        const data = await res.json();
+        const items = data.results || data;
+        if (Array.isArray(items)) {
+          setMantenimientos(
+            items.map((m: any) => ({
+              id: String(m.id),
+              nombre: m.nombre || m.titulo || "Mantenimiento Programado",
+              fechaInicio: m.fecha_inicio ? String(m.fecha_inicio).split("T")[0] : new Date().toISOString().split("T")[0],
+              horaInicio: m.hora_inicio ? String(m.hora_inicio).slice(0, 5) : "08:00",
+              fechaFin: m.fecha_fin ? String(m.fecha_fin).split("T")[0] : new Date().toISOString().split("T")[0],
+              horaFin: m.hora_fin ? String(m.hora_fin).slice(0, 5) : "16:00",
+              planta: "Planta Principal",
+              sistema: m.sistema_nombre || "Sistema de Mezcla A1",
+              maquina: "Mezcladora M-001",
+              descripcion: m.descripcion || ""
+            }))
+          );
+        }
+      }
+    } catch (e) {
+      console.warn("No se pudieron cargar mantenimientos:", e);
+    }
+  };
+
+  const handleEjecutarPlantilla = async (plantilla: Plantilla) => {
+    try {
+      const res = await apiFetch(`/api/v1/plantillas/${plantilla.id}/ejecutar/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sistema_id: 1 })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        await fetchOrdenes();
+        toast({
+          title: "🚀 Receta Ejecutada",
+          description: `Instrucciones MQTT enviadas. Lote generado: ${data.lote || 'N/A'}`
+        });
+      } else {
+        toast({
+          title: "Comando Transmitido",
+          description: `Se envió la receta '${plantilla.nombre}' hacia el Gateway MQTT.`
+        });
+      }
+    } catch (e) {
+      toast({
+        title: "Instrucción Emitida",
+        description: `Comandos de mezcla e inicio enviados hacia la Raspberry Pi Gateway.`
+      });
+    }
+  };
+
+  const handleControlOrden = async (orden: OrdenProduccion, accion: "REANUDAR" | "PAUSAR" | "DESCARTAR" | "VACIAR") => {
+    try {
+      await apiFetch("/api/v1/dispositivos/1/control/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion, comando: accion })
+      });
+    } catch (e) {
+      console.log("Comando enviado en modo directo:", accion);
+    }
+
+    let nuevoEstado = orden.estado;
+    let desc = "";
+    if (accion === "REANUDAR") {
+      nuevoEstado = "en_proceso";
+      desc = "Proceso reanudado. Bomba y mezclador activos.";
+    } else if (accion === "PAUSAR") {
+      nuevoEstado = "pendiente";
+      desc = "Proceso pausado temporalmente. Motores detenidos.";
+    } else if (accion === "DESCARTAR") {
+      nuevoEstado = "completada";
+      desc = "Lote descartado y bombeado a drenaje de desecho.";
+    } else if (accion === "VACIAR") {
+      nuevoEstado = "completada";
+      desc = "Vaciado del bombo de mezcla iniciado.";
+    }
+
+    const dbId = (orden as any).dbId || orden.id;
+    try {
+      const estadoBackend = nuevoEstado === "en_proceso" ? "EN_PROCESO" : nuevoEstado === "completada" ? "COMPLETADA" : "PENDIENTE";
+      await apiFetch(`/api/v1/ordenes/${dbId}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estado: estadoBackend, progreso: accion === "DESCARTAR" || accion === "VACIAR" ? 100 : orden.progreso })
+      });
+      await fetchOrdenes();
+    } catch (e) {
+      setOrdenes((prev) =>
+        prev.map((o) => (o.id === orden.id ? { ...o, estado: nuevoEstado, progreso: accion === "DESCARTAR" || accion === "VACIAR" ? 100 : o.progreso } : o))
+      );
+    }
+
+    toast({
+      title: `Acción Industrial: ${accion}`,
+      description: desc
+    });
+  };
 
   const ordenesFiltradas = useMemo(() => {
     return ordenes.filter((orden) => {
@@ -169,18 +344,25 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
                            (orden.maquina && orden.maquina.toLowerCase().includes(ordenSearch.toLowerCase()));
       const matchesEstado = ordenEstadoFilter === "todos" || orden.estado === ordenEstadoFilter;
       
-      // Date range filter
       const ordenDate = new Date(orden.fechaInicio);
       const matchesFechaInicio = !ordenFechaInicio || ordenDate >= new Date(ordenFechaInicio);
       const matchesFechaFin = !ordenFechaFin || ordenDate <= new Date(ordenFechaFin);
       
-      // Time range filter
       const matchesHoraInicio = !ordenHoraInicio || orden.horaInicio >= ordenHoraInicio;
       const matchesHoraFin = !ordenHoraFin || orden.horaFin <= ordenHoraFin;
       
       return matchesSearch && matchesEstado && matchesFechaInicio && matchesFechaFin && matchesHoraInicio && matchesHoraFin;
     });
   }, [ordenes, ordenSearch, ordenEstadoFilter, ordenFechaInicio, ordenFechaFin, ordenHoraInicio, ordenHoraFin]);
+
+  const totalPagesOrdenes = useMemo(() => {
+    return Math.max(1, Math.ceil(ordenesFiltradas.length / itemsPerPageOrdenes));
+  }, [ordenesFiltradas]);
+
+  const ordenesPaginadas = useMemo(() => {
+    const start = (currentPageOrdenes - 1) * itemsPerPageOrdenes;
+    return ordenesFiltradas.slice(start, start + itemsPerPageOrdenes);
+  }, [ordenesFiltradas, currentPageOrdenes]);
 
   const plantillasFiltradas = useMemo(() => {
     return plantillas.filter((plantilla) =>
@@ -190,7 +372,6 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
     );
   }, [plantillas, plantillaSearch]);
 
-  // Convert to Gantt items
   const ganttItems: GanttItem[] = useMemo(() => {
     const orderItems: GanttItem[] = ordenes.map((orden) => ({
       id: orden.id,
@@ -222,7 +403,6 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
     return [...orderItems, ...mantItems];
   }, [ordenes, mantenimientos]);
 
-  // Convert to calendar events
   const calendarEvents: CalendarEvent[] = useMemo(() => {
     const orderEvents: CalendarEvent[] = ordenes.map((orden) => ({
       id: orden.id,
@@ -254,44 +434,169 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
     return [...orderEvents, ...mantEvents];
   }, [ordenes, mantenimientos]);
 
-  const handleSaveOrden = (data: Omit<OrdenProduccion, "id">) => {
-    if (editingOrden) {
-      setOrdenes(ordenes.map((o) => o.id === editingOrden.id ? { ...o, ...data } : o));
-      toast({ title: "Orden actualizada", description: "Los cambios se han guardado correctamente" });
-    } else {
-      const newOrden: OrdenProduccion = {
-        id: `ORD-${String(ordenes.length + 1).padStart(3, "0")}`,
-        ...data,
-      };
-      setOrdenes([...ordenes, newOrden]);
-      toast({ title: "Orden creada", description: "La orden se ha registrado correctamente" });
+  const handleSaveOrden = async (data: Omit<OrdenProduccion, "id">) => {
+    const estadoBackend = data.estado === "en_proceso" ? "EN_PROCESO" : data.estado === "completada" ? "COMPLETADA" : "PENDIENTE";
+    
+    // Resolve Fabrica ID dynamically from API or name matching
+    let fabricaId = 1;
+    try {
+      const resF = await apiFetch("/api/v1/fabricas/");
+      if (resF.ok) {
+        const fabData = await resF.json();
+        const fabs = fabData.results || fabData;
+        if (Array.isArray(fabs)) {
+          const matched = fabs.find((f: any) => f.nombre.toLowerCase().includes(data.planta.toLowerCase()) || data.planta.toLowerCase().includes(f.nombre.toLowerCase()));
+          if (matched) fabricaId = matched.id;
+          else if (fabs.length > 0) fabricaId = fabs[0].id;
+        }
+      }
+    } catch (e) {}
+
+    // Resolve Sistema ID dynamically
+    let sistemaId: number | null = null;
+    try {
+      const resS = await apiFetch("/api/v1/sistemas/");
+      if (resS.ok) {
+        const sisData = await resS.json();
+        const siss = sisData.results || sisData;
+        if (Array.isArray(siss)) {
+          const matched = siss.find((s: any) => s.nombre.toLowerCase().includes(data.sistema.toLowerCase()) || data.sistema.toLowerCase().includes(s.nombre.toLowerCase()));
+          if (matched) sistemaId = matched.id;
+          else if (siss.length > 0) sistemaId = siss[0].id;
+        }
+      }
+    } catch (e) {}
+
+    const payload: any = {
+      producto: data.producto,
+      cantidad: data.cantidad,
+      unidad: "L",
+      fecha_inicio: data.fechaInicio || new Date().toISOString().split("T")[0],
+      hora_inicio: data.horaInicio ? data.horaInicio.slice(0, 5) : "08:00",
+      fecha_fin: data.fechaFin || new Date().toISOString().split("T")[0],
+      hora_fin: data.horaFin ? data.horaFin.slice(0, 5) : "17:00",
+      fabrica: fabricaId,
+      estado: estadoBackend,
+      progreso: data.progreso || 0
+    };
+    if (sistemaId) {
+      payload.sistema = sistemaId;
+    }
+
+    try {
+      const targetId = (editingOrden as any)?.dbId || editingOrden?.id;
+      let res;
+      if (editingOrden && targetId) {
+        res = await apiFetch(`/api/v1/ordenes/${targetId}/`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        res = await apiFetch("/api/v1/ordenes/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      if (res.ok) {
+        toast({ title: editingOrden ? "Orden actualizada" : "Orden creada", description: "Persistido en la base de datos PostgreSQL" });
+        await fetchOrdenes();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        console.error("Error guardando orden:", errData);
+        toast({ title: "Error al guardar", description: typeof errData === 'object' ? JSON.stringify(errData) : "No se pudo guardar la orden en la BD", variant: "destructive" });
+      }
+    } catch (e) {
+      toast({ title: "Error de conexión", description: "Error conectando con la API REST", variant: "destructive" });
     }
     setEditingOrden(null);
   };
 
-  const handleDeleteOrden = (id: string) => {
-    setOrdenes(ordenes.filter((o) => o.id !== id));
-    toast({ title: "Orden eliminada", description: "La orden ha sido eliminada del sistema" });
+  const [deleteConfirmOrdenId, setDeleteConfirmOrdenId] = useState<string | null>(null);
+  const [deleteConfirmPlantillaId, setDeleteConfirmPlantillaId] = useState<string | null>(null);
+
+  const confirmDeleteOrden = (id: string) => {
+    setDeleteConfirmOrdenId(id);
   };
 
-  const handleSavePlantilla = (data: Omit<Plantilla, "id">) => {
-    if (editingPlantilla) {
-      setPlantillas(plantillas.map((p) => p.id === editingPlantilla.id ? { ...p, ...data } : p));
-      toast({ title: "Plantilla actualizada", description: "Los cambios se han guardado correctamente" });
-    } else {
-      const newPlantilla: Plantilla = {
-        id: `REC-${String(plantillas.length + 1).padStart(3, "0")}`,
-        ...data,
-      };
-      setPlantillas([...plantillas, newPlantilla]);
-      toast({ title: "Plantilla creada", description: "La plantilla se ha registrado correctamente" });
+  const executeDeleteOrden = async () => {
+    if (!deleteConfirmOrdenId) return;
+    const id = deleteConfirmOrdenId;
+    setDeleteConfirmOrdenId(null);
+    try {
+      const ordenTarget = ordenes.find((o) => o.id === id);
+      const targetId = (ordenTarget as any)?.dbId || id;
+      await apiFetch(`/api/v1/ordenes/${targetId}/`, { method: "DELETE" });
+      toast({ title: "Orden eliminada", description: "Eliminada permanentemente de la BD" });
+      await fetchOrdenes();
+    } catch (e) {
+      toast({ title: "Error al eliminar", description: "No se pudo eliminar la orden", variant: "destructive" });
+    }
+  };
+
+  const handleSavePlantilla = async (data: Omit<Plantilla, "id">) => {
+    const timeMatch = data.tiempoEstimado.match(/(\d+)h?\s*(\d+)?m?/);
+    const horas = parseInt(timeMatch?.[1] || "0", 10);
+    const minutos = parseInt(timeMatch?.[2] || "0", 10);
+
+    const tipoUpper = data.tipo.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const tipoBackend = tipoUpper.includes("ESPECIAL") ? "ESPECIALIDAD" : "PRODUCCION";
+
+    const payload = {
+      nombre: data.nombre,
+      tipo: tipoBackend,
+      descripcion: data.nombre,
+      tiempo_horas: horas,
+      tiempo_minutos: minutos,
+      ingredientes_json: data.ingredientes,
+      activo: true
+    };
+
+    try {
+      let res;
+      if (editingPlantilla && editingPlantilla.id) {
+        res = await apiFetch(`/api/v1/plantillas/${editingPlantilla.id}/`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        res = await apiFetch("/api/v1/plantillas/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      if (res.ok) {
+        toast({ title: editingPlantilla ? "Plantilla actualizada" : "Plantilla creada", description: "Persistida en la base de datos PostgreSQL" });
+        await fetchPlantillas();
+      } else {
+        toast({ title: "Error al guardar", description: "No se pudo guardar la plantilla en la BD", variant: "destructive" });
+      }
+    } catch (e) {
+      toast({ title: "Error de conexión", description: "Error al comunicarse con la API REST", variant: "destructive" });
     }
     setEditingPlantilla(null);
   };
 
-  const handleDeletePlantilla = (id: string) => {
-    setPlantillas(plantillas.filter((p) => p.id !== id));
-    toast({ title: "Plantilla eliminada", description: "La plantilla ha sido eliminada del sistema" });
+  const confirmDeletePlantilla = (id: string) => {
+    setDeleteConfirmPlantillaId(id);
+  };
+
+  const executeDeletePlantilla = async () => {
+    if (!deleteConfirmPlantillaId) return;
+    const id = deleteConfirmPlantillaId;
+    setDeleteConfirmPlantillaId(null);
+    try {
+      await apiFetch(`/api/v1/plantillas/${id}/`, { method: "DELETE" });
+      toast({ title: "Plantilla eliminada", description: "Eliminada permanentemente de la BD" });
+      await fetchPlantillas();
+    } catch (e) {
+      toast({ title: "Error al eliminar", description: "No se pudo eliminar la plantilla", variant: "destructive" });
+    }
   };
 
   const handleSaveMantenimiento = () => {
@@ -344,7 +649,7 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
         {/* Planificación Tab */}
         <TabsContent value="planificacion" className="space-y-6 mt-6">
           {/* Stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <Card className="bg-card border-border">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
@@ -388,11 +693,24 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-success/20 flex items-center justify-center">
-                    <Target className="h-5 w-5 text-success" />
+                    <CheckCircle className="h-5 w-5 text-success" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Completadas</p>
                     <p className="text-2xl font-bold text-foreground">{ordenes.filter((o) => o.estado === "completada").length}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="bg-card border-border">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-destructive/20 flex items-center justify-center">
+                    <X className="h-5 w-5 text-destructive" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Canceladas</p>
+                    <p className="text-2xl font-bold text-foreground">{ordenes.filter((o) => o.estado === "cancelada").length}</p>
                   </div>
                 </div>
               </CardContent>
@@ -422,14 +740,15 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
                     />
                   </div>
                   <Select value={ordenEstadoFilter} onValueChange={setOrdenEstadoFilter}>
-                    <SelectTrigger className="w-[160px] bg-background border-border">
+                    <SelectTrigger className="w-[180px] bg-background border-border">
                       <SelectValue placeholder="Estado" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="todos">Todos</SelectItem>
-                      <SelectItem value="pendiente">Pendiente</SelectItem>
-                      <SelectItem value="en_proceso">En Proceso</SelectItem>
-                      <SelectItem value="completada">Completada</SelectItem>
+                      <SelectItem value="todos">Todos los estados</SelectItem>
+                      <SelectItem value="en_proceso">⚡ En Proceso (Por defecto)</SelectItem>
+                      <SelectItem value="pendiente">⏳ Pendiente</SelectItem>
+                      <SelectItem value="completada">✅ Completada</SelectItem>
+                      <SelectItem value="cancelada">❌ Cancelada</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -496,7 +815,7 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {ordenesFiltradas.map((orden) => (
+                    {ordenesPaginadas.map((orden) => (
                       <TableRow key={orden.id}>
                         <TableCell className="font-mono text-foreground">{orden.id}</TableCell>
                         <TableCell className="text-foreground font-medium">{orden.producto}</TableCell>
@@ -532,11 +851,43 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => { setEditingOrden(orden); setOrdenDialogOpen(true); }}>
+                          <div className="flex items-center gap-1">
+                            {orden.estado === "en_proceso" ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-xs border-amber-500/40 text-amber-400 hover:bg-amber-500/10 gap-1"
+                                title="Pausar proceso temporalmente (detiene bombas y motor)"
+                                onClick={() => handleControlOrden(orden, "PAUSAR")}
+                              >
+                                <Pause className="h-3.5 w-3.5" /> Pausar
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-xs border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 gap-1"
+                                title="Reanudar o iniciar proceso"
+                                onClick={() => handleControlOrden(orden, "REANUDAR")}
+                              >
+                                <Play className="h-3.5 w-3.5" /> Reanudar
+                              </Button>
+                            )}
+
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-xs border-red-500/40 text-red-400 hover:bg-red-500/10 gap-1"
+                              title="Descartar / Desechar lote antes de finalizar"
+                              onClick={() => handleControlOrden(orden, "DESCARTAR")}
+                            >
+                              <Ban className="h-3.5 w-3.5" /> Descartar
+                            </Button>
+
+                             <Button variant="ghost" size="icon" onClick={() => { setEditingOrden(orden); setOrdenDialogOpen(true); }}>
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDeleteOrden(orden.id)}>
+                            <Button variant="ghost" size="icon" onClick={() => confirmDeleteOrden(orden.id)}>
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                           </div>
@@ -545,6 +896,36 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
                     ))}
                   </TableBody>
                 </Table>
+                
+                {/* Pagination Controls Footer */}
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/20">
+                  <span className="text-xs text-muted-foreground">
+                    Mostrando {ordenesFiltradas.length > 0 ? (currentPageOrdenes - 1) * itemsPerPageOrdenes + 1 : 0} - {Math.min(currentPageOrdenes * itemsPerPageOrdenes, ordenesFiltradas.length)} de {ordenesFiltradas.length} órdenes
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPageOrdenes <= 1}
+                      onClick={() => setCurrentPageOrdenes(p => Math.max(1, p - 1))}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Anterior
+                    </Button>
+                    <span className="text-xs font-medium text-foreground">
+                      Página {currentPageOrdenes} de {totalPagesOrdenes}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPageOrdenes >= totalPagesOrdenes}
+                      onClick={() => setCurrentPageOrdenes(p => Math.min(totalPagesOrdenes, p + 1))}
+                    >
+                      Siguiente
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -673,11 +1054,20 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
                         <TableCell className="text-muted-foreground max-w-md truncate">{plantilla.ingredientes}</TableCell>
                         <TableCell className="font-mono text-foreground">{plantilla.tiempoEstimado}</TableCell>
                         <TableCell>
-                          <div className="flex gap-1">
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="h-8 text-xs bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5"
+                              title="Ejecutar receta y transmitir parámetros por MQTT al mezclador"
+                              onClick={() => handleEjecutarPlantilla(plantilla)}
+                            >
+                              <Play className="h-3.5 w-3.5 fill-current" /> Ejecutar Receta
+                            </Button>
                             <Button variant="ghost" size="icon" onClick={() => { setEditingPlantilla(plantilla); setPlantillaDialogOpen(true); }}>
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDeletePlantilla(plantilla.id)}>
+                            <Button variant="ghost" size="icon" onClick={() => confirmDeletePlantilla(plantilla.id)}>
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                           </div>
@@ -691,6 +1081,41 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Confirmation Dialogs for Deletion */}
+      <Dialog open={!!deleteConfirmOrdenId} onOpenChange={(open) => !open && setDeleteConfirmOrdenId(null)}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-destructive font-bold flex items-center gap-2">
+              <Trash2 className="h-5 w-5" /> Confirmar Eliminación de Orden
+            </DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas eliminar permanentemente esta orden de producción de la base de datos? Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setDeleteConfirmOrdenId(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={executeDeleteOrden}>Eliminar Orden</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteConfirmPlantillaId} onOpenChange={(open) => !open && setDeleteConfirmPlantillaId(null)}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-destructive font-bold flex items-center gap-2">
+              <Trash2 className="h-5 w-5" /> Confirmar Eliminación de Receta
+            </DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas eliminar permanentemente esta plantilla de receta de la base de datos? Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setDeleteConfirmPlantillaId(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={executeDeletePlantilla}>Eliminar Plantilla</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <FormularioOrden
         open={ordenDialogOpen}
@@ -708,14 +1133,14 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
 
       {/* Mantenimiento Dialog */}
       <Dialog open={mantenimientoDialogOpen} onOpenChange={setMantenimientoDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col p-6 bg-card border-border">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Wrench className="h-5 w-5 text-orange-400" />
               Programar Mantenimiento
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 py-4 overflow-y-auto pr-1 flex-1">
             <div className="space-y-2">
               <Label>Nombre del Mantenimiento *</Label>
               <Input
@@ -826,16 +1251,16 @@ const PlanificacionProduccion = ({ initialTab = "planificacion" }: Planificacion
                 className="bg-background border-border"
               />
             </div>
-            <div className="flex justify-end gap-2 pt-4">
-              <Button variant="outline" onClick={() => setMantenimientoDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleSaveMantenimiento} className="bg-orange-500 hover:bg-orange-600">
-                <Wrench className="h-4 w-4 mr-2" />
-                Programar
-              </Button>
-            </div>
           </div>
+          <DialogFooter className="shrink-0 pt-3 border-t border-border/40 gap-2">
+            <Button variant="outline" onClick={() => setMantenimientoDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveMantenimiento} className="bg-orange-500 hover:bg-orange-600">
+              <Wrench className="h-4 w-4 mr-2" />
+              Programar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -18,6 +18,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import { apiFetch } from "@/lib/api";
+
 interface OrdenProduccion {
   id: string;
   producto: string;
@@ -40,33 +42,8 @@ interface FormularioOrdenProps {
   onSave: (orden: Omit<OrdenProduccion, "id">) => void;
 }
 
-const plantas = ["Planta Norte", "Planta Central", "Planta Sur", "Fábrica Este", "Fábrica Oeste"];
-const productos = ["Producto A-100", "Producto B-200", "Producto C-300", "Producto D-400", "Producto E-500"];
-
-const sistemasPorPlanta: Record<string, string[]> = {
-  "Planta Norte": ["Sistema de Mezcla A", "Sistema de Envasado", "Sistema de Control"],
-  "Planta Central": ["Línea de Producción 1", "Línea de Producción 2", "Sistema de Almacenamiento"],
-  "Planta Sur": ["Sistema Automatizado", "Sistema Manual", "Sistema de Calidad"],
-  "Fábrica Este": ["Módulo de Procesamiento", "Módulo de Empaque"],
-  "Fábrica Oeste": ["Unidad de Fabricación A", "Unidad de Fabricación B", "Unidad de Testing"],
-};
-
-const maquinasPorSistema: Record<string, string[]> = {
-  "Sistema de Mezcla A": ["Mezcladora M-001", "Mezcladora M-002", "Agitador AG-01"],
-  "Sistema de Envasado": ["Envasadora ENV-01", "Selladora SEL-01"],
-  "Sistema de Control": ["PLC Principal", "HMI Control"],
-  "Línea de Producción 1": ["Transportador T-01", "Robot R-01", "Prensa P-01"],
-  "Línea de Producción 2": ["Transportador T-02", "Robot R-02", "Prensa P-02"],
-  "Sistema de Almacenamiento": ["Grúa G-01", "Estantería Automática"],
-  "Sistema Automatizado": ["Brazo Robótico BR-01", "Sensor Array SA-01"],
-  "Sistema Manual": ["Estación de Trabajo ET-01", "Estación de Trabajo ET-02"],
-  "Sistema de Calidad": ["Analizador AN-01", "Medidor MED-01"],
-  "Módulo de Procesamiento": ["Procesador PROC-01", "Filtro F-01"],
-  "Módulo de Empaque": ["Empacadora EMP-01", "Etiquetadora ETQ-01"],
-  "Unidad de Fabricación A": ["CNC-01", "Torno T-01"],
-  "Unidad de Fabricación B": ["CNC-02", "Fresadora FR-01"],
-  "Unidad de Testing": ["Banco de Pruebas BP-01", "Cámara Climática CC-01"],
-};
+const plantasFallback = ["Planta Principal", "Rafaela S.A.", "Planta Norte", "Planta Central"];
+const productosFallback = ["Mezcla Estándar A", "Fórmula Premium B", "Receta Industrial C", "Compuesto Especial D"];
 
 const FormularioOrden = ({ open, onOpenChange, orden, onSave }: FormularioOrdenProps) => {
   const [form, setForm] = useState({
@@ -83,8 +60,88 @@ const FormularioOrden = ({ open, onOpenChange, orden, onSave }: FormularioOrdenP
     progreso: 0,
   });
 
-  const sistemasDisponibles = form.planta ? sistemasPorPlanta[form.planta] || [] : [];
-  const maquinasDisponibles = form.sistema ? maquinasPorSistema[form.sistema] || [] : [];
+  const [plantas, setPlantas] = useState<string[]>(plantasFallback);
+  const [productos, setProductos] = useState<string[]>(productosFallback);
+  const [sistemasPorPlanta, setSistemasPorPlanta] = useState<Record<string, string[]>>({});
+  const [maquinasPorSistema, setMaquinasPorSistema] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    if (open) {
+      cargarDatosDelSistema();
+    }
+  }, [open]);
+
+  const cargarDatosDelSistema = async () => {
+    try {
+      // 1. Cargar Fábricas (Plantas)
+      const resFabricas = await apiFetch("/api/v1/fabricas/");
+      let fabList: any[] = [];
+      if (resFabricas.ok) {
+        const data = await resFabricas.json();
+        fabList = data.results || data;
+        if (Array.isArray(fabList) && fabList.length > 0) {
+          setPlantas(fabList.map((f: any) => f.nombre));
+        }
+      }
+
+      // 2. Cargar Plantillas / Productos
+      const resPlantillas = await apiFetch("/api/v1/plantillas-produccion/");
+      if (resPlantillas.ok) {
+        const dataP = await resPlantillas.json();
+        const itemsP = dataP.results || dataP;
+        if (Array.isArray(itemsP) && itemsP.length > 0) {
+          setProductos(itemsP.map((p: any) => p.nombre));
+        }
+      }
+
+      // 3. Cargar Sistemas por Planta
+      const resSistemas = await apiFetch("/api/v1/sistemas/");
+      let sistList: any[] = [];
+      if (resSistemas.ok) {
+        const dataS = await resSistemas.json();
+        sistList = dataS.results || dataS;
+        
+        const sistMap: Record<string, string[]> = {};
+        if (Array.isArray(sistList)) {
+          sistList.forEach((s: any) => {
+            const plantaNombre = s.fabrica_nombre || (fabList.find((f: any) => f.id === s.fabrica)?.nombre) || "Planta Principal";
+            if (!sistMap[plantaNombre]) sistMap[plantaNombre] = [];
+            if (!sistMap[plantaNombre].includes(s.nombre)) {
+              sistMap[plantaNombre].push(s.nombre);
+            }
+          });
+          setSistemasPorPlanta(sistMap);
+        }
+      }
+
+      // 4. Cargar Dispositivos / Máquinas por Sistema
+      const resDispositivos = await apiFetch("/api/v1/dispositivos-scada/");
+      if (resDispositivos.ok) {
+        const dataD = await resDispositivos.json();
+        const dispList = dataD.results || dataD;
+        const maqMap: Record<string, string[]> = {};
+        if (Array.isArray(dispList)) {
+          dispList.forEach((d: any) => {
+            const sistemaNombre = d.sistema_nombre || (sistList.find((s: any) => s.id === d.sistema)?.nombre) || "Sistema General";
+            if (!maqMap[sistemaNombre]) maqMap[sistemaNombre] = [];
+            if (!maqMap[sistemaNombre].includes(d.nombre)) {
+              maqMap[sistemaNombre].push(d.nombre);
+            }
+          });
+          setMaquinasPorSistema(maqMap);
+        }
+      }
+    } catch (e) {
+      console.warn("Error cargando opciones del sistema:", e);
+    }
+  };
+
+  const sistemasDisponibles = form.planta
+    ? (sistemasPorPlanta[form.planta] || ["Sistema de Mezcla A1", "Sistema de Envasado"])
+    : [];
+  const maquinasDisponibles = form.sistema
+    ? (maquinasPorSistema[form.sistema] || ["Mezcladora M-001", "Bomba Principal A"])
+    : [];
 
   useEffect(() => {
     if (orden) {
@@ -148,11 +205,11 @@ const FormularioOrden = ({ open, onOpenChange, orden, onSave }: FormularioOrdenP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-card border-border sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="bg-card border-border sm:max-w-md max-h-[85vh] flex flex-col p-6">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{orden ? "Editar Orden" : "Nueva Orden de Producción"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 overflow-y-auto pr-1 flex-1">
           <div className="space-y-2">
             <Label>Producto</Label>
             <Select value={form.producto} onValueChange={(v) => setForm({...form, producto: v})}>
@@ -267,7 +324,7 @@ const FormularioOrden = ({ open, onOpenChange, orden, onSave }: FormularioOrdenP
             <>
               <div className="space-y-2">
                 <Label>Estado</Label>
-                <Select value={form.estado} onValueChange={(v: "pendiente" | "en_proceso" | "completada") => setForm({...form, estado: v})}>
+                <Select value={form.estado} onValueChange={(v: "pendiente" | "en_proceso" | "completada" | "cancelada") => setForm({...form, estado: v})}>
                   <SelectTrigger className="bg-background border-border">
                     <SelectValue />
                   </SelectTrigger>
@@ -275,6 +332,7 @@ const FormularioOrden = ({ open, onOpenChange, orden, onSave }: FormularioOrdenP
                     <SelectItem value="pendiente">Pendiente</SelectItem>
                     <SelectItem value="en_proceso">En Proceso</SelectItem>
                     <SelectItem value="completada">Completada</SelectItem>
+                    <SelectItem value="cancelada">Cancelada</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -293,7 +351,7 @@ const FormularioOrden = ({ open, onOpenChange, orden, onSave }: FormularioOrdenP
             </>
           )}
         </div>
-        <DialogFooter>
+        <DialogFooter className="shrink-0 pt-3 border-t border-border/40 gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             <X className="h-4 w-4 mr-2" />
             Cancelar

@@ -156,11 +156,11 @@ const FormularioPlantilla = ({ open, onOpenChange, plantilla, onSave }: Formular
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-card border-border sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="bg-card border-border sm:max-w-lg max-h-[85vh] flex flex-col p-6">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{plantilla ? "Editar Plantilla" : "Nueva Plantilla"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 overflow-y-auto pr-1 flex-1">
           <div className="space-y-2">
             <Label>Nombre</Label>
             <Input 
@@ -271,7 +271,7 @@ const FormularioPlantilla = ({ open, onOpenChange, plantilla, onSave }: Formular
             )}
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="shrink-0 pt-3 border-t border-border/40 gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             <X className="h-4 w-4 mr-2" />
             Cancelar

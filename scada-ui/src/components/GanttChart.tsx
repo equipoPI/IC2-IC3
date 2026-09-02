@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useCallback } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +29,7 @@ export interface GanttItem {
   sistema?: string;
   maquina?: string;
   tipo: "produccion" | "mantenimiento";
-  estado?: "pendiente" | "en_proceso" | "completada";
+  estado?: "pendiente" | "en_proceso" | "completada" | "cancelada";
 }
 
 type PeriodView = "diario" | "semanal" | "mensual";
@@ -57,6 +57,7 @@ const estadoColors: Record<string, { bg: string; border: string }> = {
   pendiente: { bg: "bg-warning/30", border: "border-warning/50" },
   en_proceso: { bg: "bg-blue-500/30", border: "border-blue-500/50" },
   completada: { bg: "bg-success/30", border: "border-success/50" },
+  cancelada: { bg: "bg-destructive/30", border: "border-destructive/50" },
 };
 
 const GanttChart = ({ items, onAddMantenimiento, onItemUpdate }: GanttChartProps) => {
@@ -65,6 +66,19 @@ const GanttChart = ({ items, onAddMantenimiento, onItemUpdate }: GanttChartProps
   const [draggingItem, setDraggingItem] = useState<GanttItem | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, startX: 0 });
   const chartRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (items && items.length > 0) {
+      const firstDateStr = items[0].fechaInicio;
+      if (firstDateStr) {
+        const [y, m, d] = firstDateStr.split("-").map(Number);
+        if (y && m && d) {
+          const target = new Date(y, m - 1, d);
+          setCurrentDate(target);
+        }
+      }
+    }
+  }, [items]);
 
   // Get time slots based on period view
   const timeSlots = useMemo(() => {
@@ -84,10 +98,13 @@ const GanttChart = ({ items, onAddMantenimiento, onItemUpdate }: GanttChartProps
       return Array.from({ length: 7 }, (_, i) => {
         const date = new Date(startOfWeek);
         date.setDate(startOfWeek.getDate() + i);
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, "0");
+        const d = String(date.getDate()).padStart(2, "0");
         return {
           label: date.toLocaleDateString("es-ES", { weekday: "short", day: "numeric" }),
           value: i,
-          date: date.toISOString().split("T")[0],
+          date: `${y}-${m}-${d}`,
         };
       });
     } else {
@@ -104,25 +121,35 @@ const GanttChart = ({ items, onAddMantenimiento, onItemUpdate }: GanttChartProps
     }
   }, [periodView, currentDate]);
 
+  const getLocalDateString = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   // Calculate position and width for each item
   const getItemPosition = (item: GanttItem) => {
     const startDate = new Date(`${item.fechaInicio}T${item.horaInicio}`);
     const endDate = new Date(`${item.fechaFin}T${item.horaFin}`);
 
     if (periodView === "diario") {
-      // Check if item is on the current day
-      const currentDay = currentDate.toISOString().split("T")[0];
-      if (item.fechaInicio !== currentDay && item.fechaFin !== currentDay) {
+      const currentDay = getLocalDateString(currentDate);
+      if (currentDay < item.fechaInicio || currentDay > item.fechaFin) {
         return null;
       }
 
-      const startHour = parseInt(item.horaInicio.split(":")[0]) + parseInt(item.horaInicio.split(":")[1]) / 60;
-      const endHour = parseInt(item.horaFin.split(":")[0]) + parseInt(item.horaFin.split(":")[1]) / 60;
+      const startHour = item.fechaInicio === currentDay
+        ? parseInt(item.horaInicio.split(":")[0]) + parseInt(item.horaInicio.split(":")[1] || "0") / 60
+        : 0;
+      const endHour = item.fechaFin === currentDay
+        ? parseInt(item.horaFin.split(":")[0]) + parseInt(item.horaFin.split(":")[1] || "0") / 60
+        : 24;
       
       const left = (startHour / 24) * 100;
-      const width = ((endHour - startHour) / 24) * 100;
+      const width = Math.max(((endHour - startHour) / 24) * 100, 4);
       
-      return { left: `${left}%`, width: `${Math.max(width, 2)}%` };
+      return { left: `${left}%`, width: `${width}%` };
     } else if (periodView === "semanal") {
       const startOfWeek = new Date(currentDate);
       const day = startOfWeek.getDay();
