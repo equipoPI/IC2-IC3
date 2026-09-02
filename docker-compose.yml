@@ -26,7 +26,7 @@ services:
       dockerfile: Dockerfile
     container_name: scada_backend
     entrypoint: [ "/app/entrypoint.sh" ]
-    command: [ "python", "manage.py", "runserver", "0.0.0.0:8000" ]
+    command: [ "gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--threads", "4", "mysite.wsgi:application" ]
     volumes:
       - ./mysite:/app
     ports:

@@ -1,13 +1,14 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now
-from polls.models import RegistrationConfig, Profile, Fabrica, Seccion, Empleado
+from polls.models import RegistrationConfig, Profile, Fabrica, Seccion, Empleado, PlantillaProduccion, OrdenProduccion, MantenimientoProgramado, Sistema
 from allauth.account.models import EmailAddress
 import os
+from datetime import timedelta
 
 
 class Command(BaseCommand):
-    help = 'Provision initial data: create superuser, default Fabrica/Seccion, linked Empleado and RegistrationConfig'
+    help = 'Provision initial data: create superuser, default Fabrica/Seccion, linked Empleado and RegistrationConfig, and initial SCADA data'
 
     def handle(self, *args, **options):
         User = get_user_model()
@@ -25,7 +26,17 @@ class Command(BaseCommand):
             fabrica=fab,
             defaults={'capacidad_trabajadores': 10, 'tamano_seccion': 100.0}
         )
-        self.stdout.write(self.style.SUCCESS(f'Default Fabrica ("{fab.nombre}") and Seccion ("{sec.nombre}") ensured'))
+        sec_mezcla, _ = Seccion.objects.get_or_create(
+            nombre='Área de Mezclado',
+            fabrica=fab,
+            defaults={'capacidad_trabajadores': 15, 'tamano_seccion': 250.0}
+        )
+        sistema_mezcla, _ = Sistema.objects.get_or_create(
+            nombre='Sistema de Mezcla A1',
+            fabrica=fab,
+            defaults={'descripcion': 'Sistema automatizado de mezclado industrial'}
+        )
+        self.stdout.write(self.style.SUCCESS(f'Default Fabrica ("{fab.nombre}") and Secciones ensured'))
 
         # 2. Crear o recuperar Superusuario
         user, created = User.objects.get_or_create(username=username, defaults={'email': email})
@@ -107,6 +118,137 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS('RegistrationConfig created from REGISTRATION_KEY'))
             else:
                 self.stdout.write('Active RegistrationConfig for env key already exists')
-        else:
-            self.stdout.write('No REGISTRATION_KEY in environment; skipping RegistrationConfig creation')
+
+        # 6. Seed PlantillasProduccion iniciales
+        if PlantillaProduccion.objects.count() == 0:
+            PlantillaProduccion.objects.create(
+                nombre="Mezcla Estándar A",
+                tipo="PRODUCCION",
+                descripcion="Fórmula estándar de mezclado con bomba 1 y bomba 2",
+                tiempo_horas=2,
+                tiempo_minutos=30,
+                ingredientes_json="Componente A (45%), Componente B (30%), Aditivo X (25%)"
+            )
+            PlantillaProduccion.objects.create(
+                nombre="Fórmula Premium B",
+                tipo="ESPECIALIDAD",
+                descripcion="Mezclado de alta densidad con catalizadores",
+                tiempo_horas=3,
+                tiempo_minutos=45,
+                ingredientes_json="Base Premium (60%), Catalizador Y (20%), Estabilizador Z (20%)"
+            )
+            PlantillaProduccion.objects.create(
+                nombre="Receta Industrial C",
+                tipo="PRODUCCION",
+                descripcion="Proceso rápido de procesamiento continuo",
+                tiempo_horas=1,
+                tiempo_minutos=15,
+                ingredientes_json="Material Base (70%), Refuerzo R (15%), Aditivo Final (15%)"
+            )
+            PlantillaProduccion.objects.create(
+                nombre="Compuesto Especial D",
+                tipo="ESPECIALIDAD",
+                descripcion="Mezcla especial de alta fricción",
+                tiempo_horas=4,
+                tiempo_minutos=0,
+                ingredientes_json="Polímero P (50%), Agente A (25%), Modificador M (25%)"
+            )
+            self.stdout.write(self.style.SUCCESS('Initial PlantillasProduccion seeded'))
+
+        # 7. Seed Ordenes de Producción iniciales
+        if OrdenProduccion.objects.count() == 0:
+            today = now().date()
+            OrdenProduccion.objects.create(
+                producto="Producto A-100",
+                cantidad=5000,
+                unidad="L",
+                fecha_inicio=today,
+                hora_inicio="08:00",
+                fecha_fin=today,
+                hora_fin="14:00",
+                fabrica=fab,
+                sistema=sistema_mezcla,
+                estado="EN_PROCESO",
+                progreso=65,
+                creado_por=user
+            )
+            OrdenProduccion.objects.create(
+                producto="Producto B-200",
+                cantidad=3000,
+                unidad="L",
+                fecha_inicio=today + timedelta(days=1),
+                hora_inicio="09:30",
+                fecha_fin=today + timedelta(days=1),
+                hora_fin="15:30",
+                fabrica=fab,
+                sistema=sistema_mezcla,
+                estado="PENDIENTE",
+                progreso=0,
+                creado_por=user
+            )
+            OrdenProduccion.objects.create(
+                producto="Producto C-300",
+                cantidad=8000,
+                unidad="L",
+                fecha_inicio=today - timedelta(days=1),
+                hora_inicio="07:00",
+                fecha_fin=today - timedelta(days=1),
+                hora_fin="19:00",
+                fabrica=fab,
+                sistema=sistema_mezcla,
+                estado="COMPLETADA",
+                progreso=100,
+                creado_por=user
+            )
+            self.stdout.write(self.style.SUCCESS('Initial OrdenesProduccion seeded'))
+
+        # 8. Seed MantenimientoProgramado iniciales
+        if MantenimientoProgramado.objects.count() == 0:
+            today = now().date()
+            MantenimientoProgramado.objects.create(
+                nombre="Mantenimiento preventivo M-001",
+                descripcion="Revisión programada de bombas de mezclado",
+                fecha_inicio=today,
+                hora_inicio="14:30",
+                fecha_fin=today,
+                hora_fin="16:00",
+                fabrica=fab,
+                sistema=sistema_mezcla,
+                estado="PROGRAMADO"
+            )
+            self.stdout.write(self.style.SUCCESS('Initial MantenimientoProgramado seeded'))
+
+        # 9. Seed MapeoAccionMQTT iniciales
+        from polls.models import MapeoAccionMQTT
+        if MapeoAccionMQTT.objects.count() == 0:
+            MapeoAccionMQTT.objects.create(
+                nombre="Control de Reposición de Materia Prima",
+                tipo_sistema="FLUIDOS",
+                nombre_accion="reposicion",
+                plantilla_topico="scada/{planta}/{gateway}/{seccion}/{sistema}/accion",
+                plantilla_payload_json='{"accion": "REPOSICION", "bombo": "{bombo}", "limite_porcentaje": "{limite}"}'
+            )
+            MapeoAccionMQTT.objects.create(
+                nombre="Freno de Emergencia de Reposición",
+                tipo_sistema="FLUIDOS",
+                nombre_accion="freno_reposicion",
+                plantilla_topico="scada/{planta}/{gateway}/{seccion}/{sistema}/accion",
+                plantilla_payload_json='{"accion": "FRENO_REPOSICION"}'
+            )
+            MapeoAccionMQTT.objects.create(
+                nombre="Mezcla y Receta de Sólidos / Gránulos",
+                tipo_sistema="SOLIDOS",
+                nombre_accion="receta_solidos",
+                plantilla_topico="scada/{planta}/{gateway}/{seccion}/{sistema}/accion",
+                plantilla_payload_json='{"accion": "RECETA_SOLIDOS", "tolva": "{tolva}", "peso_kg": "{peso}"}'
+            )
+            MapeoAccionMQTT.objects.create(
+                nombre="Ajuste de Temperatura de Calentador/Enfriador",
+                tipo_sistema="TEMPERATURA",
+                nombre_accion="setpoint_temperatura",
+                plantilla_topico="scada/{planta}/{gateway}/{seccion}/{sistema}/temperatura/setpoint",
+                plantilla_payload_json='{"setpoint_celsius": "{temp}", "modo": "{modo}"}'
+            )
+            self.stdout.write(self.style.SUCCESS('Initial MapeoAccionMQTT seeded'))
+
 

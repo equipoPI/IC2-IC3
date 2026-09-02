@@ -115,39 +115,76 @@ class Command(BaseCommand):
             topic = msg.topic
             payload_str = msg.payload.decode('utf-8').strip()
 
-            # 1. Procesar Heartbeat / Disponibilidad
-            # Formatos: tenant/gateway_id/status  O  scada/{planta}/estado/gateway
-            status_match = re.match(r"^([^/]+)/([^/]+)/status$", topic)
-            gateway_match = re.match(r"^([^/]+)/([^/]+)/estado/gateway$", topic)
-            
-            if status_match:
-                tenant, gateway_id = status_match.groups()
-                estado_dispo = "ONLINE" if payload_str.lower() == "online" else "OFFLINE"
-                updated = DispositivoSCADA.objects.filter(gateway_id=gateway_id).update(
-                    estado=estado_dispo,
-                    ultima_lectura=timezone.now()
-                )
-                if updated > 0:
-                    self.stdout.write(f"[Heartbeat] Gateway '{gateway_id}' -> {payload_str}. {updated} dispositivos marcados como {estado_dispo}.")
-                return
-
-            if gateway_match:
-                tenant, gateway_id = gateway_match.groups()
+            # 1. Procesar Alarmas enviadas por el Gateway
+            if topic.endswith('/alarmas') or '/alarmas' in topic:
                 try:
                     payload_dict = json.loads(payload_str)
-                    is_online = payload_dict.get('online', True)
                 except Exception:
-                    is_online = payload_str.lower() == "online"
+                    payload_dict = {'mensaje': payload_str, 'nivel': 'CRITICO'}
                 
-                estado_dispo = "ONLINE" if is_online else "OFFLINE"
-                updated = DispositivoSCADA.objects.filter(gateway_id=gateway_id).update(
-                    estado=estado_dispo,
-                    ultima_lectura=timezone.now()
+                from polls.models import Alarma, Fabrica
+                parts = topic.split('/')
+                tenant_name = parts[0] if len(parts) > 0 else 'Rafaela_S.A'
+                fabrica = Fabrica.objects.filter(nombre__iexact=tenant_name).first() or Fabrica.objects.first()
+                
+                msg_txt = payload_dict.get('mensaje') or payload_dict.get('alarma') or payload_str
+                nivel_txt = str(payload_dict.get('nivel', 'CRITICO')).upper()
+                if nivel_txt not in ['INFO', 'ADVERTENCIA', 'CRITICO']:
+                    nivel_txt = 'CRITICO'
+
+                Alarma.objects.create(
+                    fabrica=fabrica,
+                    titulo=f"Alarma Gateway {parts[1] if len(parts) > 1 else ''}",
+                    descripcion=msg_txt,
+                    nivel=nivel_txt,
+                    estado='ACTIVA'
                 )
-                self.stdout.write(f"[Heartbeat Gateway] Tópico '{topic}' -> {estado_dispo}.")
-                      # 2. Procesar Telemetría
-            telemetria_parts = topic.split('/')
-            
+                self.stdout.write(self.style.WARNING(f"[Alarma SCADA] {topic} -> {msg_txt} ({nivel_txt})"))
+                return
+
+            # 2. Procesar Estado General y Diagnóstico
+            if topic.endswith('/estado/general') or topic.endswith('/diagnostico'):
+                try:
+                    payload_dict = json.loads(payload_str)
+                except Exception:
+                    payload_dict = {'estado': payload_str}
+                
+                from polls.models import Fabrica
+                parts = topic.split('/')
+                tenant_name = parts[0] if len(parts) > 0 else 'Rafaela_S.A'
+                fabrica = Fabrica.objects.filter(nombre__iexact=tenant_name).first() or Fabrica.objects.first()
+                if fabrica:
+                    if 'estado' in payload_dict and payload_dict['estado'] in ['OPERATIVO', 'ADVERTENCIA', 'CRITICO', 'OFFLINE']:
+                        fabrica.estado = payload_dict['estado']
+                    if 'porcentaje_produccion' in payload_dict:
+                        fabrica.porcentaje_produccion = float(payload_dict['porcentaje_produccion'])
+                    if 'temperatura_promedio' in payload_dict:
+                        fabrica.temperatura_promedio = float(payload_dict['temperatura_promedio'])
+                    fabrica.save(update_fields=['estado', 'porcentaje_produccion', 'temperatura_promedio'])
+                self.stdout.write(f"[Diagnóstico SCADA] {topic} -> {payload_dict}")
+                return
+
+            # 3. Procesar Variables y Estado de Proceso (ej: proceso/mezclado, proceso/tiempo_restante)
+            if '/proceso/' in topic or (len(telemetria_parts) >= 5 and telemetria_parts[-2].lower() == 'proceso'):
+                try:
+                    payload_dict = json.loads(payload_str)
+                except Exception:
+                    payload_dict = {'valor': payload_str}
+                
+                from polls.models import OrdenProduccion
+                self.stdout.write(f"[Proceso SCADA] Variable de monitoreo {topic} -> {payload_dict}")
+                
+                active_orden = OrdenProduccion.objects.filter(estado__in=['EN_PROCESO', 'en_proceso']).first()
+                if active_orden:
+                    if 'progreso' in payload_dict or 'porcentaje' in payload_dict:
+                        try:
+                            val = float(payload_dict.get('progreso', payload_dict.get('porcentaje', 0)))
+                            active_orden.progreso_porcentaje = min(max(val, 0.0), 100.0)
+                            active_orden.save(update_fields=['progreso_porcentaje'])
+                        except Exception:
+                            pass
+                return
+
             if len(telemetria_parts) in [4, 5, 6]:
                 if len(telemetria_parts) == 4:
                     # Formato 4 partes: scada/planta1/actuadores/bomba1
@@ -170,7 +207,7 @@ class Command(BaseCommand):
                     tenant, gateway_id, sector, system, category, device_id = telemetria_parts
                     category = category.lower()
 
-                if category in ['sensores', 'actuadores', 'proceso', 'nivel', 'caudal']:
+                if category in ['sensores', 'actuadores', 'nivel', 'caudal']:
                     # =========================================================================
                     # PROCESADOR UNIFICADO DE TELEMETRÍA
                     # =========================================================================
@@ -398,8 +435,10 @@ class Command(BaseCommand):
                         # bomba_mezcla -> bomba_mezcla
                         # bomba_reposicion -> bomba_reposicion
                         bombas_map = {
-                            'bomba1': ('pump-1', 'Bomba Principal P1', 'BOMBA'),
-                            'bomba2': ('pump-2', 'Bomba P2', 'BOMBA'),
+                            'bomba1': ('bomba1', 'Bomba Principal P1', 'BOMBA'),
+                            'pump-1': ('pump-1', 'Bomba Principal P1', 'BOMBA'),
+                            'bomba2': ('bomba2', 'Bomba P2', 'BOMBA'),
+                            'pump-2': ('pump-2', 'Bomba P2', 'BOMBA'),
                             'bomba_mezcla': ('bomba_mezcla', 'Bomba de Mezcla', 'BOMBA'),
                             'bomba_reposicion': ('bomba_reposicion', 'Bomba de Reposición', 'BOMBA')
                         }
