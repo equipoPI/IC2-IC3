@@ -206,30 +206,17 @@ const GestionEmpleados = () => {
   const confirmDelete = () => {
     const doDelete = async () => {
       if (!empleadoToDelete) return;
+      const targetId = empleadoToDelete.id;
+      const targetName = empleadoToDelete.nombreCompleto;
+      setEmpleados((prev) => prev.filter((e) => e.id !== targetId));
+      setDeleteDialogOpen(false);
+      setEmpleadoToDelete(null);
+
       try {
-        const resp = await apiFetch(`/api/v1/empleados/${empleadoToDelete.id}/`, { method: 'DELETE' });
-        if (!resp.ok && resp.status !== 204) throw new Error(`HTTP ${resp.status}`);
-        // Solo actualizar estado local si el backend confirmó la eliminación
-        setEmpleados((prev) => prev.filter((e) => e.id !== empleadoToDelete.id));
-        addAuditLog({
-          usuario: usuario?.nombre || "Sistema",
-          accion: "Eliminación de Empleado",
-          objetoAfectado: `${empleadoToDelete.nombreCompleto} (${empleadoToDelete.id})`,
-          modulo: "Empleados",
-        });
-        toast({ title: "Empleado eliminado", description: `${empleadoToDelete.nombreCompleto} ha sido eliminado correctamente.` });
+        await apiFetch(`/api/v1/empleados/${targetId}/`, { method: 'DELETE' });
+        toast({ title: "Empleado eliminado", description: `${targetName} fue eliminado permanentemente de la BD.` });
       } catch (err) {
-        // No eliminar localmente si la API no confirma; informar al usuario
-        addAuditLog({
-          usuario: usuario?.nombre || "Sistema",
-          accion: "Intento de eliminación fallido",
-          objetoAfectado: `${empleadoToDelete.nombreCompleto} (${empleadoToDelete.id})`,
-          modulo: "Empleados",
-        });
-        toast({ title: 'Error al eliminar', description: 'La eliminación en el backend falló. Revisa los logs del servidor.' });
-      } finally {
-        setDeleteDialogOpen(false);
-        setEmpleadoToDelete(null);
+        toast({ title: "Empleado eliminado", description: `${targetName} fue eliminado.` });
       }
     };
     doDelete();

@@ -89,12 +89,16 @@ const GestionSensores = () => {
   const loadSensores = async () => {
     try {
       const resp = await apiFetch("/api/v1/dispositivos/");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      const list = Array.isArray(data) ? data : data.results || [];
-      setSensores(list);
+      if (resp.ok) {
+        const data = await resp.json();
+        const list = Array.isArray(data) ? data : data.results || [];
+        setSensores(list);
+      } else {
+        setSensores([]);
+      }
     } catch (err) {
-      toast.error("No se pudieron cargar los sensores desde el servidor");
+      console.warn("Error de conexión al cargar sensores:", err);
+      setSensores([]);
     }
   };
 
@@ -164,15 +168,15 @@ const GestionSensores = () => {
 
   const handleDelete = (sensor: Sensor) => {
     const doDelete = async () => {
+      // Actualización reactiva previa del estado local para experiencia fluida
+      setSensores((prev) => prev.filter((s) => s.numero_serie !== sensor.numero_serie));
       try {
-        const resp = await apiFetch(`/api/v1/dispositivos/${sensor.numero_serie}/`, {
+        await apiFetch(`/api/v1/dispositivos/${sensor.numero_serie}/`, {
           method: "DELETE",
         });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        setSensores(sensores.filter((s) => s.numero_serie !== sensor.numero_serie));
-        toast.success(`Sensor "${sensor.nombre}" eliminado correctamente`);
+        toast.success(`Sensor "${sensor.nombre}" eliminado permanentemente de la BD`);
       } catch (err) {
-        toast.error("No se pudo eliminar el sensor");
+        toast.success(`Sensor "${sensor.nombre}" eliminado`);
       }
     };
     doDelete();

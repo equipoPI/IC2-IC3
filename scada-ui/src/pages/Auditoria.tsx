@@ -31,6 +31,7 @@ import {
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import apiFetch from "@/lib/api";
+import { formatArgentinianDate } from "@/lib/utils";
 
 interface RegistroAuditoria {
   id: string;
@@ -71,13 +72,25 @@ const Auditoria = () => {
 
   const [registros, setRegistros] = useState<RegistroAuditoria[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Estados de edición locales para los filtros
   const [searchVal, setSearchVal] = useState("");
   const [filtroModulo, setFiltroModulo] = useState<string>("todos");
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaFin, setFechaFin] = useState("");
   const [horaInicio, setHoraInicio] = useState("");
   const [horaFin, setHoraFin] = useState("");
+
+  // Estados de filtros activos aplicados formalmente
+  const [activeFilters, setActiveFilters] = useState({
+    search: "",
+    modulo: "todos",
+    fechaInicio: "",
+    fechaFin: "",
+    horaInicio: "",
+    horaFin: ""
+  });
+
   const [sortField, setSortField] = useState<SortField>("fechaHora");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
@@ -86,9 +99,20 @@ const Auditoria = () => {
   const [totalCount, setTotalCount] = useState(0);
 
   // Módulos estáticos del sistema
+  // Módulos estáticos del sistema alineados con el backend
   const modulos = [
-    "General", "Autenticación", "Alarma", "Personal", "Sensor", "SCADA",
-    "Inventario", "Producción", "Mantenimiento", "Planificación", "Comunicación"
+    { label: "Plantas / Fábricas", value: "Plantas" },
+    { label: "Secciones", value: "Secciones" },
+    { label: "Dispositivos SCADA", value: "Dispositivos SCADA" },
+    { label: "Comunicaciones MQTT", value: "Comunicaciones MQTT" },
+    { label: "Empleados", value: "Empleados" },
+    { label: "Órdenes de Producción", value: "Órdenes de Producción" },
+    { label: "Recetas de Producción", value: "Recetas de Producción" },
+    { label: "Inventario / Almacenamiento", value: "Inventario / Almacenamiento" },
+    { label: "Gestión de Alarmas", value: "Gestión de Alarmas" },
+    { label: "Planificación de la Producción", value: "Planificación de la Producción" },
+    { label: "Seguridad / Sesiones", value: "Seguridad" },
+    { label: "General", value: "General" }
   ];
 
   // Estado del diálogo de detalle
@@ -109,14 +133,11 @@ const Auditoria = () => {
     }
   }, [usuario, tieneAcceso, navigate]);
 
-  // Debounce para búsqueda
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setSearchQuery(searchVal);
-      setPage(1);
-    }, 450);
-    return () => clearTimeout(handler);
-  }, [searchVal]);
+  // Helper para generar una fecha ISO local correcta con el offset de Argentina (-03:00)
+  const toLocalISOString = (dateStr: string, timeStr: string, defaultTime: string): string => {
+    const timePart = timeStr || defaultTime;
+    return `${dateStr}T${timePart}:00-03:00`;
+  };
 
   // Cargar desde la API real con filtros y paginación en servidor
   const loadLogs = async () => {
@@ -124,17 +145,17 @@ const Auditoria = () => {
       setLoading(true);
       let url = `/api/v1/auditoria/?page=${page}&page_size=25`;
       
-      if (searchQuery) {
-        url += `&search=${encodeURIComponent(searchQuery)}`;
+      if (activeFilters.search) {
+        url += `&search=${encodeURIComponent(activeFilters.search)}`;
       }
-      if (filtroModulo && filtroModulo !== "todos") {
-        url += `&modulo=${encodeURIComponent(filtroModulo)}`;
+      if (activeFilters.modulo && activeFilters.modulo !== "todos") {
+        url += `&modulo=${encodeURIComponent(activeFilters.modulo)}`;
       }
-      if (fechaInicio) {
-        url += `&fecha_desde=${encodeURIComponent(`${fechaInicio}T${horaInicio || '00:00'}:00`)}`;
+      if (activeFilters.fechaInicio) {
+        url += `&fecha_desde=${encodeURIComponent(toLocalISOString(activeFilters.fechaInicio, activeFilters.horaInicio, '00:00'))}`;
       }
-      if (fechaFin) {
-        url += `&fecha_hasta=${encodeURIComponent(`${fechaFin}T${horaFin || '23:59'}:59`)}`;
+      if (activeFilters.fechaFin) {
+        url += `&fecha_hasta=${encodeURIComponent(toLocalISOString(activeFilters.fechaFin, activeFilters.horaFin, '23:59'))}`;
       }
 
       // Ordenamiento por Backend
@@ -156,23 +177,9 @@ const Auditoria = () => {
       setTotalCount(data.count || 0);
 
       const mapped = list.map((r: any) => {
-        let fechaFormatted = "-";
-        if (r.timestamp) {
-          const dateObj = new Date(r.timestamp);
-          if (!isNaN(dateObj.getTime())) {
-            fechaFormatted = dateObj.toLocaleString("es-ES", {
-              year: "numeric",
-              month: "2-digit",
-              day: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit"
-            });
-          }
-        }
         return {
           id: `AUD-${r.id}`,
-          fechaHora: fechaFormatted,
+          fechaHora: formatArgentinianDate(r.timestamp),
           usuario: r.usuario_username || "Sistema",
           accion: r.accion || "Acción",
           detalle: r.descripcion || "",
@@ -193,12 +200,39 @@ const Auditoria = () => {
     if (tieneAcceso) {
       loadLogs();
     }
-  }, [tieneAcceso, page, filtroModulo, fechaInicio, fechaFin, horaInicio, horaFin, sortField, sortDirection]);
+  }, [tieneAcceso, page, activeFilters, sortField, sortDirection]);
 
-  // Reset a página 1 ante cambios de filtros
-  useEffect(() => {
+  // Manejadores para aplicar y limpiar filtros manualmente
+  const handleApplyFilters = () => {
     setPage(1);
-  }, [filtroModulo, fechaInicio, fechaFin, horaInicio, horaFin, sortField, sortDirection]);
+    setActiveFilters({
+      search: searchVal,
+      modulo: filtroModulo,
+      fechaInicio: fechaInicio,
+      fechaFin: fechaFin,
+      horaInicio: horaInicio,
+      horaFin: horaFin
+    });
+  };
+
+  const handleClearFilters = () => {
+    setSearchVal("");
+    setFiltroModulo("todos");
+    setFechaInicio("");
+    setFechaFin("");
+    setHoraInicio("");
+    setHoraFin("");
+    
+    setPage(1);
+    setActiveFilters({
+      search: "",
+      modulo: "todos",
+      fechaInicio: "",
+      fechaFin: "",
+      horaInicio: "",
+      horaFin: ""
+    });
+  };
 
   const totalPages = Math.ceil(totalCount / 25) || 1;
 
@@ -208,10 +242,14 @@ const Auditoria = () => {
       toast.info("Descargando historial completo filtrado para el reporte...");
       let url = `/api/v1/auditoria/?page_size=100000`;
       
-      if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
-      if (filtroModulo && filtroModulo !== "todos") url += `&modulo=${encodeURIComponent(filtroModulo)}`;
-      if (fechaInicio) url += `&fecha_desde=${encodeURIComponent(`${fechaInicio}T${horaInicio || '00:00'}:00`)}`;
-      if (fechaFin) url += `&fecha_hasta=${encodeURIComponent(`${fechaFin}T${horaFin || '23:59'}:59`)}`;
+      if (activeFilters.search) url += `&search=${encodeURIComponent(activeFilters.search)}`;
+      if (activeFilters.modulo && activeFilters.modulo !== "todos") url += `&modulo=${encodeURIComponent(activeFilters.modulo)}`;
+      if (activeFilters.fechaInicio) {
+        url += `&fecha_desde=${encodeURIComponent(toLocalISOString(activeFilters.fechaInicio, activeFilters.horaInicio, '00:00'))}`;
+      }
+      if (activeFilters.fechaFin) {
+        url += `&fecha_hasta=${encodeURIComponent(toLocalISOString(activeFilters.fechaFin, activeFilters.horaFin, '23:59'))}`;
+      }
       
       let orderingKey = "";
       if (sortField === "fechaHora") orderingKey = "timestamp";
@@ -226,19 +264,9 @@ const Auditoria = () => {
       const list = data.results || data || [];
 
       return list.map((r: any) => {
-        let fechaFormatted = "-";
-        if (r.timestamp) {
-          const dateObj = new Date(r.timestamp);
-          if (!isNaN(dateObj.getTime())) {
-            fechaFormatted = dateObj.toLocaleString("es-ES", {
-              year: "numeric", month: "2-digit", day: "2-digit",
-              hour: "2-digit", minute: "2-digit", second: "2-digit"
-            });
-          }
-        }
         return {
           id: `AUD-${r.id}`,
-          fechaHora: fechaFormatted,
+          fechaHora: formatArgentinianDate(r.timestamp),
           usuario: r.usuario_username || "Sistema",
           accion: r.accion || "Acción",
           detalle: r.descripcion || "",
@@ -254,6 +282,7 @@ const Auditoria = () => {
   };
 
   const handleSort = (field: SortField) => {
+    setPage(1);
     if (sortField === field) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
@@ -328,7 +357,7 @@ const Auditoria = () => {
         </head>
         <body>
           <h1>Reporte de Auditoría y Registro de Actividades</h1>
-          <p class="meta">Generado el ${new Date().toLocaleString("es-ES")} | Registros totales: ${items.length}</p>
+          <p class="meta">Generado el ${new Date().toLocaleString("es-AR")} | Registros totales: ${items.length}</p>
           <table>
             <thead>
               <tr>
@@ -358,7 +387,7 @@ const Auditoria = () => {
     toast.success("Documento de impresión PDF generado con éxito");
   };
 
-  if (loading) {
+  if (loading && registros.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <ClipboardList className="h-8 w-8 text-primary animate-pulse mr-2" />
@@ -442,9 +471,10 @@ const Auditoria = () => {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col sm:flex-row gap-4">
               <Input
-                placeholder="Buscar en registros..."
+                placeholder="Buscar en registros... (Enter para aplicar)"
                 value={searchVal}
                 onChange={(e) => setSearchVal(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleApplyFilters(); }}
                 className="sm:max-w-xs bg-background border-border"
               />
               <Select value={filtroModulo} onValueChange={setFiltroModulo}>
@@ -454,7 +484,7 @@ const Auditoria = () => {
                 <SelectContent className="bg-popover border-border">
                   <SelectItem value="todos">Todos los módulos</SelectItem>
                   {modulos.map((modulo) => (
-                    <SelectItem key={modulo} value={modulo}>{modulo}</SelectItem>
+                    <SelectItem key={modulo.value} value={modulo.value}>{modulo.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -490,20 +520,39 @@ const Auditoria = () => {
                   className="w-auto bg-background border-border text-foreground"
                 />
               </div>
-              {(fechaInicio || fechaFin || horaInicio || horaFin) && (
-                <Button variant="ghost" size="sm" onClick={() => { setFechaInicio(""); setFechaFin(""); setHoraInicio(""); setHoraFin(""); }}>
-                  Limpiar filtros de tiempo
-                </Button>
-              )}
+            </div>
+            
+            {/* Botones de acción para filtros */}
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/40">
+              <Button 
+                onClick={handleApplyFilters} 
+                className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 h-9 text-xs font-semibold px-4"
+              >
+                <Search className="h-4 w-4" />
+                Buscar y Filtrar
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={handleClearFilters} 
+                className="h-9 text-xs border-border hover:bg-muted text-foreground"
+              >
+                Limpiar Filtros
+              </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/30 hover:bg-muted/30">
-                  <TableHead className="text-muted-foreground cursor-pointer" onClick={() => handleSort("id")}>
+            {loading ? (
+              <div className="flex items-center justify-center h-48 bg-muted/5">
+                <ClipboardList className="h-6 w-6 text-primary animate-pulse mr-2" />
+                <span className="text-xs text-muted-foreground">Actualizando registros de auditoría...</span>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/30 hover:bg-muted/30">
+                    <TableHead className="text-muted-foreground cursor-pointer" onClick={() => handleSort("id")}>
                       <div className="flex items-center">ID <SortIcon field="id" /></div>
                     </TableHead>
                     <TableHead className="text-muted-foreground cursor-pointer" onClick={() => handleSort("fechaHora")}>
@@ -548,8 +597,9 @@ const Auditoria = () => {
                       </TableRow>
                     ))
                   )}
-              </TableBody>
-            </Table>
+                </TableBody>
+              </Table>
+            )}
           </div>
 
           {/* Paginación */}
@@ -605,19 +655,19 @@ const Auditoria = () => {
       {/* Modal de Detalle Completo de Auditoría */}
       {selectedLog && (
         <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-          <DialogContent className="max-w-2xl bg-card border-border text-foreground">
+          <DialogContent className="max-w-2xl bg-card border-border text-foreground text-xs md:text-sm">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-xl font-bold text-foreground">
                 <Info className="h-5 w-5 text-primary" />
                 Detalle del Registro de Auditoría
               </DialogTitle>
-              <DialogDescription className="text-muted-foreground">
+              <DialogDescription className="text-muted-foreground text-xs">
                 Información técnica y cambios de valores del log seleccionado.
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 my-2">
-              <div className="grid grid-cols-2 gap-4 border border-border p-3 rounded-lg bg-muted/10">
+              <div className="grid grid-cols-2 gap-4 border border-border p-3 rounded-lg bg-muted/10 text-xs">
                 <div>
                   <p className="text-xs text-muted-foreground uppercase font-semibold">ID Registro</p>
                   <p className="font-mono text-sm font-bold text-foreground mt-0.5">{selectedLog.id}</p>
@@ -662,7 +712,7 @@ const Auditoria = () => {
                       <div className="border border-border rounded-lg overflow-hidden max-h-60 overflow-y-auto">
                         <table className="w-full text-left text-sm border-collapse">
                           <thead>
-                            <tr className="bg-muted/50 border-b border-border">
+                            <tr className="bg-muted/50 border-b border-border text-xs">
                               <th className="p-2 text-xs font-semibold text-muted-foreground uppercase">Campo</th>
                               <th className="p-2 text-xs font-semibold text-muted-foreground uppercase">Valor Anterior</th>
                               <th className="p-2 text-xs font-semibold text-muted-foreground uppercase">Valor Nuevo</th>
@@ -670,7 +720,7 @@ const Auditoria = () => {
                           </thead>
                           <tbody>
                             {Object.entries(selectedLog.datos).map(([campo, diff]: [string, any]) => (
-                              <tr key={campo} className="border-b border-border/50 hover:bg-muted/10">
+                              <tr key={campo} className="border-b border-border/50 hover:bg-muted/10 text-xs">
                                 <td className="p-2 font-mono text-xs font-bold text-foreground">{campo}</td>
                                 <td className="p-2 text-xs text-destructive bg-destructive/5 font-mono line-through truncate max-w-[150px]">{diff.antes || '(vacio)'}</td>
                                 <td className="p-2 text-xs text-success bg-success/5 font-mono truncate max-w-[150px]">{diff.despues || '(vacio)'}</td>
@@ -686,14 +736,14 @@ const Auditoria = () => {
                       <div className="border border-border rounded-lg overflow-hidden max-h-60 overflow-y-auto">
                         <table className="w-full text-left text-sm border-collapse">
                           <thead>
-                            <tr className="bg-muted/50 border-b border-border">
+                            <tr className="bg-muted/50 border-b border-border text-xs">
                               <th className="p-2 text-xs font-semibold text-muted-foreground uppercase">Campo</th>
                               <th className="p-2 text-xs font-semibold text-muted-foreground uppercase">Valor</th>
                             </tr>
                           </thead>
                           <tbody>
                             {Object.entries(selectedLog.datos).map(([campo, valor]: [string, any]) => (
-                              <tr key={campo} className="border-b border-border/50 hover:bg-muted/10">
+                              <tr key={campo} className="border-b border-border/50 hover:bg-muted/10 text-xs">
                                 <td className="p-2 font-mono text-xs font-bold text-foreground">{campo}</td>
                                 <td className="p-2 text-xs text-foreground font-mono truncate max-w-[300px]">
                                   {String(valor) || '(vacío)'}

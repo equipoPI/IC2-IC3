@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import AppBar from "./AppBar";
 import Sidebar from "./Sidebar";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { cn } from "@/lib/utils";
 
 interface MainLayoutProps {
@@ -10,6 +11,7 @@ interface MainLayoutProps {
 
 const MainLayout = ({ onLogout }: MainLayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const location = useLocation();
 
   return (
     <div className="min-h-screen bg-background">
@@ -23,7 +25,9 @@ const MainLayout = ({ onLogout }: MainLayoutProps) => {
         )}
       >
         <div className="max-w-7xl mx-auto animate-fade-in">
-          <Outlet />
+          <ErrorBoundary key={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </main>
     </div>

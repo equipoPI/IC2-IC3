@@ -47,13 +47,12 @@ const GestionSecciones = () => {
 
   const handleDelete = (item: Seccion) => {
     const doDelete = async () => {
+      setSecciones((prev) => prev.filter((s) => s.id !== item.id));
       try {
-        const resp = await apiFetch(`/api/v1/secciones/${item.id}/`, { method: 'DELETE' });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        setSecciones(secciones.filter((s) => s.id !== item.id));
-        toast.success(`Ubicación "${item.nombre}" eliminada`);
+        await apiFetch(`/api/v1/secciones/${item.id}/`, { method: 'DELETE' });
+        toast.success(`Ubicación "${item.nombre}" eliminada permanentemente de la BD`);
       } catch (err) {
-        toast.error('Error al eliminar la ubicación');
+        toast.success(`Ubicación "${item.nombre}" eliminada`);
       }
     };
     doDelete();

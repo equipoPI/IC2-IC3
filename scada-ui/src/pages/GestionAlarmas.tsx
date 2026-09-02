@@ -106,34 +106,37 @@ const GestionAlarmas = () => {
   const [formDescripcion, setFormDescripcion] = useState("");
   const [formSeveridad, setFormSeveridad] = useState<"alta" | "media" | "baja">("media");
   
+  const extractId = (val: any): string => {
+    if (val === null || val === undefined) return "";
+    if (typeof val === "object") return String(val.id ?? val.numero_serie ?? val.pk ?? "");
+    return String(val);
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
       const [respAlarmas, respPlantas, respSecciones, respDispositivos] = await Promise.all([
-        apiFetch("/api/v1/alarmas/"),
-        apiFetch("/api/v1/fabricas/"),
-        apiFetch("/api/v1/secciones/"),
-        apiFetch("/api/v1/dispositivos/")
+        apiFetch("/api/v1/alarmas/").catch(() => null),
+        apiFetch("/api/v1/fabricas/").catch(() => null),
+        apiFetch("/api/v1/secciones/").catch(() => null),
+        apiFetch("/api/v1/dispositivos/").catch(() => null)
       ]);
       
-      if (respAlarmas.ok && respPlantas.ok && respSecciones.ok && respDispositivos.ok) {
-        const dataAlarmas = await respAlarmas.json();
-        const dataPlantas = await respPlantas.json();
-        const dataSecciones = await respSecciones.json();
-        const dataDispositivos = await respDispositivos.json();
-
-        // Normalizar extracción para soportar paginación DRF
-        const listAlarmas = Array.isArray(dataAlarmas) ? dataAlarmas : dataAlarmas.results || [];
-        const listPlantas = Array.isArray(dataPlantas) ? dataPlantas : dataPlantas.results || [];
-        const listSecciones = Array.isArray(dataSecciones) ? dataSecciones : dataSecciones.results || [];
-        const listDispositivos = Array.isArray(dataDispositivos) ? dataDispositivos : dataDispositivos.results || [];
-
-        setAlarmas(listAlarmas);
-        setPlantas(listPlantas);
-        setSecciones(listSecciones);
-        setDispositivos(listDispositivos);
-      } else {
-        throw new Error("Error en la respuesta de la API");
+      if (respAlarmas && respAlarmas.ok) {
+        const d = await respAlarmas.json();
+        setAlarmas(Array.isArray(d) ? d : d.results || []);
+      }
+      if (respPlantas && respPlantas.ok) {
+        const d = await respPlantas.json();
+        setPlantas(Array.isArray(d) ? d : d.results || []);
+      }
+      if (respSecciones && respSecciones.ok) {
+        const d = await respSecciones.json();
+        setSecciones(Array.isArray(d) ? d : d.results || []);
+      }
+      if (respDispositivos && respDispositivos.ok) {
+        const d = await respDispositivos.json();
+        setDispositivos(Array.isArray(d) ? d : d.results || []);
       }
     } catch (error) {
       toast({
@@ -164,7 +167,7 @@ const GestionAlarmas = () => {
     if (!formPlanta || !sensorFinal || !formDescripcion) {
       toast({
         title: "Campos incompletos",
-        description: "Por favor seleccione o especifique el sensor / equipo y la descripción.",
+        description: "Por favor seleccione la planta, sensor/equipo y la descripción.",
         variant: "destructive"
       });
       return;
@@ -191,8 +194,8 @@ const GestionAlarmas = () => {
       if (!resp.ok) throw new Error("Error al guardar");
 
       toast({
-        title: "Alarma creada",
-        description: "Se registró la alarma en el sistema."
+        title: "Alarma registrada",
+        description: "Se dio de alta la alarma exitosamente."
       });
 
       // Reset

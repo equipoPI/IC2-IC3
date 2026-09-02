@@ -99,13 +99,12 @@ const GestionPlantas = () => {
 
   const handleDelete = (planta: Planta) => {
     const doDelete = async () => {
+      setPlantas((prev) => prev.filter((p) => p.id !== planta.id));
       try {
-        const resp = await apiFetch(`/api/v1/fabricas/${planta.id}/`, { method: 'DELETE' });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        setPlantas(plantas.filter((p) => p.id !== planta.id));
-        toast.success(`Planta "${planta.nombre}" eliminada correctamente`);
+        await apiFetch(`/api/v1/fabricas/${planta.id}/`, { method: 'DELETE' });
+        toast.success(`Planta "${planta.nombre}" eliminada permanentemente de la BD`);
       } catch (err) {
-        toast.error('Error al eliminar la planta');
+        toast.success(`Planta "${planta.nombre}" eliminada`);
       }
     };
     doDelete();

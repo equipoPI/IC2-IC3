@@ -16,6 +16,8 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -187,9 +189,17 @@ const AdministracionAlmacenamiento = () => {
     setDialogOpen(false);
   };
 
-  const handleDelete = (id: string) => {
-    deleteStorageUnit(id);
-    toast({ title: "Eliminado", description: "Unidad de almacenamiento eliminada" });
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const confirmDelete = (id: string) => {
+    setDeleteConfirmId(id);
+  };
+
+  const executeDelete = () => {
+    if (!deleteConfirmId) return;
+    deleteStorageUnit(deleteConfirmId);
+    toast({ title: "Eliminado", description: "Unidad de almacenamiento eliminada de la base de datos" });
+    setDeleteConfirmId(null);
   };
 
   const totalCapacity = storageUnits.reduce((acc, unit) => acc + unit.capacity, 0);
@@ -432,7 +442,7 @@ const AdministracionAlmacenamiento = () => {
                           <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(unit)}>
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(unit.id)}>
+                          <Button variant="ghost" size="icon" onClick={() => confirmDelete(unit.id)}>
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
@@ -445,6 +455,24 @@ const AdministracionAlmacenamiento = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Confirmation Dialog for Deletion */}
+      <Dialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-destructive font-bold flex items-center gap-2">
+              <Trash2 className="h-5 w-5" /> Confirmar Eliminación de Unidad de Almacenamiento
+            </DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas eliminar permanentemente esta unidad de almacenamiento (tanque/silo) de la base de datos? Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={executeDelete}>Eliminar Unidad</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

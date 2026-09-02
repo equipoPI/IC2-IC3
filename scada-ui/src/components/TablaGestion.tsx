@@ -22,6 +22,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 export interface Column<T> {
@@ -56,6 +64,7 @@ const TablaGestion = <T extends { id: string | number }>({
   subtitle,
   extraActions,
 }: TablaGestionProps<T>) => {
+  const [itemToDelete, setItemToDelete] = useState<T | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [sortKey, setSortKey] = useState<string>("");
@@ -90,6 +99,8 @@ const TablaGestion = <T extends { id: string | number }>({
     return item[key as keyof T];
   };
 
+  const safeData = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+
   // Discover filterable columns dynamically (those with 2 to 15 unique values)
   const filterableColumns = useMemo(() => {
     return columns.filter(col => {
@@ -106,10 +117,10 @@ const TablaGestion = <T extends { id: string | number }>({
       ) {
         return false;
       }
-      const uniqueValues = new Set(data.map(item => String(getValue(item, col.key) ?? '')));
+      const uniqueValues = new Set(safeData.map(item => String(getValue(item, col.key) ?? '')));
       return uniqueValues.size > 1 && uniqueValues.size <= 15;
     });
-  }, [columns, data]);
+  }, [columns, safeData]);
 
   // Dynamic sort options based on columns
   const sortOptions = useMemo(() => {
@@ -138,15 +149,15 @@ const TablaGestion = <T extends { id: string | number }>({
   // Unique values for the selected filter column
   const filterUniqueValues = useMemo(() => {
     if (!filterKey) return [];
-    const values = data.map(item => String(getValue(item, filterKey) ?? ""));
+    const values = safeData.map(item => String(getValue(item, filterKey) ?? ""));
     return Array.from(new Set(values))
       .filter(v => v.trim() !== "")
       .sort((a, b) => a.localeCompare(b));
-  }, [filterKey, data]);
+  }, [filterKey, safeData]);
 
   // Search, filter, and sort data
   const processedData = useMemo(() => {
-    let result = [...data];
+    let result = [...safeData];
 
     // 1. Search Query
     if (searchQuery) {
@@ -386,7 +397,7 @@ const TablaGestion = <T extends { id: string | number }>({
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => onDelete(item)}
+                            onClick={() => setItemToDelete(item)}
                             className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -467,6 +478,34 @@ const TablaGestion = <T extends { id: string | number }>({
           </div>
         </div>
       )}
+
+      {/* Confirmation Dialog for Deletion */}
+      <Dialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-destructive font-bold flex items-center gap-2">
+              <Trash2 className="h-5 w-5" /> Confirmar Eliminación
+            </DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas eliminar este registro permanentemente de la base de datos? Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setItemToDelete(null)}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (itemToDelete) {
+                  onDelete(itemToDelete);
+                  setItemToDelete(null);
+                }
+              }}
+            >
+              Eliminar Registro
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

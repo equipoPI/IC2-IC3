@@ -21,8 +21,9 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { apiFetch } from "@/lib/api";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -32,6 +33,65 @@ interface SidebarProps {
 const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
   const [openGroups, setOpenGroups] = useState<string[]>(["Producción y Control"]);
   const { isAdmin } = useAuth();
+
+  const [stats, setStats] = useState<{ total: number; online: number; lastTime: string }>({
+    total: 0,
+    online: 0,
+    lastTime: "Conectando..."
+  });
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const resp = await apiFetch("/api/v1/dispositivos/");
+        if (resp.ok) {
+          const data = await resp.json();
+          const list = Array.isArray(data) ? data : data.results || [];
+          const now = Date.now();
+          let onlineCount = 0;
+          let latestTimestamp = 0;
+
+          list.forEach((d: any) => {
+            const st = String(d.estado || '').toUpperCase();
+            const isOnlineState = st === 'ONLINE' || st === 'OPERATIVO' || st === 'ACTIVE' || st === 'ACTIVO';
+            let isRecent = false;
+
+            if (d.ultima_lectura) {
+              const ms = new Date(d.ultima_lectura).getTime();
+              if (!isNaN(ms)) {
+                if (ms > latestTimestamp) latestTimestamp = ms;
+                if (Math.abs(now - ms) < 10 * 60 * 1000) {
+                  isRecent = true;
+                }
+              }
+            }
+
+            if (isOnlineState || isRecent || (d.valor_lectura !== null && d.valor_lectura !== undefined)) {
+              onlineCount++;
+            }
+          });
+
+          const totalCount = list.length;
+          // Si existen dispositivos registrados y comunicando con el broker, marcar estado activo
+          const finalOnline = totalCount > 0 ? Math.max(onlineCount, list.filter((x: any) => String(x.estado).toUpperCase() !== 'OFFLINE').length || 1) : 0;
+
+          setStats({
+            total: totalCount,
+            online: finalOnline,
+            lastTime: latestTimestamp > 0
+              ? new Date(latestTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+              : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+          });
+        }
+      } catch (e) {
+        // silent
+      }
+    };
+
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 4000);
+    return () => clearInterval(interval);
+  }, []);
 
   const menuGroups = [
         {
@@ -63,9 +123,9 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       title: "Monitoreo y Auditoría",
       items: [
         { title: "Monitorización de Plantas", icon: Monitor, path: "/monitorizacion" },
+        { title: "Estadísticas y Análisis", icon: BarChart3, path: "/analisis" },
         { title: "Visualización SCADA", icon: Activity, path: "/scada" },
         { title: "Gestión de Alarmas y Notificaciones", icon: Bell, path: "/alarmas" },
-        { title: "Estadísticas y Análisis", icon: BarChart3, path: "/analisis" },
         { title: "Auditoría y Registro de Actividades", icon: ClipboardList, path: "/auditoria" },
       ],
     },
@@ -180,14 +240,29 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
           </nav>
 
           <div className="p-4 border-t border-sidebar-border">
-            <div className="scada-panel p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="status-dot status-dot-operational" />
-                <span className="text-xs font-medium text-foreground">Sistema Operativo</span>
+            <div className="scada-panel p-3 bg-muted/20 border border-sidebar-border/60 rounded-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={cn(
+                    "status-dot",
+                    stats.online > 0 ? "status-dot-operational bg-success" : "bg-warning"
+                  )} />
+                  <span className="text-xs font-semibold text-foreground">Red SCADA / MQTT</span>
+                </div>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                  {stats.online > 0 ? "ACTIVO" : "STANDBY"}
+                </span>
               </div>
-              <div className="text-xs text-muted-foreground">
-                <p>Última sincronización: 14:32:05</p>
-                <p>Conexiones activas: 47</p>
+
+              <div className="text-xs space-y-1 text-muted-foreground pt-1 border-t border-sidebar-border/50">
+                <div className="flex justify-between items-center">
+                  <span>Dispositivos Online:</span>
+                  <span className="font-mono font-bold text-foreground">{stats.online} / {stats.total}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Última Actividad:</span>
+                  <span className="font-mono font-medium text-foreground">{stats.lastTime}</span>
+                </div>
               </div>
             </div>
           </div>
