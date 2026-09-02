@@ -381,6 +381,16 @@ class DispositivoSCADASerializer(serializers.ModelSerializer):
         lectura = obj.lecturas.first()
         return lectura.unidad if lectura else "N/A"
 
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        from django.utils import timezone
+        if instance.ultima_lectura:
+            delta = (timezone.now() - instance.ultima_lectura).total_seconds()
+            ret['estado'] = "ONLINE" if delta < 90 else "OFFLINE"
+        else:
+            ret['estado'] = instance.estado or "OFFLINE"
+        return ret
+
 
 class DispositivoSCADAListSerializer(serializers.ModelSerializer):
     """Serializer reducido para listado de dispositivos"""
@@ -469,17 +479,22 @@ class OrdenProduccionSerializer(serializers.ModelSerializer):
     
      class Meta:
         model = OrdenProduccion
-        fields = ['id', 'codigo', 'producto', 'cantidad', 'estado', 'fecha_inicio']
+        fields = '__all__'
 
 
 class OrdenProduccionListSerializer(serializers.ModelSerializer):
-     """Serializer reducido para listado de órdenes"""
+     """Serializer completo para listado de órdenes"""
      fabrica_nombre = serializers.CharField(source='fabrica.nombre', read_only=True)
+     sistema_nombre = serializers.CharField(source='sistema.nombre', read_only=True)
+     dispositivo_nombre = serializers.CharField(source='dispositivo.nombre', read_only=True)
+     receta_nombre = serializers.CharField(source='receta.nombre', read_only=True)
     
      class Meta:
          model = OrdenProduccion
-         fields = ['codigo', 'producto', 'cantidad', 'unidad', 'estado', 'progreso',
-                   'fecha_inicio', 'fecha_fin', 'fabrica_nombre']
+         fields = ['id', 'codigo', 'producto', 'cantidad', 'unidad', 'estado', 'progreso',
+                   'fecha_inicio', 'hora_inicio', 'fecha_fin', 'hora_fin',
+                   'fabrica', 'fabrica_nombre', 'sistema', 'sistema_nombre',
+                   'dispositivo', 'dispositivo_nombre', 'receta', 'receta_nombre']
 
 
 # -----------------------------------------------------------------------------
@@ -901,7 +916,7 @@ class RegistroMantenimientoSerializer(serializers.ModelSerializer):
 
 class RegistroAuditoriaSerializer(serializers.ModelSerializer):
     usuario_username = serializers.CharField(source='usuario.username', read_only=True)
-    timestamp = serializers.DateTimeField(format="%Y-%m-%dT%H:%M:%SZ", read_only=True)
+    timestamp = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = models.RegistroAuditoria
@@ -1053,4 +1068,12 @@ class AlarmaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Alarma
+        fields = '__all__'
+
+
+class MapeoAccionMQTTSerializer(serializers.ModelSerializer):
+    tipo_sistema_display = serializers.CharField(source='get_tipo_sistema_display', read_only=True)
+
+    class Meta:
+        model = models.MapeoAccionMQTT
         fields = '__all__'

@@ -6,16 +6,29 @@ import threading
 from .models import (
     Fabrica,
     Seccion,
+    Sistema,
     DispositivoSCADA,
     ConfiguracionMQTT,
+    TopicMQTT,
+    MapeoAccionMQTT,
     Empleado,
+    Profile,
     OrdenProduccion,
     Receta,
+    DetalleReceta,
+    EjecucionReceta,
+    HistorialProduccion,
     UnidadAlmacenamiento,
-    RegistroAuditoria,
-    Alarma,
+    ItemInventario,
     IngredienteAlmacenamiento,
-    CronogramaSeccion
+    HistorialMovimientos,
+    CronogramaSeccion,
+    MantenimientoProgramado,
+    RegistroMantenimiento,
+    Alarma,
+    MetricaConfiguracion,
+    VariableVinculada,
+    RegistroAuditoria
 )
 from .middleware import get_current_user, get_current_ip
 
@@ -23,15 +36,28 @@ from .middleware import get_current_user, get_current_ip
 AUDITED_MODELS = (
     Fabrica,
     Seccion,
+    Sistema,
     DispositivoSCADA,
     ConfiguracionMQTT,
+    TopicMQTT,
+    MapeoAccionMQTT,
     Empleado,
+    Profile,
     OrdenProduccion,
     Receta,
+    DetalleReceta,
+    EjecucionReceta,
+    HistorialProduccion,
     UnidadAlmacenamiento,
-    Alarma,
+    ItemInventario,
     IngredienteAlmacenamiento,
-    CronogramaSeccion
+    HistorialMovimientos,
+    CronogramaSeccion,
+    MantenimientoProgramado,
+    RegistroMantenimiento,
+    Alarma,
+    MetricaConfiguracion,
+    VariableVinculada
 )
 
 # Almacenamiento local del hilo para registrar los diffs temporales entre pre_save y post_save
@@ -41,17 +67,30 @@ def get_modulo_name(instance):
     """Mapear clase de modelo a nombre de módulo amigable en español"""
     cls_name = instance.__class__.__name__
     mapping = {
-        'Fabrica': 'Plantas',
-        'Seccion': 'Secciones',
-        'DispositivoSCADA': 'Dispositivos SCADA',
-        'ConfiguracionMQTT': 'Comunicaciones MQTT',
-        'Empleado': 'Empleados',
+        'Fabrica': 'Plantas Industrial',
+        'Seccion': 'Secciones de Planta',
+        'Sistema': 'Sistemas SCADA',
+        'DispositivoSCADA': 'Dispositivos y Actuadores SCADA',
+        'ConfiguracionMQTT': 'Comunicaciones y Brokers MQTT',
+        'TopicMQTT': 'Topics MQTT',
+        'MapeoAccionMQTT': 'Plantillas Tópicos y Acciones MQTT',
+        'Empleado': 'Gestión de Personal / Empleados',
+        'Profile': 'Perfiles de Usuario',
         'OrdenProduccion': 'Órdenes de Producción',
         'Receta': 'Recetas de Producción',
-        'UnidadAlmacenamiento': 'Inventario / Almacenamiento',
+        'DetalleReceta': 'Recetas de Producción (Detalle)',
+        'EjecucionReceta': 'Ejecución de Recetas',
+        'HistorialProduccion': 'Historial de Producción',
+        'UnidadAlmacenamiento': 'Inventario / Tanques y Almacenes',
+        'ItemInventario': 'Inventario / Items de Stock',
+        'IngredienteAlmacenamiento': 'Inventario / Materia Prima',
+        'HistorialMovimientos': 'Inventario / Movimientos',
+        'CronogramaSeccion': 'Planificación de la Producción',
+        'MantenimientoProgramado': 'Mantenimiento Preventivo',
+        'RegistroMantenimiento': 'Bitácora de Mantenimiento',
         'Alarma': 'Gestión de Alarmas',
-        'IngredienteAlmacenamiento': 'Inventario / Almacenamiento',
-        'CronogramaSeccion': 'Planificación de la Producción'
+        'MetricaConfiguracion': 'Configuración de Métricas SCADA',
+        'VariableVinculada': 'Variables Vinculadas SCADA'
     }
     return mapping.get(cls_name, cls_name)
 
@@ -66,7 +105,7 @@ def get_objeto_representation(instance):
 
 IGNORE_AUDIT_FIELDS = (
     'fecha_creacion', 'fecha_actualizacion', 'timestamp', 'last_seen',
-    'ultima_lectura', 'estado', 'valor_lectura', 'nivel_actual',
+    'ultima_lectura', 'valor_lectura', 'nivel_actual',
     'volumen_actual', 'porcentaje', 'ultima_actualizacion', 'progreso',
     'latitud', 'longitud'
 )
@@ -74,11 +113,6 @@ IGNORE_AUDIT_FIELDS = (
 @receiver(pre_save)
 def audit_pre_save(sender, instance, **kwargs):
     if sender not in AUDITED_MODELS:
-        return
-
-    # Omitir cambios automáticos generados por tareas/workers en segundo plano sin usuario humano
-    usuario = get_current_user()
-    if not usuario or usuario.is_anonymous:
         return
 
     # Si la instancia ya posee llave primaria, comparamos contra el estado previo en DB
@@ -89,14 +123,14 @@ def audit_pre_save(sender, instance, **kwargs):
             for field in instance._meta.fields:
                 field_name = field.name
                 
-                # Ignorar campos autogenerados, telemetría y estados automáticos
+                # Ignorar únicamente lecturas continuas de telemetría periódica
                 if field_name in IGNORE_AUDIT_FIELDS:
                     continue
                 
                 val_orig = getattr(original, field_name, None)
                 val_nuev = getattr(instance, field_name, None)
                 
-                # Si hubo variación, almacenar antes y después
+                # Si hubo variación de estado, conexión o atributos, almacenar diff
                 if val_orig != val_nuev:
                     cambios[field_name] = {
                         'antes': str(val_orig) if val_orig is not None else '',
@@ -118,11 +152,8 @@ def audit_post_save(sender, instance, created, **kwargs):
         return
 
     usuario = get_current_user()
-    
-    # SI ES UNA OPERACIÓN AUTOMÁTICA EN SEGUNDO PLANO (SIN USUARIO HUMANO AUTENTICADO),
-    # NO AUDITAR PARA EVITAR SATURACIÓN DE REGISTROS EN LA BASE DE DATOS.
-    if not usuario or usuario.is_anonymous:
-        return
+    if usuario and usuario.is_anonymous:
+        usuario = None
 
     accion = 'Creación' if created else 'Modificación'
     modulo = get_modulo_name(instance)
@@ -148,7 +179,7 @@ def audit_post_save(sender, instance, created, **kwargs):
         if hasattr(_local_diffs, 'pending') and id(instance) in _local_diffs.pending:
             datos_cambios = _local_diffs.pending.pop(id(instance))
         else:
-            # Si no hay cambios significativos registrados, no auditamos la modificación
+            # Si no hay cambios significativos registrados (solo telemetría continua), ignorar
             return
 
     RegistroAuditoria.objects.create(

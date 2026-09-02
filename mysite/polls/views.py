@@ -1,8 +1,10 @@
+import json
+from django.utils import timezone
 from django.shortcuts import render, redirect
 from django.http import HttpResponse
 
 # --- Importaciones de Django REST Framework ---
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
@@ -130,41 +132,101 @@ class ConfiguracionMQTTViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 
+from rest_framework.permissions import IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly
+
 class DispositivoSCADAViewSet(viewsets.ModelViewSet):
     """CRUD para dispositivos SCADA"""
-    queryset = DispositivoSCADA.objects.all().order_by('numero_serie')
+    queryset = DispositivoSCADA.objects.select_related('seccion', 'sistema', 'inventario').all().order_by('numero_serie')
     serializer_class = DispositivoSCADASerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
-    from rest_framework.decorators import action
-    import paho.mqtt.publish as publish
+    def perform_destroy(self, instance):
+        # Limpiar lecturas y registros vinculados para evitar IntegrityError por Foreign Key
+        instance.lecturas.all().delete()
+        instance.variables_vinculadas.all().delete()
+        models.ComunicacionMQTT.objects.filter(dispositivo=instance.numero_serie).delete()
+        instance.delete()
+
+    def _get_dispositivo(self, pk):
+        if not pk:
+            return DispositivoSCADA.objects.first()
+        if str(pk).isdigit():
+            d = DispositivoSCADA.objects.filter(pk=int(pk)).first()
+            if d:
+                return d
+        d = DispositivoSCADA.objects.filter(numero_serie=str(pk)).first()
+        if d:
+            return d
+        d = DispositivoSCADA.objects.filter(nombre__iexact=str(pk)).first()
+        if d:
+            return d
+        return DispositivoSCADA.objects.first()
 
     @action(detail=True, methods=['post'])
     def control(self, request, pk=None):
-        dispositivo = self.get_object()
-        comando = request.data.get('comando') # 'abrir', 'cerrar', 'iniciar', 'detener'
+        dispositivo = self._get_dispositivo(pk)
+        if not dispositivo:
+            return Response({'error': f'Dispositivo no encontrado (ID/Serie: {pk})'}, status=status.HTTP_404_NOT_FOUND)
+
+        comando = request.data.get('comando') or request.data.get('accion') # 'abrir', 'cerrar', 'CONTINUAR', 'REANUDAR', 'PARAR', 'PAUSAR', 'DETENER', 'DESECHAR', 'DESCARTAR', 'VACIAR'
         
         if not comando:
-            return Response({'error': 'Comando no especificado'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Comando/Acción no especificada'}, status=status.HTTP_400_BAD_REQUEST)
             
-        valor_mqtt = "0"
-        if comando in ['abrir', 'iniciar']:
-            valor_mqtt = "1"
-        elif comando in ['cerrar', 'detener']:
-            valor_mqtt = "0"
-            
-        tenant = "scada"
-        if dispositivo.seccion and dispositivo.seccion.fabrica:
-            tenant = dispositivo.seccion.fabrica.nombre
-        elif dispositivo.sistema and dispositivo.sistema.seccion and dispositivo.sistema.seccion.fabrica:
-            tenant = dispositivo.sistema.seccion.fabrica.nombre
-            
-        gateway = dispositivo.gateway_id or 'gw1'
-        topic = f"{tenant}/{gateway}/cmd/{dispositivo.numero_serie}"
+        comando_upper = str(comando).upper()
         
+        # Mapeo para dispositivos simples o actuadores generales
+        valor_mqtt = "0"
+        if comando_upper in ['ABRIR', 'INICIAR', 'CONTINUAR', 'REANUDAR']:
+            valor_mqtt = "1"
+        elif comando_upper in ['CERRAR', 'DETENER', 'PARAR', 'PAUSAR']:
+            valor_mqtt = "0"
+        elif comando_upper in ['DESECHAR', 'DESCARTAR']:
+            valor_mqtt = "X"
+        elif comando_upper in ['VACIAR']:
+            valor_mqtt = "V"
+        else:
+            valor_mqtt = str(comando)
+
+        tenant = "Rafaela_S.A"
+        seccion_slug = "seccion"
+        sistema_slug = "sistema"
+
+        if dispositivo.seccion:
+            seccion_slug = dispositivo.seccion.nombre.lower().replace(' ', '_')
+            if dispositivo.seccion.fabrica:
+                tenant = dispositivo.seccion.fabrica.nombre.replace(' ', '_')
+        if dispositivo.sistema:
+            sistema_slug = dispositivo.sistema.nombre.lower().replace(' ', '_')
+            if dispositivo.sistema.seccion:
+                seccion_slug = dispositivo.sistema.seccion.nombre.lower().replace(' ', '_')
+                if dispositivo.sistema.seccion.fabrica:
+                    tenant = dispositivo.sistema.seccion.fabrica.nombre.replace(' ', '_')
+            
+        gateway = dispositivo.gateway_id or 'd83add60dbb0'
+        topic_direct = f"{tenant}/{gateway}/cmd/{dispositivo.numero_serie}"
+        topic_action = f"{tenant}/{gateway}/{seccion_slug}/{sistema_slug}/accion"
+        
+        payload_dict = {
+            'accion': comando_upper,
+            'dispositivo': dispositivo.numero_serie,
+            'parametros': request.data.get('parametros', {}),
+            'timestamp': str(timezone.now())
+        }
+        payload_json = json.dumps(payload_dict)
+
         try:
+            import paho.mqtt.publish as publish
+            # Publicar en ambos tópicos para máxima compatibilidad
             publish.single(
-                topic, 
+                topic_action, 
+                payload=payload_json, 
+                hostname="mosquitto", 
+                port=1883,
+                client_id="django-backend-control"
+            )
+            publish.single(
+                topic_direct, 
                 payload=valor_mqtt, 
                 hostname="mosquitto", 
                 port=1883,
@@ -172,24 +234,156 @@ class DispositivoSCADAViewSet(viewsets.ModelViewSet):
             )
             
             models.RegistroAuditoria.objects.create(
-                usuario=request.user,
+                usuario=request.user if request.user and request.user.is_authenticated else None,
                 accion='CONTROL_MANUAL',
                 modulo='SCADA',
                 objeto=dispositivo.numero_serie,
-                descripcion=f"Enviado comando manual '{comando}' (MQTT: {valor_mqtt}) a dispositivo {dispositivo.nombre}",
+                descripcion=f"Enviado comando '{comando_upper}' (Topic: {topic_action}) a dispositivo {dispositivo.nombre}",
                 ip_origen=request.META.get('REMOTE_ADDR') or '127.0.0.1'
             )
             
-            return Response({'status': 'Comando enviado', 'topic': topic, 'valor': valor_mqtt})
+            return Response({
+                'status': 'Comando enviado exitosamente',
+                'topic': topic_action,
+                'accion': comando_upper,
+                'payload': payload_dict
+            })
         except Exception as e:
             return Response({'error': f'Error al publicar en MQTT: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['post'])
+    def reposicion(self, request, pk=None):
+        dispositivo = self._get_dispositivo(pk)
+        if not dispositivo:
+            return Response({'error': f'Dispositivo no encontrado (ID/Serie: {pk})'}, status=status.HTTP_404_NOT_FOUND)
+        bombo = request.data.get('bombo', 1)
+        limite_porcentaje = request.data.get('limite_porcentaje', request.data.get('limite', 80))
+        freno = request.data.get('freno', False)
+
+        accion_str = "FRENO_REPOSICION" if freno else "REPOSICION"
+        payload_dict = {
+            "accion": accion_str,
+            "bombo": int(bombo),
+            "limite_porcentaje": int(limite_porcentaje),
+            "timestamp": str(timezone.now())
+        }
+
+        tenant = "Rafaela_S.A"
+        gateway = dispositivo.gateway_id or "d83add60dbb0"
+        seccion_slug = dispositivo.seccion.nombre.lower().replace(' ', '_') if dispositivo.seccion else "seccion"
+        sistema_slug = dispositivo.sistema.nombre.lower().replace(' ', '_') if dispositivo.sistema else "sistema"
+        if dispositivo.seccion and dispositivo.seccion.fabrica:
+            tenant = dispositivo.seccion.fabrica.nombre.replace(' ', '_')
+
+        topic_action = f"{tenant}/{gateway}/{seccion_slug}/{sistema_slug}/accion"
+
+        try:
+            import paho.mqtt.publish as publish
+            publish.single(
+                topic_action,
+                payload=json.dumps(payload_dict),
+                hostname="mosquitto",
+                port=1883,
+                client_id=f"django-backend-reposicion-{dispositivo.id}"
+            )
+
+            models.RegistroAuditoria.objects.create(
+                usuario=request.user if request.user and request.user.is_authenticated else None,
+                accion='CONTROL_REPOSICION',
+                modulo='SCADA',
+                objeto=dispositivo.numero_serie,
+                descripcion=f"Acción '{accion_str}' (Bombo {bombo}, {limite_porcentaje}%) enviada a {dispositivo.nombre}",
+                ip_origen=request.META.get('REMOTE_ADDR') or '127.0.0.1'
+            )
+
+            return Response({
+                'status': 'Instrucción de Reposición enviada exitosamente',
+                'topic': topic_action,
+                'accion': accion_str,
+                'payload': payload_dict
+            })
+        except Exception as e:
+            return Response({'error': f'Error al publicar orden de reposición MQTT: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class MapeoAccionMQTTViewSet(viewsets.ModelViewSet):
+    queryset = models.MapeoAccionMQTT.objects.all().order_by('-fecha_creacion')
+    serializer_class = serializers.MapeoAccionMQTTSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['tipo_sistema', 'activo']
+    search_fields = ['nombre', 'nombre_accion', 'plantilla_topico']
+
 
 class LecturaSensorViewSet(viewsets.ModelViewSet):
-    """CRUD para lecturas de sensores"""
-    queryset = LecturaSensor.objects.all().order_by('-timestamp')
+    """CRUD para lecturas de sensores con filtros temporales y de límite"""
     serializer_class = LecturaSensorSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        dispositivo_param = self.request.query_params.get('dispositivo') or self.request.query_params.get('dispositivo_id')
+        dispositivo_serie = self.request.query_params.get('dispositivo_serie')
+        fecha_desde = self.request.query_params.get('fecha_desde')
+        fecha_hasta = self.request.query_params.get('fecha_hasta')
+        limit = self.request.query_params.get('limit')
+        modo = self.request.query_params.get('modo')
+
+        queryset = LecturaSensor.objects.select_related('dispositivo').all()
+
+        if dispositivo_param:
+            if str(dispositivo_param).isdigit():
+                queryset = queryset.filter(dispositivo_id=int(dispositivo_param))
+            else:
+                queryset = queryset.filter(dispositivo__numero_serie=dispositivo_param)
+        elif dispositivo_serie:
+            queryset = queryset.filter(dispositivo__numero_serie=dispositivo_serie)
+
+        if fecha_desde:
+            try:
+                from django.utils.dateparse import parse_datetime
+                dt_desde = parse_datetime(fecha_desde)
+                if dt_desde:
+                    queryset = queryset.filter(timestamp__gte=dt_desde)
+                else:
+                    queryset = queryset.filter(timestamp__gte=fecha_desde)
+            except Exception:
+                pass
+
+        if fecha_hasta:
+            try:
+                from django.utils.dateparse import parse_datetime
+                dt_hasta = parse_datetime(fecha_hasta)
+                if dt_hasta:
+                    queryset = queryset.filter(timestamp__lte=dt_hasta)
+                else:
+                    queryset = queryset.filter(timestamp__lte=fecha_hasta)
+            except Exception:
+                pass
+
+        # Modo Histórico: ordenar por timestamp ASC (de pasado a presente) y devolver hasta 1000 lecturas bien distribuidas
+        if fecha_desde or fecha_hasta or modo == 'historico':
+            queryset = queryset.order_by('timestamp')
+            total_count = queryset.count()
+            if total_count > 1000:
+                step = max(1, total_count // 1000)
+                all_ids = list(queryset.order_by('timestamp').values_list('id', flat=True))
+                sampled_ids = all_ids[::step]
+                queryset = LecturaSensor.objects.filter(pk__in=sampled_ids).select_related('dispositivo').order_by('timestamp')
+        else:
+            # Modo Tiempo Real (live): ordenar por timestamp DESC (más recientes)
+            recent_ids = list(queryset.order_by('-timestamp').values_list('id', flat=True)[:300])
+            queryset = LecturaSensor.objects.filter(pk__in=recent_ids).select_related('dispositivo').order_by('timestamp')
+
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        from rest_framework.response import Response
+        qs = self.filter_queryset(self.get_queryset())
+        readings = list(qs.values('id', 'dispositivo_id', 'timestamp', 'valor', 'unidad', 'calidad'))
+        for r in readings:
+            r['dispositivo'] = r.pop('dispositivo_id')
+            if r['timestamp']:
+                r['timestamp'] = r['timestamp'].isoformat()
+        return Response(readings)
 
 
 class TopicMQTTViewSet(viewsets.ModelViewSet):
@@ -286,13 +480,13 @@ class FabricaViewSet(viewsets.ModelViewSet):
     """CRUD para Fabricas/Plantas"""
     queryset = Fabrica.objects.all()
     serializer_class = FabricaSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
 
 class OrdenProduccionViewSet(viewsets.ModelViewSet):
-    """CRUD para Ordenes de Producción. Usa serializer reducido en list."""
-    queryset = OrdenProduccion.objects.all().order_by('-fecha_creacion')
-    permission_classes = [IsAuthenticated]
+    """CRUD para Ordenes de Producción. Usa serializer completo en list."""
+    queryset = OrdenProduccion.objects.select_related('fabrica', 'sistema', 'dispositivo', 'receta', 'creado_por').all().order_by('-fecha_creacion')
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -308,15 +502,19 @@ class OrdenProduccionViewSet(viewsets.ModelViewSet):
 
 
 class SeccionViewSet(viewsets.ModelViewSet):
-    queryset = models.Seccion.objects.all().order_by('nombre')
+    queryset = models.Seccion.objects.select_related('fabrica').all().order_by('nombre')
     serializer_class = SeccionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def perform_destroy(self, instance):
+        models.DispositivoSCADA.objects.filter(seccion=instance).update(seccion=None)
+        instance.delete()
 
 
 class EmpleadoViewSet(viewsets.ModelViewSet):
     queryset = models.Empleado.objects.all().order_by('apellido')
     serializer_class = EmpleadoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     
     def list(self, request, *args, **kwargs):
         """Listar empleados: combinar registros de `Empleado` con usuarios activos
@@ -364,21 +562,19 @@ class EmpleadoViewSet(viewsets.ModelViewSet):
                 }
                 serialized.append(usuario_entry)
 
-        # Rellenar email en empleados existentes mediante búsqueda en User
-        # (caso: Empleado created without linked User)
-        for emp in serialized:
-            if not emp.get('email'):
-                doc = emp.get('documento')
-                if not doc:
-                    continue
-                # Buscar por username o email igual al documento
-                try:
-                    user_match = User.objects.filter(models.Q(username=doc) | models.Q(email=doc)).first()
-                    if user_match:
-                        emp['email'] = user_match.email or ''
-                except Exception:
-                    # Silencioso si no se puede resolver
-                    emp['email'] = emp.get('email', '')
+        # Rellenar email en empleados existentes mediante búsqueda por lote en User
+        docs_to_lookup = [emp.get('documento') for emp in serialized if emp.get('documento') and not emp.get('email')]
+        if docs_to_lookup:
+            users_qs = User.objects.filter(models.Q(username__in=docs_to_lookup) | models.Q(email__in=docs_to_lookup))
+            email_map = {}
+            for u in users_qs:
+                if u.username:
+                    email_map[u.username] = u.email or ''
+                if u.email:
+                    email_map[u.email] = u.email or ''
+            for emp in serialized:
+                if not emp.get('email') and emp.get('documento') in email_map:
+                    emp['email'] = email_map[emp['documento']]
 
         return Response(serialized)
 
@@ -469,6 +665,15 @@ class RegistroAuditoriaViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(timestamp__gte=fecha_desde)
         if fecha_hasta:
             queryset = queryset.filter(timestamp__lte=fecha_hasta)
+            
+        # Filtros de módulo y acción manuales
+        modulo = self.request.query_params.get('modulo')
+        accion = self.request.query_params.get('accion')
+        if modulo:
+            queryset = queryset.filter(modulo=modulo)
+        if accion:
+            queryset = queryset.filter(accion=accion)
+            
         return queryset
     
     def get_permissions(self):
@@ -481,9 +686,74 @@ class RegistroAuditoriaViewSet(viewsets.ModelViewSet):
 
 
 class SistemaViewSet(viewsets.ModelViewSet):
-    queryset = models.Sistema.objects.all().order_by('nombre')
     serializer_class = SistemaSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        queryset = models.Sistema.objects.select_related('fabrica').all().order_by('nombre')
+        fabrica_id = self.request.query_params.get('fabrica') or self.request.query_params.get('fabrica_id')
+        if fabrica_id and fabrica_id != 'todos':
+            try:
+                queryset = queryset.filter(fabrica_id=int(fabrica_id))
+            except ValueError:
+                pass
+        return queryset
+
+    @action(detail=True, methods=['post'])
+    def control(self, request, pk=None):
+        sistema = self.get_object()
+        comando = request.data.get('comando') or request.data.get('accion') # 'INICIAR', 'PAUSAR', 'REANUDAR', 'PARAR', 'VACIAR', 'DESCARTAR'
+        if not comando:
+            return Response({'error': 'Comando/Acción no especificada'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        comando_upper = str(comando).upper()
+        tenant = "Rafaela_S.A"
+        gateway = "d83add60dbb0"
+        seccion_slug = "seccion"
+        sistema_slug = sistema.nombre.lower().replace(' ', '_')
+
+        if sistema.seccion:
+            seccion_slug = sistema.seccion.nombre.lower().replace(' ', '_')
+            if sistema.seccion.fabrica:
+                tenant = sistema.seccion.fabrica.nombre.replace(' ', '_')
+        elif sistema.fabrica:
+            tenant = sistema.fabrica.nombre.replace(' ', '_')
+
+        topic_action = f"{tenant}/{gateway}/{seccion_slug}/{sistema_slug}/accion"
+
+        payload = {
+            'accion': comando_upper,
+            'comando': comando_upper,
+            'sistema_id': sistema.id,
+            'sistema': sistema.nombre,
+            'timestamp': str(timezone.now())
+        }
+
+        try:
+            import paho.mqtt.publish as publish
+            publish.single(
+                topic_action,
+                payload=json.dumps(payload),
+                hostname="mosquitto",
+                port=1883,
+                client_id=f"django-backend-sistema-{sistema.id}"
+            )
+            models.RegistroAuditoria.objects.create(
+                usuario=request.user if request.user.is_authenticated else None,
+                accion=f"CONTROL_SISTEMA_{comando_upper}",
+                modulo="SCADA",
+                objeto=sistema.nombre,
+                descripcion=f"Enviada acción '{comando_upper}' al sistema {sistema.nombre} vía MQTT topic {topic_action}",
+                ip_origen=request.META.get('REMOTE_ADDR') or '127.0.0.1'
+            )
+            return Response({
+                'status': 'Comando publicado exitosamente',
+                'comando': comando_upper,
+                'sistema': sistema.nombre,
+                'topic': topic_action
+            })
+        except Exception as e:
+            return Response({'error': f'Error publicando comando MQTT: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class PlantillaProduccionViewSet(viewsets.ModelViewSet):
@@ -491,23 +761,109 @@ class PlantillaProduccionViewSet(viewsets.ModelViewSet):
     serializer_class = PlantillaProduccionSerializer
     permission_classes = [IsAuthenticated]
 
+    @action(detail=True, methods=['post'])
+    def ejecutar(self, request, pk=None):
+        plantilla = self.get_object()
+        sistema_id = request.data.get('sistema_id')
+        
+        tenant = "scada"
+        gateway = "gw1"
+        seccion_slug = "produccion"
+        sistema_slug = "mezclador_1"
+
+        if sistema_id:
+            try:
+                sistema_obj = models.Sistema.objects.get(id=sistema_id)
+                sistema_slug = sistema_obj.nombre.lower().replace(' ', '_')
+                if sistema_obj.seccion:
+                    seccion_slug = sistema_obj.seccion.nombre.lower().replace(' ', '_')
+                    if sistema_obj.seccion.fabrica:
+                        tenant = sistema_obj.seccion.fabrica.nombre.lower().replace(' ', '_')
+            except models.Sistema.DoesNotExist:
+                pass
+
+        topic_action = f"scada/{tenant}/{gateway}/{seccion_slug}/{sistema_slug}/accion"
+        
+        payload_mezcla = {
+            'accion': 'MEZCLA',
+            'plantilla': plantilla.nombre,
+            'tipo': plantilla.tipo,
+            'hora': plantilla.tiempo_horas,
+            'minuto': plantilla.tiempo_minutos,
+            'ingredientes': plantilla.ingredientes_json,
+            'timestamp': str(timezone.now())
+        }
+        
+        payload_inicio = {
+            'accion': 'CONTINUAR',
+            'plantilla': plantilla.nombre,
+            'timestamp': str(timezone.now())
+        }
+
+        try:
+            import paho.mqtt.publish as publish
+            publish.single(
+                topic_action,
+                payload=json.dumps(payload_mezcla),
+                hostname="mosquitto",
+                port=1883,
+                client_id="django-backend-plantilla"
+            )
+            publish.single(
+                topic_action,
+                payload=json.dumps(payload_inicio),
+                hostname="mosquitto",
+                port=1883,
+                client_id="django-backend-plantilla"
+            )
+            
+            historial = models.HistorialProduccion.objects.create(
+                codigo_lote=f"LOTE-{int(timezone.now().timestamp())}",
+                fecha_inicio=timezone.now(),
+                receta_base=plantilla.receta_base,
+                estado='EN_PROCESO',
+                cantidad_producida=0.0
+            )
+
+            models.RegistroAuditoria.objects.create(
+                usuario=request.user,
+                accion='EJECUCION_PLANTILLA',
+                modulo='PRODUCCION',
+                objeto=plantilla.nombre,
+                descripcion=f"Ejecutada plantilla '{plantilla.nombre}' ({plantilla.tipo}) en sistema {sistema_slug}",
+                ip_origen=request.META.get('REMOTE_ADDR') or '127.0.0.1'
+            )
+
+            return Response({
+                'status': 'Plantilla ejecutada e iniciada exitosamente',
+                'plantilla': plantilla.nombre,
+                'lote': historial.codigo_lote,
+                'topic': topic_action
+            })
+        except Exception as e:
+            return Response({'error': f'Error publicando comando de plantilla en MQTT: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class IngredienteAlmacenamientoViewSet(viewsets.ModelViewSet):
-    queryset = models.IngredienteAlmacenamiento.objects.all().order_by('nombre')
+    queryset = models.IngredienteAlmacenamiento.objects.select_related('unidad_almacenamiento').all().order_by('nombre')
     serializer_class = IngredienteAlmacenamientoSerializer
     permission_classes = [IsAuthenticated]
 
 
 class MantenimientoProgramadoViewSet(viewsets.ModelViewSet):
-    queryset = models.MantenimientoProgramado.objects.all().order_by('fecha_inicio')
+    queryset = models.MantenimientoProgramado.objects.select_related('dispositivo', 'sistema', 'creado_por').all().order_by('fecha_inicio')
     serializer_class = MantenimientoProgramadoSerializer
     permission_classes = [IsAuthenticated]
 
 
 class UnidadAlmacenamientoViewSet(viewsets.ModelViewSet):
-    queryset = models.UnidadAlmacenamiento.objects.all().order_by('nombre')
+    queryset = models.UnidadAlmacenamiento.objects.select_related('inventario', 'dispositivo_sensor').all().order_by('nombre')
     serializer_class = UnidadAlmacenamientoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def perform_destroy(self, instance):
+        models.IngredienteAlmacenamiento.objects.filter(unidad_almacenamiento=instance).update(unidad_almacenamiento=None)
+        instance.delete()
 
 
 class HistorialProduccionViewSet(viewsets.ModelViewSet):

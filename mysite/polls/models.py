@@ -935,3 +935,27 @@ class Alarma(models.Model):
 
     def __str__(self):
         return f"ALM - {self.descripcion} ({self.planta.nombre})"
+
+
+class MapeoAccionMQTT(models.Model):
+    TIPOS_SISTEMA = [
+        ('FLUIDOS', 'Fluidos / Líquidos'),
+        ('SOLIDOS', 'Procesamiento de Sólidos'),
+        ('EMPAQUE', 'Empaquetado y Envasado'),
+        ('TEMPERATURA', 'Control de Temperatura'),
+        ('GENERAL', 'Sistema General'),
+    ]
+    nombre = models.CharField(max_length=100)
+    tipo_sistema = models.CharField(max_length=30, choices=TIPOS_SISTEMA, default='FLUIDOS')
+    nombre_accion = models.CharField(max_length=50, help_text="Ej: reposicion, mezcla, receta, emergencia")
+    plantilla_topico = models.CharField(max_length=255, default="scada/{tenant}/{gateway}/{seccion}/{sistema}/accion")
+    plantilla_payload_json = models.TextField(default='{"accion": "{accion}", "parametros": {}}')
+    activo = models.BooleanField(default=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Mapeo de Acción MQTT"
+        verbose_name_plural = "Mapeos de Acciones MQTT"
+
+    def __str__(self):
+        return f"{self.get_tipo_sistema_display()} - {self.nombre_accion} ({self.plantilla_topico})"

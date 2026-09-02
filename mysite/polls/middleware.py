@@ -3,7 +3,15 @@ import threading
 _thread_locals = threading.local()
 
 def get_current_user():
-    return getattr(_thread_locals, 'user', None)
+    user = getattr(_thread_locals, 'user', None)
+    req = getattr(_thread_locals, 'request', None)
+    if req and hasattr(req, 'user'):
+        req_user = getattr(req, 'user', None)
+        if req_user and not getattr(req_user, 'is_anonymous', True):
+            return req_user
+    if user and not getattr(user, 'is_anonymous', True):
+        return user
+    return None
 
 def get_current_ip():
     return getattr(_thread_locals, 'ip', '127.0.0.1')
@@ -14,7 +22,9 @@ class AuditMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        # Obtener IP de origen primero
+        _thread_locals.request = request
+        
+        # Obtener IP de origen
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         if x_forwarded_for:
             ip = x_forwarded_for.split(',')[0].strip()
@@ -22,24 +32,16 @@ class AuditMiddleware:
             ip = request.META.get('REMOTE_ADDR', '127.0.0.1')
         _thread_locals.ip = ip
 
-        # Almacenar el usuario en el hilo
+        # Almacenar usuario previo si estuviera autenticado en sesión
         user = getattr(request, 'user', None)
-        if not user or user.is_anonymous:
-            # Intentar autenticar manualmente mediante Token de cabeceras HTTP
-            auth_header = request.META.get('HTTP_AUTHORIZATION', '')
-            if auth_header.startswith('Token '):
-                try:
-                    token_key = auth_header.split(' ')[1]
-                    from rest_framework.authtoken.models import Token
-                    token = Token.objects.select_related('user').get(key=token_key)
-                    user = token.user
-                except Exception:
-                    pass
-        _thread_locals.user = user
+        if user and not getattr(user, 'is_anonymous', True):
+            _thread_locals.user = user
 
         response = self.get_response(request)
 
-        # Limpiar al finalizar la petición para evitar fugas de memoria
+        # Limpiar al finalizar la petición
+        if hasattr(_thread_locals, 'request'):
+            del _thread_locals.request
         if hasattr(_thread_locals, 'user'):
             del _thread_locals.user
         if hasattr(_thread_locals, 'ip'):
