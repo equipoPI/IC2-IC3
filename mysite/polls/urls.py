@@ -36,6 +36,8 @@ router.register(r'metricas-config', views.MetricaConfiguracionViewSet, basename=
 router.register(r'variables-vinculadas', views.VariableVinculadaViewSet, basename='variablesvinculadas')
 router.register(r'alarmas', views.AlarmaViewSet, basename='alarma')
 router.register(r'mapeos-acciones-mqtt', views.MapeoAccionMQTTViewSet, basename='mapeos_acciones_mqtt')
+router.register(r'registration-keys', views.RegistrationConfigViewSet, basename='registration_keys')
+router.register(r'mqtt-users', views.MqttUserViewSet, basename='mqtt_users')
 
 urlpatterns = [
     # Rutas automáticas de DRF (registradas en router) — raíz de la API de la app

@@ -3,6 +3,7 @@ import logging
 import re
 import time
 from django.core.management.base import BaseCommand
+from django.db import close_old_connections
 from django.utils import timezone
 import paho.mqtt.client as mqtt
 
@@ -112,8 +113,10 @@ class Command(BaseCommand):
 
     def on_message(self, client, userdata, msg):
         try:
+            close_old_connections()
             topic = msg.topic
             payload_str = msg.payload.decode('utf-8').strip()
+            telemetria_parts = topic.split('/')
 
             # 1. Procesar Alarmas enviadas por el Gateway
             if topic.endswith('/alarmas') or '/alarmas' in topic:
@@ -165,7 +168,7 @@ class Command(BaseCommand):
                 return
 
             # 3. Procesar Variables y Estado de Proceso (ej: proceso/mezclado, proceso/tiempo_restante)
-            if '/proceso/' in topic or (len(telemetria_parts) >= 5 and telemetria_parts[-2].lower() == 'proceso'):
+            if '/proceso/' in topic or (len(telemetria_parts) >= 2 and 'proceso' in [p.lower() for p in telemetria_parts]):
                 try:
                     payload_dict = json.loads(payload_str)
                 except Exception:

@@ -1,3 +1,5 @@
+import os
+import subprocess
 import json
 from django.utils import timezone
 from django.shortcuts import render, redirect
@@ -20,8 +22,9 @@ from .serializers import (
     DispositivoSCADASerializer,
     LecturaSensorSerializer,
 ) 
-from rest_framework import viewsets
+from rest_framework import viewsets, permissions
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from .permissions import CanManageEmployees, IsAdminUserOrReadOnly, CanAccessSystemConfig
 from .models import ConfiguracionMQTT
 from .serializers import ConfiguracionMQTTSerializer
 from .models import TopicMQTT
@@ -1019,3 +1022,92 @@ class AlarmaViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.AlarmaSerializer
     filterset_fields = ['planta', 'seccion', 'estado', 'severidad']
     search_fields = ['descripcion', 'sensor_maquina']
+
+
+class RegistrationConfigViewSet(viewsets.ModelViewSet):
+    """Gestión de claves de registro (solo para administradores)."""
+    queryset = models.RegistrationConfig.objects.all().order_by('-actualizado_en')
+    serializer_class = serializers.RegistrationConfigSerializer
+    permission_classes = [CanAccessSystemConfig]
+
+    def perform_destroy(self, instance):
+        if instance.activo:
+            active_count = models.RegistrationConfig.objects.filter(activo=True).count()
+            if active_count <= 1:
+                raise serializers.ValidationError({"detail": "No se puede eliminar la única clave de registro activa del sistema."})
+        instance.delete()
+
+
+class MqttUserViewSet(viewsets.ViewSet):
+    """Gestión administrativa de usuarios/credenciales del broker Mosquitto."""
+    permission_classes = [CanAccessSystemConfig]
+    PASSWD_FILE = "/mosquitto/config/passwd"
+
+    def _get_passwd_file_path(self):
+        if os.path.exists(self.PASSWD_FILE):
+            return self.PASSWD_FILE
+        base_dir = getattr(settings, 'BASE_DIR', None)
+        if base_dir:
+            local_path = os.path.join(os.path.dirname(base_dir), 'mosquitto', 'config', 'passwd')
+            if os.path.exists(local_path):
+                return local_path
+        return self.PASSWD_FILE
+
+    def list(self, request):
+        path = self._get_passwd_file_path()
+        users = []
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#') and ':' in line:
+                            username = line.split(':')[0]
+                            users.append({'username': username})
+            except Exception as e:
+                return Response({'detail': f'Error leyendo usuarios Mosquitto: {e}'}, status=500)
+        return Response(users)
+
+    def create(self, request):
+        username = request.data.get('username', '').strip()
+        password = request.data.get('password', '').strip()
+        if not username or not password:
+            return Response({'detail': 'Usuario y contraseña son requeridos.'}, status=400)
+        
+        path = self._get_passwd_file_path()
+        try:
+            res = subprocess.run(
+                ["docker", "exec", "scada_mqtt_broker", "mosquitto_passwd", "-b", "/mosquitto/config/passwd", username, password],
+                capture_output=True, text=True
+            )
+            if res.returncode != 0:
+                res_alt = subprocess.run(["mosquitto_passwd", "-b", path, username, password], capture_output=True, text=True)
+                if res_alt.returncode != 0:
+                    return Response({'detail': f'Error ejecutando mosquitto_passwd: {res.stderr or res_alt.stderr}'}, status=500)
+            
+            subprocess.run(["docker", "exec", "scada_mqtt_broker", "pkill", "-HUP", "mosquitto"], capture_output=True)
+            return Response({'detail': f'Usuario {username} guardado exitosamente en Mosquitto.', 'username': username}, status=201)
+        except Exception as e:
+            return Response({'detail': f'Error al guardar usuario Mosquitto: {e}'}, status=500)
+
+    def destroy(self, request, pk=None):
+        username = pk
+        if not username:
+            return Response({'detail': 'Se requiere nombre de usuario.'}, status=400)
+        
+        path = self._get_passwd_file_path()
+        try:
+            res = subprocess.run(
+                ["docker", "exec", "scada_mqtt_broker", "mosquitto_passwd", "-D", "/mosquitto/config/passwd", username],
+                capture_output=True, text=True
+            )
+            if res.returncode != 0:
+                res_alt = subprocess.run(["mosquitto_passwd", "-D", path, username], capture_output=True, text=True)
+                if res_alt.returncode != 0:
+                    return Response({'detail': f'Error eliminando usuario de Mosquitto: {res.stderr or res_alt.stderr}'}, status=500)
+            
+            subprocess.run(["docker", "exec", "scada_mqtt_broker", "pkill", "-HUP", "mosquitto"], capture_output=True)
+            return Response({'detail': f'Usuario {username} eliminado de Mosquitto.'}, status=200)
+        except Exception as e:
+            return Response({'detail': f'Error eliminando usuario: {e}'}, status=500)
+

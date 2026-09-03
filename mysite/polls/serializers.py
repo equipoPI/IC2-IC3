@@ -1077,3 +1077,11 @@ class MapeoAccionMQTTSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.MapeoAccionMQTT
         fields = '__all__'
+
+
+class RegistrationConfigSerializer(serializers.ModelSerializer):
+    actualizado_en = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+
+    class Meta:
+        model = models.RegistrationConfig
+        fields = ['id', 'clave', 'activo', 'actualizado_en']
