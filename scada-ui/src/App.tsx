@@ -17,6 +17,7 @@ import AnalisisEstadisticas from "@/pages/AnalisisEstadisticas";
 import PlanificacionProduccion from "@/pages/PlanificacionProduccion";
 import GestionPlantillas from "@/pages/GestionPlantillas";
 import ConfiguracionMQTT from "@/pages/ConfiguracionMQTT";
+import Credenciales from "@/pages/Credenciales";
 import AdministracionAlmacenamiento from "@/pages/AdministracionAlmacenamiento";
 import GuiaSistema from "@/pages/GuiaSistema";
 import NotFound from "@/pages/NotFound";
@@ -32,8 +33,31 @@ import { NotificationsProvider } from "@/contexts/NotificationsContext";
 
 const queryClient = new QueryClient();
 
+const ProtectedPage = ({ path, element }: { path: string; element: JSX.Element }) => {
+  const { usuario } = useAuth();
+  const rangoNum = Number(usuario?.rango || 1);
+
+  if (rangoNum === 8) return element;
+  if (rangoNum === 7 || rangoNum === 6) {
+    if (['/plantas', '/secciones', '/sensores', '/almacenamiento', '/credenciales', '/comunicacion'].includes(path)) {
+      return <Navigate to="/dashboard" replace />;
+    }
+    return element;
+  }
+  if (rangoNum === 5 || rangoNum === 4 || rangoNum === 3) {
+    if (['/plantas', '/secciones', '/credenciales', '/comunicacion'].includes(path)) {
+      return <Navigate to="/dashboard" replace />;
+    }
+    return element;
+  }
+  if (['/empleados', '/plantas', '/secciones', '/sensores', '/almacenamiento', '/plantillas', '/auditoria', '/credenciales', '/comunicacion'].includes(path)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return element;
+};
+
 const ProtectedRoutes = () => {
-  const { isAuthenticated, isAdmin, logout } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
 
   if (!isAuthenticated) {
     return (
@@ -54,21 +78,22 @@ const ProtectedRoutes = () => {
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route element={<MainLayout onLogout={logout} />}>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/empleados" element={<GestionEmpleados />} />
-        <Route path="/plantas" element={<GestionPlantas />} />
-        <Route path="/secciones" element={<GestionSecciones />} />
-        <Route path="/sensores" element={<GestionSensores />} />
-        <Route path="/monitorizacion" element={<MonitorizacionSCADA />} />
-        <Route path="/scada" element={<VisualizacionSCADA />} />
-        <Route path="/planificacion" element={<PlanificacionProduccion />} />
-        <Route path="/alarmas" element={<GestionAlarmas />} />
-        <Route path="/plantillas" element={<GestionPlantillas />} />
-        <Route path="/auditoria" element={<Auditoria />} />
-        <Route path="/analisis" element={<AnalisisEstadisticas />} />
-        <Route path="/comunicacion" element={<ConfiguracionMQTT />} />
-        <Route path="/almacenamiento" element={<AdministracionAlmacenamiento />} />
-        <Route path="/guia-sistema" element={<GuiaSistema />} />
+        <Route path="/dashboard" element={<ProtectedPage path="/dashboard" element={<Dashboard />} />} />
+        <Route path="/empleados" element={<ProtectedPage path="/empleados" element={<GestionEmpleados />} />} />
+        <Route path="/plantas" element={<ProtectedPage path="/plantas" element={<GestionPlantas />} />} />
+        <Route path="/secciones" element={<ProtectedPage path="/secciones" element={<GestionSecciones />} />} />
+        <Route path="/sensores" element={<ProtectedPage path="/sensores" element={<GestionSensores />} />} />
+        <Route path="/monitorizacion" element={<ProtectedPage path="/monitorizacion" element={<MonitorizacionSCADA />} />} />
+        <Route path="/scada" element={<ProtectedPage path="/scada" element={<VisualizacionSCADA />} />} />
+        <Route path="/planificacion" element={<ProtectedPage path="/planificacion" element={<PlanificacionProduccion />} />} />
+        <Route path="/alarmas" element={<ProtectedPage path="/alarmas" element={<GestionAlarmas />} />} />
+        <Route path="/plantillas" element={<ProtectedPage path="/plantillas" element={<GestionPlantillas />} />} />
+        <Route path="/auditoria" element={<ProtectedPage path="/auditoria" element={<Auditoria />} />} />
+        <Route path="/analisis" element={<ProtectedPage path="/analisis" element={<AnalisisEstadisticas />} />} />
+        <Route path="/comunicacion" element={<ProtectedPage path="/comunicacion" element={<ConfiguracionMQTT />} />} />
+        <Route path="/credenciales" element={<ProtectedPage path="/credenciales" element={<Credenciales />} />} />
+        <Route path="/almacenamiento" element={<ProtectedPage path="/almacenamiento" element={<AdministracionAlmacenamiento />} />} />
+        <Route path="/guia-sistema" element={<ProtectedPage path="/guia-sistema" element={<GuiaSistema />} />} />
       </Route>
       {/* Permitimos acceso a la verificación de email aun cuando el usuario
           ya esté autenticado (el enlace de confirmación debe funcionar

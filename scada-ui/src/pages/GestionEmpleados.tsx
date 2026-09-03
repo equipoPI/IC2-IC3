@@ -439,19 +439,30 @@ const GestionEmpleados = () => {
     </div>
   );
 
+  const canEdit = Number(usuario?.rango) === 8 || Boolean((usuario as any)?.is_superuser);
+
   return (
     <div>
       <TablaGestion
         title="Gestión de Empleados"
-        subtitle="Administra el personal de todas las plantas y fábricas"
+        subtitle={canEdit ? "Administra el personal de todas las plantas y fábricas" : "Consulta de personal (Modo Solo Lectura)"}
         data={empleados}
         columns={columns}
-        onAdd={handleAdd}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
+        onAdd={canEdit ? handleAdd : undefined}
+        onEdit={canEdit ? handleEdit : undefined}
+        onDelete={canEdit ? handleDelete : undefined}
         searchPlaceholder="Buscar empleados..."
         addButtonLabel="Añadir Empleado"
-        extraActions={extraActions}
+        extraActions={canEdit ? extraActions : (empleado) => (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleViewHistorial(empleado)}
+            title="Ver Historial"
+          >
+            <History className="h-4 w-4 text-primary" />
+          </Button>
+        )}
       />
 
       <FormularioEmpleado

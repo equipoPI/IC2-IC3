@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   BarChart3,
   BookOpen,
+  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -93,8 +94,26 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
     return () => clearInterval(interval);
   }, []);
 
-  const menuGroups = [
-        {
+  const { usuario } = useAuth();
+  const rangoNum = Number(usuario?.rango || 1);
+
+  const isPathAllowed = (path: string) => {
+    if (rangoNum === 8) return true; // Administrador - Acceso total
+    if (rangoNum === 7 || rangoNum === 6) { // Director / Gerente
+      const blocked = ['/plantas', '/secciones', '/sensores', '/almacenamiento', '/credenciales', '/comunicacion'];
+      return !blocked.includes(path);
+    }
+    if (rangoNum === 5 || rangoNum === 4 || rangoNum === 3) { // Jefe / Especialista / Coordinador
+      const blocked = ['/plantas', '/secciones', '/credenciales', '/comunicacion'];
+      return !blocked.includes(path);
+    }
+    // Rangos 2 y 1: Empleado / Pasante (Operativos)
+    const blocked = ['/empleados', '/plantas', '/secciones', '/sensores', '/almacenamiento', '/plantillas', '/auditoria', '/credenciales', '/comunicacion'];
+    return !blocked.includes(path);
+  };
+
+  const rawMenuGroups = [
+    {
       title: "Principal",
       items: [
         { title: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
@@ -106,7 +125,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       items: [
         { title: "Gestión de Empleados", icon: Users, path: "/empleados" },
         { title: "Gestión de Plantas y Fábricas", icon: Factory, path: "/plantas" },
-            { title: "Gestión de Secciones", icon: ClipboardList, path: "/secciones" },
+        { title: "Gestión de Secciones", icon: ClipboardList, path: "/secciones" },
         { title: "Gestión de Sensores y Máquinas", icon: Cpu, path: "/sensores" },
         { title: "Administración de Almacenamiento", icon: Database, path: "/almacenamiento" },
       ],
@@ -130,12 +149,20 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       ],
     },
     {
-      title: "Comunicación",
+      title: "Comunicación y Accesos",
       items: [
+        { title: "Gestión de Credenciales", icon: KeyRound, path: "/credenciales" },
         { title: "Configuración MQTT", icon: Wifi, path: "/comunicacion" },
       ],
     },
   ];
+
+  const menuGroups = rawMenuGroups
+    .map(g => ({
+      ...g,
+      items: g.items.filter(item => isPathAllowed(item.path))
+    }))
+    .filter(g => g.items.length > 0);
 
   const toggleGroup = (title: string) => {
     setOpenGroups((prev) =>
