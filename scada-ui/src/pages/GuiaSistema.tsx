@@ -219,6 +219,14 @@ const GuiaSistema = () => {
                   Normalización atómica por DNI, asignación de planta/rango y control de acceso laboral (Activo, Suspendido, Despedido, Jubilado).
                 </p>
               </div>
+
+              <div className="border border-border p-4 rounded-lg bg-card space-y-2">
+                <Badge className="bg-primary/20 text-primary hover:bg-primary/20 border-primary/30">Credenciales y Permisos (/credenciales)</Badge>
+                <h4 className="text-sm font-bold text-foreground">Gestión de Accesos, Broker Mosquitto y Rangos</h4>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Panel unificado para claves de registro de usuarios, credenciales de Mosquitto (`passwd`) con recarga en caliente y resumen de la Matriz de Permisos por Rango (1 a 8).
+                </p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -433,6 +441,35 @@ const GuiaSistema = () => {
                         mosquitto_sub -h localhost -t "#" -v
                       </pre>
                     </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                {/* Accordion Item 4 */}
+                <AccordionItem value="acceso-ngrok" className="border-border">
+                  <AccordionTrigger className="text-sm font-semibold hover:no-underline">
+                    Acceso Remoto Seguro con Ngrok Tunnel y Comunicaciones MQTT Multiregión
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-3 text-xs text-muted-foreground">
+                    <p>El sistema incluye un contenedor <strong>Ngrok Tunnel (`scada_ngrok_tunnel`)</strong> que expone el frontend y backend a través de una URL pública segura HTTPS sin requerir apertura de puertos en el router:</p>
+                    <p className="font-mono text-primary font-bold bg-muted p-2 rounded border border-border">
+                      https://remarry-anyplace-appraiser.ngrok-free.dev
+                    </p>
+                    <p>El broker Mosquitto escucha en el puerto <code>1883</code> (<code>0.0.0.0</code>), permitiendo conexiones autenticadas desde Gateways y Raspberry Pi ubicados en distintas redes e IPs externas.</p>
+                  </AccordionContent>
+                </AccordionItem>
+
+                {/* Accordion Item 5 */}
+                <AccordionItem value="credenciales-permisos" className="border-border">
+                  <AccordionTrigger className="text-sm font-semibold hover:no-underline">
+                    Gestión de Credenciales y Matriz de Permisos por Rango (1 a 8)
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-3 text-xs text-muted-foreground">
+                    <p>En la nueva sección <strong>`/credenciales`</strong> (acceso exclusivo para Administradores) se centralizan tres paneles clave:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li><strong>Claves de Registro:</strong> Administración de claves requeridas para dar de alta cuentas de usuario.</li>
+                      <li><strong>Credenciales Mosquitto:</strong> Gestión de usuarios autorizados en el archivo <code>passwd</code> del broker.</li>
+                      <li><strong>Matriz de Permisos por Rango:</strong> Control jerárquico que restringe navegación y acciones según el rango (Rango 8 Admin, Rangos 7-6 Alta Dirección, Rangos 5-3 Mandos Medios, Rangos 2-1 Operativos).</li>
+                    </ul>
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
