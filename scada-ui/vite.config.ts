@@ -11,12 +11,12 @@ export default defineConfig(({ mode }) => ({
     watch: {
       usePolling: true,
     },
-    // Permitir peticiones desde contenedores (host.docker.internal)
-    allowedHosts: ['host.docker.internal'],
+    // Permitir peticiones desde túneles y dominios remotos
+    allowedHosts: true,
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'http://host.docker.internal:8000',
-        changeOrigin: false,
+        target: process.env.VITE_API_URL || 'http://backend:8000',
+        changeOrigin: true,
         secure: false,
       },
     },

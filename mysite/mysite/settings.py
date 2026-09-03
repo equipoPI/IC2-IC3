@@ -34,6 +34,11 @@ DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
 # Hosts allowed to serve the app. Can be overridden via env: DJANGO_ALLOWED_HOSTS
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,host.docker.internal').split(',')
 
+# Configuracion de cabeceras para Reverse Proxy / Tunnels (Ngrok, Cloudflare, etc.)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+
 
 # Application definition
 
@@ -155,6 +160,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # - To use real SMTP configure the environment variables below.
 # -----------------------------------------------------------------------------
 DEFAULT_FROM_EMAIL = os.environ.get('DJANGO_DEFAULT_FROM', 'no-reply@localhost')
+ACCOUNT_EMAIL_SUBJECT_PREFIX = "[Sistema SCADA IoT] "
 
 # Frontend URL (used to build redirects in emails)
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
@@ -229,9 +235,16 @@ REST_FRAMEWORK['EXCEPTION_HANDLER'] = 'mysite.utils.exception_handler.custom_exc
 # En desarrollo preferimos listar orígenes permitidos para permitir credenciales
 # Evitar '*' cuando `CORS_ALLOW_CREDENTIALS = True` para no bloquear cookies.
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = os.environ.get(
-    'CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173'
-).split(',')
+CORS_ALLOWED_ORIGINS = [
+    origin.strip() for origin in os.environ.get(
+        'CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173'
+    ).split(',') if origin.strip()
+]
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.ngrok-free\.dev$",
+    r"^https://.*\.ngrok-free\.app$",
+    r"^https://.*\.ngrok\.io$",
+]
 
 # En producción, usar CORS_ALLOWED_ORIGINS específicas:
 # CORS_ALLOWED_ORIGINS = [

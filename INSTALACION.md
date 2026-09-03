@@ -361,6 +361,28 @@ journalctl -u raspberry_gateway -f
 
 ---
 
+## 🌐 Acceso Remoto Seguro con Ngrok Tunnel
+
+El sistema cuenta con un contenedor dedicado de **Ngrok (`scada_ngrok_tunnel`)** que expone la interfaz web y la API REST a través de una URL segura HTTPS pública y gratuita sin necesidad de abrir puertos en el router.
+
+### Configuración en `key.env`
+```env
+# Credenciales y Dominio Ngrok
+NGROK_AUTHTOKEN=3IncvdxAuEPGiTH5cGnf2iIBoNE_89xvMAzxy9U2VQcD2XFCJ
+NGROK_DOMAIN=remarry-anyplace-appraiser.ngrok-free.dev
+FRONTEND_URL=https://remarry-anyplace-appraiser.ngrok-free.dev
+```
+
+### Acceso a la Plataforma Web
+Cualquier navegador remoto o teléfono móvil puede acceder mediante:
+👉 **`https://remarry-anyplace-appraiser.ngrok-free.dev`**
+
+### Gestión Web de Credenciales Mosquitto y Claves de Registro
+- **Broker Mosquitto:** Se escucha en el puerto `1883` (`0.0.0.0`) y exige autenticación con el archivo `passwd`. Puedes crear o modificar cuentas de usuario (ej: `admin`, `raspberry_pi_1`) desde **Configuración MQTT** en la web.
+- **Claves de Registro:** Puedes administrar las claves para el alta de cuentas de usuario desde la página de **Auditoría** (se garantiza que siempre exista al menos una clave activa).
+
+---
+
 **¿Dudas?** Revisa los README específicos:
 - Backend: `mysite/README_BACKEND.md`
 - Frontend: `scada-ui/README.md`

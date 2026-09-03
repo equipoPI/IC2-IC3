@@ -299,6 +299,19 @@ python test_system.py
 
 ---
 
+## 🌐 Acceso Remoto Seguro (Ngrok Tunnel)
+
+El proyecto incluye un servicio integrado de **Ngrok (`scada_ngrok_tunnel`)** que expone la aplicación de forma pública y segura con HTTPS sin necesidad de abrir puertos:
+
+- 🔗 **URL de Acceso Web:** `https://remarry-anyplace-appraiser.ngrok-free.dev`
+- 🔑 **Dominio y Token en `key.env`:**
+  - `NGROK_AUTHTOKEN=3IncvdxAuEPGiTH5cGnf2iIBoNE_89xvMAzxy9U2VQcD2XFCJ`
+  - `NGROK_DOMAIN=remarry-anyplace-appraiser.ngrok-free.dev`
+- 📡 **Broker MQTT:** Puerto `1883` (`0.0.0.0`) con autenticación obligatoria `passwd`. Puedes gestionar usuarios del broker en la sección web **Configuración MQTT**.
+- 🔐 **Claves de Registro:** Gestión administrativa de claves para registro de nuevos usuarios en la página de **Auditoría**.
+
+---
+
 ## 📞 Soporte
 
 ¿Problemas? Consulta:

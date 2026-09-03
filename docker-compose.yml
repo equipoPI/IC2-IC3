@@ -29,6 +29,7 @@ services:
     command: [ "gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--threads", "4", "mysite.wsgi:application" ]
     volumes:
       - ./mysite:/app
+      - ./mosquitto/config:/mosquitto/config
     ports:
       - "8000:8000"
     env_file:
@@ -36,7 +37,8 @@ services:
       - .env.smtp
     environment:
       - DEBUG=1
-      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,backend,host.docker.internal
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,backend,host.docker.internal,scada-system.duckdns.org,remarry-anyplace-appraiser.ngrok-free.dev,*.ngrok-free.dev,*.ngrok-free.app,*.ngrok.io
+      - FRONTEND_URL=${FRONTEND_URL:-https://remarry-anyplace-appraiser.ngrok-free.dev}
       - DB_HOST=db
       - DB_PORT=5432
 
@@ -118,6 +120,24 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # Ngrok Tunnel para Acceso Web Remoto Seguro HTTPS Cero-Puertos
+  tunnel:
+    image: ngrok/ngrok:latest
+    container_name: scada_ngrok_tunnel
+    restart: unless-stopped
+    env_file:
+      - key.env
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command:
+      - "http"
+      - "--url=${NGROK_DOMAIN}"
+      - "frontend:5173"
+    networks:
+      - scada_network
+    depends_on:
+      - frontend
 
 volumes:
   postgres_data:
