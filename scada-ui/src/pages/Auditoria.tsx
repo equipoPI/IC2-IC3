@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ClipboardList, Search, Download, Calendar, ArrowUpDown, ArrowUp, ArrowDown, Info } from "lucide-react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { ClipboardList, Search, Download, Calendar, ArrowUpDown, ArrowUp, ArrowDown, Info, Key, Plus, Trash2, CheckCircle2, XCircle, ShieldCheck } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -44,6 +45,13 @@ interface RegistroAuditoria {
   ip_origen: string;
 }
 
+interface RegistrationKeyItem {
+  id: number;
+  clave: string;
+  activo: boolean;
+  actualizado_en: string;
+}
+
 type SortField = "id" | "fechaHora" | "usuario" | "accion" | "modulo";
 type SortDirection = "asc" | "desc";
 
@@ -68,7 +76,8 @@ const RANGOS_AUTORIZADOS = ['1', '2', '3', '4', '8'];
 const Auditoria = () => {
   const { usuario } = useAuth();
   const navigate = useNavigate();
-  const isAdmin = usuario?.rango === '8' || usuario?.rol === 'Administrador';
+
+  const isAdmin = usuario?.rango === '8' || usuario?.rol === 'Administrador' || Boolean((usuario as any)?.is_staff) || Boolean((usuario as any)?.is_superuser);
 
   const [registros, setRegistros] = useState<RegistroAuditoria[]>([]);
   const [loading, setLoading] = useState(true);
@@ -772,6 +781,54 @@ const Auditoria = () => {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Dialog para Crear Nueva Clave de Registro */}
+      <Dialog open={dialogNewRegKey} onOpenChange={setDialogNewRegKey}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5 text-primary" /> Crear Nueva Clave de Registro
+            </DialogTitle>
+            <DialogDescription>
+              Esta clave podrá ser utilizada por nuevos usuarios al momento de registrarse en la plataforma.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="reg-key-input">Clave de Registro</Label>
+              <Input
+                id="reg-key-input"
+                value={newRegKeyStr}
+                onChange={(e) => setNewRegKeyStr(e.target.value)}
+                placeholder="ej: SCADA_KEY_2026, 00admin00"
+                className="bg-background border-border font-mono font-bold"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogNewRegKey(false)}>Cancelar</Button>
+            <Button onClick={handleAddRegKey}>Crear Clave</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Confirmar Eliminación Clave de Registro */}
+      <Dialog open={!!deleteRegKeyId} onOpenChange={(open) => !open && setDeleteRegKeyId(null)}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-destructive font-bold flex items-center gap-2">
+              <Trash2 className="h-5 w-5" /> Confirmar Eliminación de Clave
+            </DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas eliminar esta clave de registro? Si es la única clave activa en el sistema, la acción será rechazada para mantener la seguridad.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setDeleteRegKeyId(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={executeDeleteRegKey}>Eliminar Clave</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

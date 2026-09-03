@@ -88,6 +88,63 @@ const ConfiguracionMQTT = () => {
   const [searchMapeo, setSearchMapeo] = useState("");
   const [filterTipoSistema, setFilterTipoSistema] = useState("TODOS");
 
+  const [mqttUsers, setMqttUsers] = useState<{ username: string }[]>([]);
+  const [dialogMqttUser, setDialogMqttUser] = useState(false);
+  const [formMqttUser, setFormMqttUser] = useState({ username: "", password: "" });
+  const [deleteMqttUser, setDeleteMqttUser] = useState<string | null>(null);
+
+  const fetchMqttUsers = async () => {
+    try {
+      const res = await apiFetch('/api/v1/mqtt-users/');
+      if (res.ok) {
+        const data = await res.json();
+        setMqttUsers(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {}
+  };
+
+  const handleSaveMqttUser = async () => {
+    if (!formMqttUser.username || !formMqttUser.password) {
+      toast({ title: 'Error', description: 'Complete usuario y contraseña', variant: 'destructive' });
+      return;
+    }
+    try {
+      const res = await apiFetch('/api/v1/mqtt-users/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formMqttUser)
+      });
+      if (res.ok) {
+        toast({ title: 'Usuario guardado', description: `Credenciales de ${formMqttUser.username} actualizadas en Mosquitto` });
+        setDialogMqttUser(false);
+        setFormMqttUser({ username: "", password: "" });
+        fetchMqttUsers();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        toast({ title: 'Error', description: errData.detail || 'Error al guardar usuario en Mosquitto', variant: 'destructive' });
+      }
+    } catch (e) {
+      toast({ title: 'Error', description: 'Error de red', variant: 'destructive' });
+    }
+  };
+
+  const executeDeleteMqttUser = async () => {
+    if (!deleteMqttUser) return;
+    try {
+      const res = await apiFetch(`/api/v1/mqtt-users/${deleteMqttUser}/`, { method: 'DELETE' });
+      if (res.ok) {
+        toast({ title: 'Usuario eliminado', description: `Usuario ${deleteMqttUser} eliminado de Mosquitto` });
+        setDeleteMqttUser(null);
+        fetchMqttUsers();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        toast({ title: 'Error', description: errData.detail || 'Error eliminando usuario', variant: 'destructive' });
+      }
+    } catch (e) {
+      toast({ title: 'Error', description: 'Error de red', variant: 'destructive' });
+    }
+  };
+
   const mapeosFiltrados = useMemo(() => {
     return mapeos.filter((m) => {
       const matchTipo = filterTipoSistema === "TODOS" || m.tipo_sistema === filterTipoSistema;
@@ -378,6 +435,7 @@ const ConfiguracionMQTT = () => {
       });
 
     fetchMapeos();
+    fetchMqttUsers();
   }, []);
 
   const getEstadoConfig = (estado: ConexionMQTT["estado"]): { label: string; className: string } => {
