@@ -37,10 +37,13 @@ const PasswordReset = () => {
       // Borrar cookies de analytics antes de pedir el token CSRF
       clearAnalyticsCookies();
       // Solicitar token al backend para asegurarnos de que la cookie `csrftoken` está presente
-      await fetch('/api/csrf/', { credentials: 'include' }).catch(() => null);
+      await fetch('/api/csrf/', { credentials: 'include', headers: { 'ngrok-skip-browser-warning': 'true' } }).catch(() => null);
       const csrftoken = getCookie('csrftoken');
 
-      const headers: any = { 'Content-Type': 'application/json' };
+      const headers: any = { 
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
+      };
       if (csrftoken) headers['X-CSRFToken'] = csrftoken;
 
       const res = await fetch(`/api/v1/auth/password/reset/`, {

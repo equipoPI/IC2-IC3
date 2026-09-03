@@ -26,11 +26,11 @@ const Dashboard = () => {
     let mounted = true;
     const load = async () => {
       try {
-        // Pedir fabricas, empleados, lecturas y auditoria
-        const [fabrResp, empResp, lectResp, audResp] = await Promise.allSettled([
+        // Pedir fabricas, empleados, dispositivos y auditoria
+        const [fabrResp, empResp, dispResp, audResp] = await Promise.allSettled([
           apiFetch('/api/v1/fabricas/'),
           apiFetch('/api/v1/empleados/'),
-          apiFetch('/api/v1/lecturas/'),
+          apiFetch('/api/v1/dispositivos/'),
           apiFetch('/api/v1/auditoria/?page_size=5'),
         ]);
 
@@ -48,11 +48,28 @@ const Dashboard = () => {
           empleadosCount = je.count ?? (Array.isArray(je) ? je.length : null);
         }
 
-        // Lecturas / sensores
-        let lectCount = null;
-        if (lectResp.status === 'fulfilled' && lectResp.value.ok) {
-          const jl = await lectResp.value.json();
-          lectCount = jl.count ?? (Array.isArray(jl) ? jl.length : null);
+        // Dispositivos / sensores
+        let onlineSensorsStr = '-';
+        if (dispResp.status === 'fulfilled' && dispResp.value.ok) {
+          const jd = await dispResp.value.json();
+          const list = Array.isArray(jd) ? jd : jd.results || [];
+          const now = Date.now();
+          let onlineCount = 0;
+          list.forEach((d: any) => {
+            const st = String(d.estado || '').toUpperCase();
+            const isOnlineState = st === 'ONLINE' || st === 'OPERATIVO' || st === 'ACTIVE' || st === 'ACTIVO';
+            let isRecent = false;
+            if (d.ultima_lectura) {
+              const ms = new Date(d.ultima_lectura).getTime();
+              if (!isNaN(ms) && Math.abs(now - ms) < 10 * 60 * 1000) isRecent = true;
+            }
+            if (isOnlineState || isRecent || (d.valor_lectura !== null && d.valor_lectura !== undefined)) {
+              onlineCount++;
+            }
+          });
+          const totalCount = list.length;
+          const finalOnline = totalCount > 0 ? Math.max(onlineCount, list.filter((x: any) => String(x.estado).toUpperCase() !== 'OFFLINE').length || 1) : 0;
+          onlineSensorsStr = totalCount > 0 ? `${finalOnline}/${totalCount}` : '0/0';
         }
 
         // Auditoria / actividad
@@ -68,7 +85,7 @@ const Dashboard = () => {
         setStats([
           { title: 'Plantas Activas', value: `${fabricas.filter(f => (f.estado || '').toString().toLowerCase().includes('oper')).length}/${fabricas.length}`, change: '', icon: Factory, trend: 'up' },
           { title: 'Empleados en Turno', value: empleadosCount !== null ? String(empleadosCount) : '-', change: '', icon: Users, trend: 'up' },
-          { title: 'Sensores Online', value: lectCount !== null ? String(lectCount) : '-', change: '', icon: Cpu, trend: 'up' },
+          { title: 'Sensores Online', value: onlineSensorsStr, change: '', icon: Cpu, trend: 'up' },
           { title: 'Alarmas Activas', value: String(fabricas.reduce((acc, f) => acc + (Number(f.alarmas_activas || 0)), 0)), change: '', icon: AlertTriangle, trend: 'down' },
         ]);
 
@@ -262,54 +279,6 @@ const Dashboard = () => {
                   </div>
                 </div>
               ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="bg-card border-border">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg bg-success/20 flex items-center justify-center">
-                <Activity className="h-6 w-6 text-success" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Producción Total Hoy</p>
-                <p className="text-2xl font-bold text-foreground">12,450</p>
-                <p className="text-xs text-success">unidades producidas</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center">
-                <Zap className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Consumo Energético</p>
-                <p className="text-2xl font-bold text-foreground">9,620</p>
-                <p className="text-xs text-muted-foreground">kWh total</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg bg-accent/20 flex items-center justify-center">
-                <TrendingUp className="h-6 w-6 text-accent" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Eficiencia Global</p>
-                <p className="text-2xl font-bold text-foreground">87.3%</p>
-                <p className="text-xs text-success">+2.1% vs semana pasada</p>
-              </div>
             </div>
           </CardContent>
         </Card>
