@@ -110,7 +110,11 @@ export const StorageProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 3000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
 

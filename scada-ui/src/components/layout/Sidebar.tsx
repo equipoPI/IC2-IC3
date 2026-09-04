@@ -90,7 +90,11 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
     };
 
     fetchStatus();
-    const interval = setInterval(fetchStatus, 4000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchStatus();
+      }
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
 

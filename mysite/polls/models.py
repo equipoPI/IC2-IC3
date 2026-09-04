@@ -460,6 +460,7 @@ class Sistema(models.Model):
     nombre = models.CharField(max_length=100)
     fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='sistemas')
     descripcion = models.TextField(blank=True, null=True)
+    diagrama_layout_json = models.TextField(blank=True, null=True, help_text="Distribucion de nodos y conexiones de ReactFlow en JSON")
     activo = models.BooleanField(default=True)
 
     class Meta:

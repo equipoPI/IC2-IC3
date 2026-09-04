@@ -10,8 +10,12 @@ interface MixerNodeData {
 
 const MixerNode = ({ data }: { data: MixerNodeData }) => {
   return (
-    <div className={`bg-card rounded-lg border-2 ${data.isRunning ? 'border-info' : 'border-muted'} p-3 min-w-[130px] shadow-lg`}>
-      <Handle type="target" position={Position.Left} className="!bg-primary !w-3 !h-3" />
+    <div className={`bg-card rounded-lg border-2 ${data.isRunning ? 'border-info' : 'border-muted'} p-3 min-w-[130px] shadow-lg relative`}>
+      <Handle type="target" position={Position.Left} id="target-left" className="!bg-cyan-400 !w-3 !h-3" />
+      <Handle type="source" position={Position.Left} id="source-left" className="!bg-cyan-400 !w-3 !h-3 opacity-0" />
+
+      <Handle type="target" position={Position.Top} id="target-top" className="!bg-cyan-400 !w-3 !h-3" />
+      <Handle type="source" position={Position.Top} id="source-top" className="!bg-cyan-400 !w-3 !h-3 opacity-0" />
       
       <div className="text-xs font-semibold text-foreground mb-2 text-center">
         {data.label}
@@ -53,7 +57,11 @@ const MixerNode = ({ data }: { data: MixerNodeData }) => {
         </div>
       </div>
 
-      <Handle type="source" position={Position.Right} className="!bg-primary !w-3 !h-3" />
+      <Handle type="source" position={Position.Right} id="source-right" className="!bg-cyan-400 !w-3 !h-3" />
+      <Handle type="target" position={Position.Right} id="target-right" className="!bg-cyan-400 !w-3 !h-3 opacity-0" />
+
+      <Handle type="source" position={Position.Bottom} id="source-bottom" className="!bg-cyan-400 !w-3 !h-3" />
+      <Handle type="target" position={Position.Bottom} id="target-bottom" className="!bg-cyan-400 !w-3 !h-3 opacity-0" />
     </div>
   );
 };

@@ -527,7 +527,7 @@ class EmpleadoViewSet(viewsets.ModelViewSet):
         en la UI aunque aún no tengan un `Empleado` creado en la base de datos.
         """
         # Serializar empleados existentes
-        empleados_qs = models.Empleado.objects.all().order_by('apellido')
+        empleados_qs = models.Empleado.objects.select_related('user', 'seccion', 'fabrica').all().order_by('apellido')
         serialized = EmpleadoSerializer(empleados_qs, many=True, context={'request': request}).data
 
         # Recolectar documentos existentes para evitar duplicados

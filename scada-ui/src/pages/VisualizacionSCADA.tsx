@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import apiFetch from "@/lib/api";
 import ScadaFlowDiagram from "@/components/scada/ScadaFlowDiagram";
 import { ControlReposicionModal } from "@/components/scada/ControlReposicionModal";
+import { ControlDinamicoModal } from "@/components/scada/ControlDinamicoModal";
+import { PackageCheck, Thermometer, Sliders, Cpu } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +27,16 @@ const VisualizacionSCADA = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isReposicionOpen, setIsReposicionOpen] = useState(false);
+  const [isDinamicoOpen, setIsDinamicoOpen] = useState(false);
+  const [dinamicoTipoSistema, setDinamicoTipoSistema] = useState("EMPAQUE");
+  const [dinamicoNombreSistema, setDinamicoNombreSistema] = useState("Empaquetadora SCADA");
+
+  const openDinamicoModal = (tipo: string, nombre: string) => {
+    setDinamicoTipoSistema(tipo);
+    setDinamicoNombreSistema(nombre);
+    setIsDinamicoOpen(true);
+  };
+
   const [dispositivos, setDispositivos] = useState<any[]>([]);
 
   // Filter lists fetched from database
@@ -33,9 +45,9 @@ const VisualizacionSCADA = () => {
   const [sistemas, setSistemas] = useState<any[]>([]);
 
   // Active filter selections
-  const [selectedPlanta, setSelectedPlanta] = useState<string>('todas');
-  const [selectedSeccion, setSelectedSeccion] = useState<string>('todas');
-  const [selectedSistema, setSelectedSistema] = useState<string>('todas');
+  const [selectedPlanta, setSelectedPlanta] = useState<string>('seleccionar');
+  const [selectedSeccion, setSelectedSeccion] = useState<string>('seleccionar');
+  const [selectedSistema, setSelectedSistema] = useState<string>('seleccionar');
 
   // MQTT Config modal states
   const [isConfigOpen, setIsConfigOpen] = useState(false);
@@ -122,8 +134,6 @@ const VisualizacionSCADA = () => {
     loadDispositivos();
     loadFiltros();
     loadMqttConfig();
-    const interval = setInterval(loadDispositivos, 3000);
-    return () => clearInterval(interval);
   }, []);
 
   // Fullscreen event listener
@@ -249,12 +259,12 @@ const VisualizacionSCADA = () => {
 
   // Filtros dinámicos basados en la selección de Planta
   const filteredSecciones = useMemo(() => {
-    if (selectedPlanta === 'todas') return secciones;
+    if (selectedPlanta === 'seleccionar') return [];
     return secciones.filter(s => String(s.fabrica) === selectedPlanta);
   }, [secciones, selectedPlanta]);
 
   const filteredSistemas = useMemo(() => {
-    if (selectedPlanta === 'todas') return sistemas;
+    if (selectedPlanta === 'seleccionar') return [];
     return sistemas.filter(sys => String(sys.fabrica) === selectedPlanta);
   }, [sistemas, selectedPlanta]);
 
@@ -334,6 +344,12 @@ const VisualizacionSCADA = () => {
             Monitoreo en tiempo real de variables físicas y control de actuadores
           </p>
         </div>
+        <Button 
+          onClick={() => setIsReposicionOpen(true)} 
+          className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-md"
+        >
+          <RefreshCw className="h-4 w-4" /> Control de Reposición (Bombos)
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
@@ -352,14 +368,14 @@ const VisualizacionSCADA = () => {
                   {/* Select Planta */}
                   <Select value={selectedPlanta} onValueChange={(val) => {
                     setSelectedPlanta(val);
-                    setSelectedSeccion('todas');
-                    setSelectedSistema('todas');
+                    setSelectedSeccion('seleccionar');
+                    setSelectedSistema('seleccionar');
                   }}>
-                    <SelectTrigger className="w-[170px] bg-background border-border h-9 text-xs">
-                      <SelectValue placeholder="Planta: Todas" />
+                    <SelectTrigger className="w-[180px] bg-background border-border h-9 text-xs">
+                      <SelectValue placeholder="--- Seleccionar Planta ---" />
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
-                      <SelectItem value="todas">🏭 Todas las Plantas</SelectItem>
+                      <SelectItem value="seleccionar">--- Seleccionar Planta ---</SelectItem>
                       {plantas.map(p => (
                         <SelectItem key={p.id} value={String(p.id)}>🏭 {p.nombre}</SelectItem>
                       ))}
@@ -369,13 +385,13 @@ const VisualizacionSCADA = () => {
                   {/* Select Sección */}
                   <Select value={selectedSeccion} onValueChange={(val) => {
                     setSelectedSeccion(val);
-                    setSelectedSistema('todas');
-                  }} disabled={selectedPlanta === 'todas'}>
-                    <SelectTrigger className="w-[170px] bg-background border-border h-9 text-xs">
-                      <SelectValue placeholder="Sección: Todas" />
+                    setSelectedSistema('seleccionar');
+                  }} disabled={selectedPlanta === 'seleccionar'}>
+                    <SelectTrigger className="w-[180px] bg-background border-border h-9 text-xs">
+                      <SelectValue placeholder="--- Seleccionar Sección ---" />
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
-                      <SelectItem value="todas">📂 Todas las Secciones</SelectItem>
+                      <SelectItem value="seleccionar">--- Seleccionar Sección ---</SelectItem>
                       {filteredSecciones.map(s => (
                         <SelectItem key={s.id} value={String(s.id)}>📂 {s.nombre}</SelectItem>
                       ))}
@@ -383,12 +399,12 @@ const VisualizacionSCADA = () => {
                   </Select>
 
                   {/* Select Sistema */}
-                  <Select value={selectedSistema} onValueChange={setSelectedSistema} disabled={selectedSeccion === 'todas'}>
-                    <SelectTrigger className="w-[170px] bg-background border-border h-9 text-xs">
-                      <SelectValue placeholder="Sistema: Todos" />
+                  <Select value={selectedSistema} onValueChange={setSelectedSistema} disabled={selectedSeccion === 'seleccionar'}>
+                    <SelectTrigger className="w-[180px] bg-background border-border h-9 text-xs">
+                      <SelectValue placeholder="--- Seleccionar Sistema ---" />
                     </SelectTrigger>
                     <SelectContent className="bg-card border-border">
-                      <SelectItem value="todas">⚙️ Todos los Sistemas</SelectItem>
+                      <SelectItem value="seleccionar">--- Seleccionar Sistema ---</SelectItem>
                       {filteredSistemas.map(sys => (
                         <SelectItem key={sys.id} value={String(sys.id)}>⚙️ {sys.nombre}</SelectItem>
                       ))}
@@ -399,21 +415,36 @@ const VisualizacionSCADA = () => {
                     <Button
                       variant="default"
                       size="sm"
+                      onClick={() => {
+                        const sysObj = selectedSistema !== 'todas' ? sistemas.find(s => String(s.id) === selectedSistema) : null;
+                        const tipo = sysObj?.tipo_sistema || "EMPAQUE";
+                        const nombre = sysObj?.nombre || "Sistema SCADA";
+                        openDinamicoModal(tipo, nombre);
+                      }}
+                      className="h-9 px-3 gap-1.5 bg-cyan-600 hover:bg-cyan-500 text-white font-medium shadow-sm"
+                      title="Transmitir comandos y acciones MQTT configuradas para este sistema"
+                    >
+                      <Cpu className="h-4 w-4" />
+                      Acciones MQTT
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => setIsReposicionOpen(true)}
-                      className="h-9 px-3 gap-1.5 bg-primary text-primary-foreground font-medium"
+                      className="h-9 px-3 gap-1.5 bg-slate-800 text-cyan-300 border-slate-700 font-medium"
                       title="Abrir panel de control de reposición de materia prima (Bombos 1/2)"
                     >
                       <RefreshCw className="h-4 w-4" />
-                      Control de Reposición
+                      Control Reposición
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => loadDispositivos()} className="h-9 px-3">
-                      <RotateCcw className="h-4 w-4" />
+                      <RotateCcw className="h-4 w-4 text-slate-300" />
                     </Button>
                     <Button variant="outline" size="sm" onClick={toggleFullscreen} className="h-9 px-3">
-                      <Maximize2 className="h-4 w-4" />
+                      <Maximize2 className="h-4 w-4 text-slate-300" />
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => setIsConfigOpen(true)} className="h-9 px-3">
-                      <Settings className="h-4 w-4" />
+                      <Settings className="h-4 w-4 text-slate-300" />
                     </Button>
                   </div>
                 </div>
@@ -583,6 +614,49 @@ const VisualizacionSCADA = () => {
                         {relevantControls.length} disponibles
                       </Badge>
                     </div>
+
+                    {/* Botones de Control por Tipo de Sistema */}
+                    <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-700/60 space-y-2">
+                      <div className="text-xs font-semibold text-slate-300">Paneles por Tipo de Sistema</div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openDinamicoModal("EMPAQUE", "Empaquetadora L1")}
+                          className="h-8 text-[11px] justify-start gap-1.5 bg-emerald-950/30 text-emerald-300 border-emerald-800/50 hover:bg-emerald-900/40"
+                        >
+                          <PackageCheck className="h-3.5 w-3.5" />
+                          Empaquetadora
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openDinamicoModal("TEMPERATURA", "Horno / Temperatura")}
+                          className="h-8 text-[11px] justify-start gap-1.5 bg-amber-950/30 text-amber-300 border-amber-800/50 hover:bg-amber-900/40"
+                        >
+                          <Thermometer className="h-3.5 w-3.5" />
+                          Temperatura
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openDinamicoModal("SOLIDOS", "Procesado Sólidos")}
+                          className="h-8 text-[11px] justify-start gap-1.5 bg-indigo-950/30 text-indigo-300 border-indigo-800/50 hover:bg-indigo-900/40"
+                        >
+                          <Sliders className="h-3.5 w-3.5" />
+                          Sólidos
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsReposicionOpen(true)}
+                          className="h-8 text-[11px] justify-start gap-1.5 bg-cyan-950/30 text-cyan-300 border-cyan-800/50 hover:bg-cyan-900/40"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          Líquidos
+                        </Button>
+                      </div>
+                    </div>
                     
                     {relevantControls.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground text-sm">
@@ -728,6 +802,17 @@ const VisualizacionSCADA = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Control de Reposición (Bombos) */}
+      <ControlReposicionModal open={isReposicionOpen} onOpenChange={setIsReposicionOpen} />
+
+      {/* Modal de Control Dinámico (Empaquetadora / Hornos / Sólidos) */}
+      <ControlDinamicoModal
+        open={isDinamicoOpen}
+        onOpenChange={setIsDinamicoOpen}
+        tipoSistema={dinamicoTipoSistema}
+        nombreSistema={dinamicoNombreSistema}
+      />
     </div>
   );
 };

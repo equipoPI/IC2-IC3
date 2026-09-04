@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Database, Plus, Edit, Trash2, Search, Droplets, Thermometer, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Database, Plus, Edit, Trash2, Search, Droplets, Thermometer, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw } from "lucide-react";
+import { ControlReposicionModal } from "@/components/scada/ControlReposicionModal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,6 +55,7 @@ const AdministracionAlmacenamiento = () => {
   const [filterType, setFilterType] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [isReposicionOpen, setIsReposicionOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<StorageUnit | null>(null);
 
   // Form state
@@ -208,11 +210,19 @@ const AdministracionAlmacenamiento = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">Administración de Almacenamiento</h1>
-        <p className="text-muted-foreground mt-1">
-          Gestione los tanques, silos y depósitos del sistema SCADA
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Administración de Almacenamiento</h1>
+          <p className="text-muted-foreground mt-1">
+            Gestione los tanques, silos y depósitos del sistema SCADA
+          </p>
+        </div>
+        <Button 
+          onClick={() => setIsReposicionOpen(true)} 
+          className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-md"
+        >
+          <RefreshCw className="h-4 w-4" /> Llenado / Reposición (Bombos)
+        </Button>
       </div>
 
       {/* Stats */}
@@ -628,6 +638,9 @@ const AdministracionAlmacenamiento = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Control de Reposición (Bombos) */}
+      <ControlReposicionModal open={isReposicionOpen} onOpenChange={setIsReposicionOpen} />
     </div>
   );
 };

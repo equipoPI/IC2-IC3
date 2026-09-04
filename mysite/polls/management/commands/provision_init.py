@@ -249,6 +249,27 @@ class Command(BaseCommand):
                 plantilla_topico="scada/{planta}/{gateway}/{seccion}/{sistema}/temperatura/setpoint",
                 plantilla_payload_json='{"setpoint_celsius": "{temp}", "modo": "{modo}"}'
             )
+            MapeoAccionMQTT.objects.create(
+                nombre="Operación de Sellado de Empaquetadora",
+                tipo_sistema="EMPAQUE",
+                nombre_accion="sellar",
+                plantilla_topico="scada/{planta}/{gateway}/{seccion}/{sistema}/sellar",
+                plantilla_payload_json='{"accion": "SELLAR", "temperatura_sellado_c": "{temperatura}", "presion_bar": "{presion}"}'
+            )
+            MapeoAccionMQTT.objects.create(
+                nombre="Inicio de Ciclo de Empaquetado",
+                tipo_sistema="EMPAQUE",
+                nombre_accion="empaquetar",
+                plantilla_topico="scada/{planta}/{gateway}/{seccion}/{sistema}/empaquetar",
+                plantilla_payload_json='{"accion": "EMPAQUETAR", "unidades_por_caja": "{unidades}", "velocidad_cinta_hz": "{velocidad}"}'
+            )
+            MapeoAccionMQTT.objects.create(
+                nombre="Parada / Pausa de Cinta Transportadora",
+                tipo_sistema="EMPAQUE",
+                nombre_accion="pausar_cinta",
+                plantilla_topico="scada/{planta}/{gateway}/{seccion}/{sistema}/pausa",
+                plantilla_payload_json='{"accion": "PAUSAR_CINTA"}'
+            )
             self.stdout.write(self.style.SUCCESS('Initial MapeoAccionMQTT seeded'))
 
 
