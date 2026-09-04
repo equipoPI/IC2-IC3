@@ -328,6 +328,10 @@ class GatewayGUI:
 
         # Convertir a texto
         new_content = '\n'.join(content_lines)
+        try:
+            scroll_position = self.last_data_text.yview()[0]
+        except Exception:
+            scroll_position = 0.0
         
         # Solo actualizar si el contenido cambió
         if new_content != self._last_data_display_cache:
@@ -335,6 +339,10 @@ class GatewayGUI:
             self.last_data_text.delete('1.0', tk.END)
             self.last_data_text.insert(tk.END, new_content)
             self.last_data_text.configure(state='disabled')
+            try:
+                self.last_data_text.yview_moveto(scroll_position)
+            except Exception:
+                pass
             self._last_data_display_cache = new_content
 
         # Marcar que ya tenemos contenido
