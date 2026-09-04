@@ -98,14 +98,14 @@ float distancia;
 float distancia1;
 float distancia2;
 float distancia3;
-byte constrainedPorcentaje1 = 0;
-byte constrainedPorcentaje2 = 0;
-byte constrainedPorcentaje3 = 0;
+float constrainedPorcentaje1 = 0.0;
+float constrainedPorcentaje2 = 0.0;
+float constrainedPorcentaje3 = 0.0;
 
 // Mediciones filtradas
-byte Fporcentaje1 = 0;
-byte Fporcentaje2 = 0;
-byte Fporcentaje3 = 0;
+float Fporcentaje1 = 0.0;
+float Fporcentaje2 = 0.0;
+float Fporcentaje3 = 0.0;
 
 // ============================================================
 // VARIABLES GLOBALES - ESTADÍSTICA/FILTRADO
@@ -378,16 +378,15 @@ void filtrado() {
     smoothed3 = smoothed3 + ALPHA * (average3 - smoothed3);
   }
 
-  // Mapear distancia suavizada a porcentaje (30cm = vacío, 4cm = lleno)
-  // Rango ampliado: 2cm más arriba y 3cm más abajo para margen
-  Fporcentaje1 = map(smoothed1, 30, 4, 0, 100);
-  Fporcentaje2 = map(smoothed2, 30, 4, 0, 100);
-  Fporcentaje3 = map(smoothed3, 30, 4, 0, 100);
+  // Mapear distancia suavizada a porcentaje continuo con flotantes (30.0cm = vacío, 4.0cm = lleno)
+  Fporcentaje1 = (30.0 - smoothed1) * 100.0 / (30.0 - 4.0);
+  Fporcentaje2 = (30.0 - smoothed2) * 100.0 / (30.0 - 4.0);
+  Fporcentaje3 = (30.0 - smoothed3) * 100.0 / (30.0 - 4.0);
 
-  // Limitar el valor para que no se pase de 0-100
-  constrainedPorcentaje1 = constrain(Fporcentaje1, 0, 100);
-  constrainedPorcentaje2 = constrain(Fporcentaje2, 0, 100);
-  constrainedPorcentaje3 = constrain(Fporcentaje3, 0, 100);
+  // Limitar el valor para que no se pase de 0.0-100.0
+  constrainedPorcentaje1 = constrain(Fporcentaje1, 0.0, 100.0);
+  constrainedPorcentaje2 = constrain(Fporcentaje2, 0.0, 100.0);
+  constrainedPorcentaje3 = constrain(Fporcentaje3, 0.0, 100.0);
 }
 
 
@@ -641,15 +640,15 @@ void activacion() {
 void enviarValores() {
   RASPBERRY_SERIAL.print(average1);
   RASPBERRY_SERIAL.print(",");
-  RASPBERRY_SERIAL.print(constrainedPorcentaje1);
+  RASPBERRY_SERIAL.print(constrainedPorcentaje1, 1);
   RASPBERRY_SERIAL.print(",");
   RASPBERRY_SERIAL.print(average2);
   RASPBERRY_SERIAL.print(",");
-  RASPBERRY_SERIAL.print(constrainedPorcentaje2);
+  RASPBERRY_SERIAL.print(constrainedPorcentaje2, 1);
   RASPBERRY_SERIAL.print(",");
   RASPBERRY_SERIAL.print(average3);
   RASPBERRY_SERIAL.print(",");
-  RASPBERRY_SERIAL.print(constrainedPorcentaje3);
+  RASPBERRY_SERIAL.print(constrainedPorcentaje3, 1);
   RASPBERRY_SERIAL.print(",");
   RASPBERRY_SERIAL.print(cantidad1);
   RASPBERRY_SERIAL.print(",");

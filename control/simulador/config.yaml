@@ -14,19 +14,19 @@ arduino_protocol:
     type: float
   - index: 1
     name: porcentaje_bombo1
-    type: int
+    type: float
   - index: 2
     name: nivel_bombo2
     type: float
   - index: 3
     name: porcentaje_bombo2
-    type: int
+    type: float
   - index: 4
     name: nivel_mezcla
     type: float
   - index: 5
     name: porcentaje_mezcla
-    type: int
+    type: float
   - index: 6
     name: caudal_1
     type: float
