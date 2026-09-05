@@ -369,6 +369,36 @@ class SCADAGateway:
             if getattr(self, 'processing_paused', False):
                 logger.info("Gateway en pausa: ignorando comando de reposición recibido por MQTT")
                 return
+
+            accion_req = str(data.get('accion', '')).upper()
+            is_freno = data.get('freno', False) is True or accion_req in ['FRENO', 'FRENO_REPOSICION', 'PARAR', 'DETENER', 'EMERGENCIA']
+
+            if is_freno:
+                logger.warning("🚨 FRENO DE EMERGENCIA RECIBIDO: Enviando orden de detención F al Arduino")
+                if self.arduino.send_command('frenar'):
+                    logger.success("Freno de emergencia (Comando F) enviado al Arduino correctamente")
+                    self.storage.save_command("F", data, 'mqtt')
+                    self.storage.save_event('comando', 'FRENO DE EMERGENCIA REPOSICIÓN', data, 'mqtt')
+                    self.stats['commands_sent'] += 1
+                    self._publish_command_response(
+                        data,
+                        topic,
+                        status="executed",
+                        code=0,
+                        result={"accion": "frenar", "freno": True},
+                    )
+                else:
+                    logger.error("Error enviando comando F de freno de emergencia")
+                    self._publish_command_response(
+                        data,
+                        topic,
+                        status="failed",
+                        code=3,
+                        result={},
+                        error="No se pudo enviar comando F de freno al Arduino",
+                    )
+                return
+
             bombo = int(data.get('bombo', 1))
 
             # Aceptar el formato viejo (valor directo) y el nuevo (limite_porcentaje/limite)

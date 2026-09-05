@@ -182,12 +182,18 @@ class MockMQTTGateway:
 
     def _handle_reposicion(self, data: Dict[str, Any], topic: str):
         logger.info(f"Comando reposicion recibido: {topic} -> {data}")
+        accion = str(data.get("accion", "")).upper()
+        if data.get("freno") is True or accion in ["FRENO", "FRENO_REPOSICION", "PARAR", "DETENER", "EMERGENCIA"]:
+            self.estado_bomba_repo = False
+            self.estado_electrovalvula1 = False
+            self.estado_electrovalvula2 = False
+            logger.warning("🚨 Simulador: Freno de emergencia activado. Bomba de reposición y electroválvulas APAGADAS.")
         self.mqtt.publish_command_response(
             command_data=data,
             source_topic=topic,
             status="executed",
             code=0,
-            result={"mock": True, "accion": "reposicion"},
+            result={"mock": True, "accion": "frenar" if data.get("freno") else "reposicion"},
         )
 
     def _handle_mezcla(self, data: Dict[str, Any], topic: str):
