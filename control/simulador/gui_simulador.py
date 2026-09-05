@@ -184,18 +184,84 @@ class SimuladorGUI:
         )
         self.btn_connect.pack(side="left", px=5)
         
+        self.btn_show_topics = tk.Button(
+            btn_frame, text="📋 Mostrar Tópicos Soportados", bg="#2563eb", fg="white", font=("Segoe UI", 10, "bold"),
+            command=self.mostrar_topicos_dialog, px=15, py=6
+        )
+        self.btn_show_topics.pack(side="left", px=10)
+        
         # Info estructural
         info_frame = ttk.LabelFrame(self.tab_conexion, text="Estructura de Tópicos Generada", padding=15)
         info_frame.pack(fill="both", expand=True, pady=10)
         
         txt_topics = (
-            "Los datos de telemetría y comandos se transmitirán utilizando el esquema:\n\n"
+            "Los datos de telemetría y comandos se transmiten mediante la arquitectura de 5 niveles:\n\n"
             "• Telemetría: {tenant}/{gateway_id}/{seccion}/{sistema}/{categoria}/{dispositivo}\n"
-            "• Acciones desde Web: {tenant}/{gateway_id}/{seccion}/{sistema}/accion\n"
-            "• Diagnóstico Global: {tenant}/{gateway_id}/estado/general\n\n"
-            "Modifica el campo 'Gateway ID / Dirección MAC' arriba para simular diferentes clientes o pasarelas de prueba."
+            "• Tópico Acción Directo: {tenant}/{gateway_id}/{seccion}/{sistema}/reposicion\n"
+            "• Tópico Acción General: {tenant}/{gateway_id}/{seccion}/{sistema}/accion\n"
+            "• Tópico Cmd Gateway: {tenant}/{gateway_id}/cmd/reposicion\n"
+            "• Tópico Cmd Dispositivo: {tenant}/{gateway_id}/cmd/{numero_serie}\n"
+            "• Tópico Legacy: scada/planta1/comandos/{accion}\n\n"
+            "Pulsa el botón '📋 Mostrar Tópicos Soportados' para ver todos los formatos con los valores actuales."
         )
         ttk.Label(info_frame, text=txt_topics, justify="left", font=("Segoe UI", 9)).pack(anchor="w")
+
+    def mostrar_topicos_dialog(self):
+        tenant = self.tenant_var.get() or "rafaela_sa"
+        gw = self.gateway_mac_var.get() or "d83add60dbb0"
+        
+        text_info = f"""==================================================
+TÓPICOS MQTT SOPORTADOS - SIMULADOR SCADA
+==================================================
+Gateway ID / MAC Activo: {gw}
+Tenant / Empresa: {tenant}
+
+--------------------------------------------------
+1. TELEMETRÍA DE SENSORES Y ESTADO (Publicación)
+--------------------------------------------------
+• Nivel Bombo 1:        {tenant}/{gw}/a1/linea_mezclado_1/sensores/nivel_bombo1
+• Nivel Bombo 2:        {tenant}/{gw}/a1/linea_mezclado_1/sensores/nivel_bombo2
+• Nivel Mezcla:         {tenant}/{gw}/a1/linea_mezclado_1/sensores/nivel_mezcla
+• Caudales 1 y 2:       {tenant}/{gw}/a1/linea_mezclado_1/sensores/caudal_1
+• Estado de Actuadores: {tenant}/{gw}/a1/linea_mezclado_1/actuadores/<nombre>
+• Estado General:       {tenant}/{gw}/estado/general
+
+--------------------------------------------------
+2. ACCIONES Y REPOSICIÓN DESDE WEB SCADA (Suscripción)
+--------------------------------------------------
+✓ Formato 1 (Jerárquico 5 Niveles Directo):
+  {tenant}/{gw}/a1/linea_mezclado_1/reposicion
+  {tenant}/{gw}/a1/linea_mezclado_1/detener_mezcla
+
+✓ Formato 2 (Jerárquico 5 Niveles General):
+  {tenant}/{gw}/a1/linea_mezclado_1/accion
+  Payload JSON: {{"accion": "reposicion", "bombo": 1, "limite_porcentaje": 80}}
+
+✓ Formato 3 (Comando General de Gateway):
+  {tenant}/{gw}/cmd/reposicion
+  {tenant}/{gw}/cmd/detener_mezcla
+
+✓ Formato 4 (Comando Específico a Dispositivo):
+  {tenant}/{gw}/cmd/DEV-001
+
+✓ Formato 5 (Tópico Legacy Fallback):
+  scada/planta1/comandos/reposicion
+=================================================="""
+
+        win = tk.Toplevel(self.root)
+        win.title("Tópicos MQTT Soportados")
+        win.geometry("650x540")
+        
+        lbl = ttk.Label(win, text="📡 Esquema Estructurado de Tópicos MQTT Soportados", font=("Segoe UI", 11, "bold"))
+        lbl.pack(pady=10)
+        
+        txt = scrolledtext.ScrolledText(win, font=("Consolas", 9), wrap="word")
+        txt.pack(fill="both", expand=True, padx=10, pady=5)
+        txt.insert("1.0", text_info)
+        txt.config(state="disabled")
+        
+        btn_close = ttk.Button(win, text="Cerrar", command=win.destroy)
+        btn_close.pack(pady=10)
 
     def build_tab_telemetria(self):
         # Selector de Modo
@@ -426,8 +492,8 @@ class SimuladorGUI:
             self.actuadores_estado["electrovalvula-2"] = act
             self.root.after(0, lambda: self.update_led("electrovalvula-2", act))
 
-        if "BOMBA_REPOSICION" in topic or "bomba_reposicion" in topic:
-            act = "INICIAR" in up_payload or "1" in up_payload or "ON" in up_payload or "ABRIR" in up_payload
+        if "BOMBA_REPOSICION" in topic or "bomba_reposicion" in topic or "REPOSICION" in up_payload or "reposicion" in topic:
+            act = "INICIAR" in up_payload or "1" in up_payload or "ON" in up_payload or "ABRIR" in up_payload or "REPOSICION" in up_payload
             self.actuadores_estado["bomba_reposicion"] = act
             self.root.after(0, lambda: self.update_led("bomba_reposicion", act))
 

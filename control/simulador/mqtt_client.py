@@ -139,31 +139,46 @@ class MQTTClient:
 
     def _extract_command_meta(self, topic: str) -> Optional[Dict[str, str]]:
         prefix = f"{self.topic_prefix}/cmd/"
-        if not topic.startswith(prefix):
-            return None
+        if topic.startswith(prefix):
+            path = topic[len(prefix):].strip("/")
+            parts = [p for p in path.split("/") if p]
+            if not parts:
+                return None
 
-        path = topic[len(prefix):].strip("/")
-        parts = [p for p in path.split("/") if p]
-        if not parts:
-            return None
+            action = parts[-1]
+            context = parts[:-1]
 
-        action = parts[-1]
-        context = parts[:-1]
+            meta = {
+                "action": action,
+                "path": path,
+                "scope": "standard",
+            }
 
-        meta = {
-            "action": action,
-            "path": path,
-            "scope": "standard",
-        }
+            if len(context) >= 1:
+                meta["sector"] = self._sanitize_token(context[0])
+            if len(context) >= 2:
+                meta["system"] = self._sanitize_token(context[1])
+            if len(context) >= 3:
+                meta["device"] = self._sanitize_token(context[2])
 
-        if len(context) >= 1:
-            meta["sector"] = self._sanitize_token(context[0])
-        if len(context) >= 2:
-            meta["system"] = self._sanitize_token(context[1])
-        if len(context) >= 3:
-            meta["device"] = self._sanitize_token(context[2])
+            return meta
 
-        return meta
+        # Soporte jerárquico: tenant/gateway_id/seccion/sistema/accion o .../reposicion
+        parts = [p for p in topic.split("/") if p]
+        if len(parts) >= 3:
+            last_part = parts[-1].lower()
+            if last_part in ["accion", "control", "reposicion", "mezcla", "configuracion"]:
+                meta = {
+                    "action": "control" if last_part == "accion" else last_part,
+                    "path": topic,
+                    "scope": "hierarchical",
+                }
+                if len(parts) >= 5:
+                    meta["sector"] = self._sanitize_token(parts[2])
+                    meta["system"] = self._sanitize_token(parts[3])
+                return meta
+
+        return None
 
     def _extract_legacy_meta(self, topic: str) -> Optional[Dict[str, str]]:
         if not topic.startswith(f"{self.legacy_base_topic}/"):
@@ -255,6 +270,14 @@ class MQTTClient:
             data["_topic_meta"] = command_meta
 
             action = command_meta.get("action")
+            # Resolver la acción específica desde el campo 'accion' del payload si la ruta fue /accion
+            if action == 'control' and isinstance(data, dict) and data.get('accion'):
+                payload_action = str(data.get('accion')).lower()
+                if payload_action in self.command_callbacks:
+                    action = payload_action
+                elif payload_action in ['freno_reposicion', 'parar_reposicion']:
+                    action = 'reposicion'
+
             callback = self.command_callbacks.get(action)
             if callback:
                 callback(data, topic)

@@ -79,6 +79,10 @@ arduino_protocol:
     reanudar: A
     reposicion: R{valor}
     vaciar: V
+    detener_mezcla: D
+    reanudar_mezcla: A
+    vaciar_mezcla: V
+    desechar_mezcla: X
 database:
   auto_vacuum: true
   backup_enabled: true

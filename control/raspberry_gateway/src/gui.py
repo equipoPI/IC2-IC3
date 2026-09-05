@@ -190,35 +190,37 @@ class GatewayGUI:
             self.topics_shown = False
             return
 
-        # llenar contenido desde config; el usuario pondrá la fábrica en 'tenant'
         mqtt_cfg = self.gateway.config.get('mqtt', {})
-        tenant = mqtt_cfg.get('tenant', '')
-        topics = mqtt_cfg.get('topics', {})
-        publish = topics.get('publish', {})
-        subscribe = topics.get('subscribe', {})
-        subscribe_filters = topics.get('subscribe_filters', [])
+        tenant = mqtt_cfg.get('tenant', 'rafaela_sa')
+        gateway_id = self._get_mac() or mqtt_cfg.get('gateway_id', 'd83add60dbb0')
+        sector = mqtt_cfg.get('default_sector', 'a1')
+        system = mqtt_cfg.get('default_system', 'linea_mezclado_1')
 
         content_lines = []
-        content_lines.append(f"Publish (desde gateway) — fábrica: {tenant}")
-        if publish:
-            for k, v in publish.items():
-                content_lines.append(f"- {k}: {v}")
-        else:
-            content_lines.append('  (ninguno configurado)')
-
-        content_lines.append('')
-        content_lines.append('Subscribe (a los que escucha el gateway):')
-        if subscribe:
-            for k, v in subscribe.items():
-                content_lines.append(f"- {k}: {v}")
-        else:
-            content_lines.append('  (ninguno configurado)')
-
-        if subscribe_filters:
-            content_lines.append('')
-            content_lines.append('Subscribe filters (plantillas):')
-            for f in subscribe_filters:
-                content_lines.append(f"- {f}")
+        content_lines.append("==================================================")
+        content_lines.append(f"TÓPICOS MQTT SOPORTADOS (Gateway: {gateway_id})")
+        content_lines.append(f"Fábrica / Tenant: {tenant}")
+        content_lines.append("==================================================")
+        content_lines.append("")
+        content_lines.append("1. SUSCRIPCIÓN DE ACCIONES DESDE WEB SCADA:")
+        content_lines.append(f"  [1] Jerárquico Directo:  {tenant}/{gateway_id}/{sector}/{system}/<accion>")
+        content_lines.append(f"      (Ej: {tenant}/{gateway_id}/{sector}/{system}/reposicion)")
+        content_lines.append(f"  [2] Jerárquico General:  {tenant}/{gateway_id}/{sector}/{system}/accion")
+        content_lines.append(f"  [3] Comando Gateway:     {tenant}/{gateway_id}/cmd/<accion>")
+        content_lines.append(f"      (Ej: {tenant}/{gateway_id}/cmd/reposicion)")
+        content_lines.append(f"  [4] Dispositivo Directo: {tenant}/{gateway_id}/cmd/<dispositivo_id>")
+        content_lines.append(f"  [5] Legacy Fallback:     scada/planta1/comandos/<accion>")
+        content_lines.append("")
+        content_lines.append("2. PUBLICACIÓN DE TELEMETRÍA (Gateway -> SCADA):")
+        content_lines.append(f"  • Sensores:   {tenant}/{gateway_id}/{sector}/{system}/sensores/<sensor>")
+        content_lines.append(f"  • Actuadores: {tenant}/{gateway_id}/{sector}/{system}/actuadores/<actuador>")
+        content_lines.append(f"  • Diagnóstico: {tenant}/{gateway_id}/estado/general")
+        content_lines.append("")
+        content_lines.append("Suscripciones activas Paho MQTT:")
+        content_lines.append(f"  • {tenant}/{gateway_id}/#")
+        content_lines.append(f"  • {tenant}/+/+/+/accion")
+        content_lines.append(f"  • {tenant}/+/+/+/reposicion")
+        content_lines.append(f"  • scada/planta1/comandos/#")
 
         # mostrar
         self.topics_text.configure(state='normal')
