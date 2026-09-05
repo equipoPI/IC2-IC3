@@ -45,10 +45,14 @@ El archivo `config.yaml` contiene los datos predeterminados de conexión al brok
 
 ```yaml
 mqtt:
-  broker: localhost          # Dirección IP del Broker MQTT (Mosquitto)
-  port: 1883                 # Puerto MQTT
-  tenant: rafaela_sa         # Tenant / Organización asignada
-  gateway_id: d83add60dbb0   # MAC o ID del gateway predeterminado
-  username: admin            # Usuario MQTT
-  password: admin            # Contraseña MQTT
+  broker: 192.168.137.1       # Dirección IP del Broker MQTT
+  port: 1883                  # Puerto MQTT
+  tenant: Rafaela_S.A         # Tenant / Organización (DEBE coincidir con gateway real)
+  gateway_id: sim_gateway_test # ID único del simulador
+  username: admin             # Usuario MQTT
+  password: admin             # Contraseña MQTT
+  topics:
+    enable_legacy_topics: false  # ✅ Topics legacy DESHABILITADOS
+    subscribe_filters:
+      - '{tenant}/{gateway_id}/cmd/#'  # Suscribe a comandos nuevos
 ```

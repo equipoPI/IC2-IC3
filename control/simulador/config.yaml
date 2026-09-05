@@ -133,22 +133,22 @@ logging:
 mqtt:
   broker: 192.168.137.1
   client_id: ''
-  default_sector: ala_este
+  default_sector: A1
   default_system: linea_mezclado_1
-  gateway_id: ''
+  gateway_id: sim_gateway_test  # Identificador único del simulador
   keepalive: 60
   password: admin
   port: 1883
   qos: 1
-  tenant: rafaela
+  tenant: Rafaela_S.A  # Debe coincidir con el tenant del gateway real
   tls:
     ca_certs: /etc/ssl/certs/ca-certificates.crt
     certfile: null
     enabled: false
     keyfile: null
   topics:
-    base: scada/planta1
-    enable_legacy_topics: false
+    base: scada/planta1  # Legacy (no se usa si enable_legacy_topics=false)
+    enable_legacy_topics: false  # ✓ Topics legacy DESHABILITADOS
     publish:
       alarmas: alarmas
       bomba1: actuadores/bomba1

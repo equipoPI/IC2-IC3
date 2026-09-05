@@ -369,20 +369,23 @@ class SCADAGateway:
             if getattr(self, 'processing_paused', False):
                 logger.info("Gateway en pausa: ignorando comando de reposición recibido por MQTT")
                 return
-            bombo = data.get('bombo', 1)
-            valor = data.get('valor', 50)
-            
-            # Formatear comando para Arduino: R{bombo}{valor}
-            # Ej: R1050 = Bombo 1, 50%
-            comando_valor = f"{bombo}{valor:03d}"
+            bombo = int(data.get('bombo', 1))
+
+            # Aceptar el formato viejo (valor directo) y el nuevo (limite_porcentaje/limite)
+            valor_bruto = data.get('valor', data.get('limite_porcentaje', data.get('limite', 50)))
+            limite = int(valor_bruto)
+
+            # El Arduino espera una combinación de 4 dígitos:
+            # 1000 + limite para bombo 1, 2000 + limite para bombo 2.
+            convinacion = (1000 + limite) if bombo == 1 else (2000 + limite)
             
             # Enviar comando al Arduino
-            if self.arduino.send_command('reposicion', bombo=bombo, valor=f"{valor:03d}"):
-                logger.info(f"Comando reposición enviado: Bombo {bombo}, {valor}%")
+            if self.arduino.send_command('reposicion', valor=convinacion):
+                logger.info(f"Comando reposición enviado: Bombo {bombo}, límite {limite}% (combo {convinacion})")
                 
                 # Guardar en base de datos
-                self.storage.save_command(f"R{comando_valor}", data, 'mqtt')
-                self.storage.save_event('comando', f'Reposición bombo {bombo} al {valor}%', data, 'mqtt')
+                self.storage.save_command(f"R{convinacion}", data, 'mqtt')
+                self.storage.save_event('comando', f'Reposición bombo {bombo} al {limite}%', data, 'mqtt')
                 
                 self.stats['commands_sent'] += 1
                 self._publish_command_response(
@@ -390,7 +393,7 @@ class SCADAGateway:
                     topic,
                     status="executed",
                     code=0,
-                    result={"bombo": bombo, "valor": valor},
+                    result={"bombo": bombo, "limite": limite, "convinacion": convinacion},
                 )
             else:
                 logger.error("Error enviando comando de reposición")

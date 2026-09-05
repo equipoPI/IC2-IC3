@@ -183,30 +183,60 @@ Comandos compatibles con Sistema_SCADA:
 
 ### MQTT Topics
 
-#### Publicación (Raspberry → App Web)
+#### Estructura Estándar (Recomendada)
 ```
-scada/planta1/estado/general          # Estado general del sistema
-scada/planta1/sensores/nivel/bombo1   # Nivel bombo 1
-scada/planta1/sensores/nivel/bombo2   # Nivel bombo 2
-scada/planta1/sensores/nivel/mezcla   # Nivel bombo mezcla
-scada/planta1/sensores/caudal/1       # Caudal líquido 1
-scada/planta1/sensores/caudal/2       # Caudal líquido 2
-scada/planta1/actuadores/bomba1       # Estado bomba 1
-scada/planta1/actuadores/bomba2       # Estado bomba 2
-scada/planta1/actuadores/bombam       # Estado bomba mezcla
-scada/planta1/actuadores/mezclador    # Estado mezclador
-scada/planta1/proceso/tiempo_restante # Tiempo restante
-scada/planta1/alarmas                 # Alarmas y errores
-scada/planta1/diagnostico             # Diagnóstico Raspberry
+{tenant}/{gateway_id}/{seccion}/{sistema}/{variable}
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/nivel_bombo1
 ```
 
-#### Suscripción (App Web → Raspberry)
+#### Publicación - Telemetría (Raspberry → App Web)
 ```
-scada/planta1/comandos/reposicion     # Comandos de reposición
-scada/planta1/comandos/mezcla         # Comandos de mezcla
-scada/planta1/comandos/control        # Control general (parar, continuar)
-scada/planta1/configuracion           # Cambios de configuración
-scada/planta1/consultas/historico     # Solicitudes de datos históricos
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/nivel_bombo1    # Nivel bombo 1
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/nivel_bombo2    # Nivel bombo 2
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/nivel_mezcla    # Nivel mezcla
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/caudal_1        # Caudal líquido 1
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/caudal_2        # Caudal líquido 2
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/actuadores/bomba1        # Estado bomba 1
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/actuadores/bomba2        # Estado bomba 2
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/actuadores/bomba_mezcla  # Estado bomba mezcla
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/actuadores/mezclador     # Estado mezclador
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/actuadores/bomba_repo    # Estado bomba reposición
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/proceso/tiempo_restante  # Tiempo restante
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/alarmas                  # Alarmas y errores
+Rafaela_S.A/d83add60dbb0/status                                         # Estado online/offline del gateway
+```
+
+#### Suscripción - Comandos (App Web → Raspberry)
+**Formato único de comandos:**
+```
+Rafaela_S.A/d83add60dbb0/cmd/{seccion}/{sistema}/{accion}
+
+Ejemplos:
+Rafaela_S.A/d83add60dbb0/cmd/A1/linea_mezclado_1/reposicion     # Comando de reposición
+Rafaela_S.A/d83add60dbb0/cmd/A1/linea_mezclado_1/detener        # Detener mezcla
+Rafaela_S.A/d83add60dbb0/cmd/A1/linea_mezclado_1/reanudar       # Reanudar mezcla
+Rafaela_S.A/d83add60dbb0/cmd/A1/linea_mezclado_1/vaciar         # Vaciar
+Rafaela_S.A/d83add60dbb0/cmd/A1/linea_mezclado_1/desechar       # Desechar
+```
+
+#### Acciones Soportadas en /cmd/
+```yaml
+reposicion:     # Reposición de bombos (requiere: bombo, limite_porcentaje)
+freno_reposicion: # Detener reposición
+detener:        # Detener/pausar mezcla
+reanudar:       # Reanudar mezcla
+vaciar:         # Vaciar contenedor mezcla
+desechar:       # Desechar mezcla
+continuar:      # Alias de reanudar
+frenar:         # Alias de freno_reposicion
+```
+
+#### 🚫 Topics Legacy (DEPRECADOS - No usar)
+```yaml
+# DESCONTINUADOS A PARTIR DE 2024:
+scada/planta1/*                         # (Base legacy deshabilitada)
+{tenant}/{gateway_id}/cmd/{accion}      # (Usar estructura con sector/sistema)
+{tenant}/{gateway_id}/cmd/{numero_serie} # (Usar sector/sistema en su lugar)
 ```
 
 ## 📊 Base de Datos Local
@@ -260,11 +290,15 @@ sudo journalctl -u raspberry_gateway -f
 
 ### Problemas de conexión MQTT
 ```bash
-# Test manual de MQTT
-mosquitto_sub -h mqtt.ejemplo.com -t "scada/#" -v
+# Test manual de MQTT con nueva estructura
+mosquitto_sub -h 192.168.137.1 -t "Rafaela_S.A/d83add60dbb0/#" -v
 
-# Publicar mensaje de prueba
-mosquitto_pub -h mqtt.ejemplo.com -t "scada/test" -m "hello"
+# Enviar comando de prueba (reposición)
+mosquitto_pub -h 192.168.137.1 -t "Rafaela_S.A/d83add60dbb0/cmd/A1/linea_mezclado_1/reposicion" \
+  -m '{"bombo": 1, "limite_porcentaje": 75}'
+
+# Verificar conexión del gateway
+mosquitto_sub -h 192.168.137.1 -t "Rafaela_S.A/d83add60dbb0/status" -v
 ```
 
 ### Alto uso de CPU/Memoria

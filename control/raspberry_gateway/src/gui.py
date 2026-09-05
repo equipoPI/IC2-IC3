@@ -174,6 +174,7 @@ class GatewayGUI:
 
         # Frame that will contain last data summary (hidden by default)
         self.last_data_frame = ttk.Frame(frm, padding=6, relief='groove')
+        self.last_data_controls = ttk.Frame(self.last_data_frame)
         # Use a Text widget to present last data (read-only)
         try:
             from tkinter.scrolledtext import ScrolledText
@@ -182,6 +183,9 @@ class GatewayGUI:
             self.last_data_text = tk.Text(self.last_data_frame, width=60, height=12, wrap='word')
         self.last_data_text.configure(state='disabled')
         self.last_data_text.grid(column=0, row=0)
+        self.last_data_controls.grid(column=0, row=1, pady=(6, 0), sticky='w')
+        self.copy_last_data_btn = ttk.Button(self.last_data_controls, text='Copiar datos', command=self._copy_last_data_to_clipboard)
+        self.copy_last_data_btn.grid(column=0, row=0)
 
     def _toggle_topics(self):
         if self.topics_shown:
@@ -228,7 +232,7 @@ class GatewayGUI:
         self.topics_text.insert(tk.END, '\n'.join(content_lines))
         self.topics_text.configure(state='disabled')
 
-        self.topics_frame.grid(column=0, row=18, columnspan=2, pady=(8,0))
+        self.topics_frame.grid(column=0, row=19, columnspan=2, pady=(8,0))
         self.show_topics_btn.config(text='Ocultar topics')
         self.topics_shown = True
 
@@ -241,7 +245,7 @@ class GatewayGUI:
             return
 
         # Show the frame initially
-        self.last_data_frame.grid(column=0, row=19, columnspan=2, pady=(8,0))
+        self.last_data_frame.grid(column=0, row=20, columnspan=2, pady=(8,0))
         self.show_last_data_btn.config(text='Ocultar últimos datos')
         self.last_data_shown = True
         self._last_data_has_content = False
@@ -350,6 +354,27 @@ class GatewayGUI:
         # Marcar que ya tenemos contenido
         if has_any_data:
             self._last_data_has_content = True
+
+    def _copy_last_data_to_clipboard(self):
+        if not self.last_data_shown:
+            return
+
+        try:
+            content = self.last_data_text.get('1.0', tk.END).strip()
+        except Exception:
+            content = ''
+
+        if not content:
+            messagebox.showinfo('Copiar datos', 'No hay datos para copiar todavía.')
+            return
+
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(content)
+            self.root.update_idletasks()
+            messagebox.showinfo('Copiar datos', 'Datos copiados al portapapeles.')
+        except Exception as e:
+            messagebox.showerror('Copiar datos', f'No se pudieron copiar los datos: {e}')
 
     def _get_mac(self):
         try:
