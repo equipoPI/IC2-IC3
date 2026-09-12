@@ -662,10 +662,18 @@ class GatewayGUI:
             pass
     
     def _on_close(self):
-        """Maneja cierre de ventana"""
+        """Maneja cierre de ventana y detiene el gateway"""
         self.running = False
-        self.root.quit()
-        self.root.destroy()
+        try:
+            if self.gateway:
+                self.gateway.stop()
+        except Exception:
+            pass
+        try:
+            self.root.quit()
+            self.root.destroy()
+        except Exception:
+            pass
     
     def start(self):
         """Inicia el loop de GUI"""

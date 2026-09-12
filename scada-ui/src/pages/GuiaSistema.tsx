@@ -166,10 +166,10 @@ const GuiaSistema = () => {
                 <div className="space-y-3">
                   <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                     <Zap className="h-5 w-5 text-amber-500" />
-                    Optimización y Consultas Atómicas
+                    Túnel de Comandos Bidireccional (&lt;15ms)
                   </h3>
                   <p className="text-sm text-muted-foreground leading-relaxed">
-                    Se aplicó <code className="text-primary font-mono font-bold">select_related</code> y <code className="text-primary font-mono font-bold">prefetch_related</code> en todos los endpoints REST, asegurando respuestas en menos de <strong>100ms</strong> y eliminando el problema N+1 en lecturas masivas.
+                    Los botones de control, sliders y recetas en <code>/scada</code> transmiten directamente mediante <strong>WebSockets persistentes</strong> (<code>sendScadaCommand</code>). El servidor Daphne despacha la orden al broker Mosquitto en menos de <strong>5ms</strong> con confirmación ACK instantánea y registro asíncrono no bloqueante en Auditoría.
                   </p>
                 </div>
               </div>
@@ -235,6 +235,14 @@ const GuiaSistema = () => {
                 <h4 className="text-sm font-bold text-foreground">Usuarios, Mosquitto y Roles</h4>
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Gestión de claves de alta, usuarios autorizados en el archivo <code>passwd</code> del broker Mosquitto y matriz de permisos por rangos (1 a 8).
+                </p>
+              </div>
+
+              <div className="border border-border p-4 rounded-lg bg-card space-y-2">
+                <Badge className="bg-indigo-500/20 text-indigo-400 border-indigo-500/30">Auditoría y Trazabilidad (/auditoria)</Badge>
+                <h4 className="text-sm font-bold text-foreground">Bitácora Integral y Registro Forense</h4>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Historial de auditoría inmutable de todas las acciones del sistema: comandos SCADA enviados por WebSocket y HTTP, modificaciones en diagramas, altas y bajas de componentes, e inicios/cierres de sesión. Permite filtrado jerárquico por módulos/acciones y exportaciones en CSV y PDF.
                 </p>
               </div>
             </CardContent>
@@ -453,12 +461,12 @@ const GuiaSistema = () => {
                 {/* Accordion Item 3 */}
                 <AccordionItem value="worker" className="border-border">
                   <AccordionTrigger className="text-sm font-semibold hover:no-underline">
-                    Worker MQTT & Ingesta en Segundo Plano
+                    Worker MQTT & Ingesta en Contenedor Dedicado
                   </AccordionTrigger>
                   <AccordionContent className="space-y-2 text-xs text-muted-foreground">
-                    <p>Corre automáticamente en el contenedor <code>scada_backend</code>. Para ejecutarlo manualmente:</p>
+                    <p>Corre de forma autónoma en el servicio <code>scada_mqtt_worker</code>. Para ver su actividad en vivo:</p>
                     <pre className="bg-muted p-3 rounded border border-border font-mono text-foreground overflow-x-auto">
-                      docker compose exec backend python manage.py mqtt_worker
+                      docker compose logs -f mqtt_worker
                     </pre>
                   </AccordionContent>
                 </AccordionItem>

@@ -392,13 +392,8 @@ class DispositivoSCADASerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
-        from django.utils import timezone
-        # Si en 1 minuto (60s) no vuelve a aparecer telemetría/tópico del componente, pasa a OFFLINE
-        if instance.ultima_lectura:
-            delta = (timezone.now() - instance.ultima_lectura).total_seconds()
-            ret['estado'] = "ONLINE" if delta <= 60 else "OFFLINE"
-        else:
-            ret['estado'] = "OFFLINE"
+        # El estado de conexión viene gestionado por el Gateway y el worker MQTT
+        ret['estado'] = instance.estado or "OFFLINE"
         return ret
 
 

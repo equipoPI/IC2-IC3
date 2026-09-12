@@ -67,7 +67,7 @@ def get_modulo_name(instance):
     """Mapear clase de modelo a nombre de módulo amigable en español"""
     cls_name = instance.__class__.__name__
     mapping = {
-        'Fabrica': 'Plantas Industrial',
+        'Fabrica': 'Plantas Industriales',
         'Seccion': 'Secciones de Planta',
         'Sistema': 'Sistemas SCADA',
         'DispositivoSCADA': 'Dispositivos y Actuadores SCADA',
@@ -107,7 +107,7 @@ IGNORE_AUDIT_FIELDS = (
     'fecha_creacion', 'fecha_actualizacion', 'timestamp', 'last_seen',
     'ultima_lectura', 'valor_lectura', 'nivel_actual',
     'volumen_actual', 'porcentaje', 'ultima_actualizacion', 'progreso',
-    'latitud', 'longitud'
+    'latitud', 'longitud', 'estado', 'topic_mqtt', 'gateway_id', 'unidad_lectura'
 )
 
 @receiver(pre_save)
@@ -123,14 +123,14 @@ def audit_pre_save(sender, instance, **kwargs):
             for field in instance._meta.fields:
                 field_name = field.name
                 
-                # Ignorar únicamente lecturas continuas de telemetría periódica
+                # Ignorar lecturas continuas de telemetría periódica y estados automáticos
                 if field_name in IGNORE_AUDIT_FIELDS:
                     continue
                 
                 val_orig = getattr(original, field_name, None)
                 val_nuev = getattr(instance, field_name, None)
                 
-                # Si hubo variación de estado, conexión o atributos, almacenar diff
+                # Si hubo variación de atributos administrativos, almacenar diff
                 if val_orig != val_nuev:
                     cambios[field_name] = {
                         'antes': str(val_orig) if val_orig is not None else '',
@@ -152,8 +152,9 @@ def audit_post_save(sender, instance, created, **kwargs):
         return
 
     usuario = get_current_user()
-    if usuario and usuario.is_anonymous:
-        usuario = None
+    if not usuario or usuario.is_anonymous:
+        # Los cambios automáticos en segundo plano (worker MQTT, telemetría o tareas periódicas) no son acciones de auditoría humana
+        return
 
     accion = 'Creación' if created else 'Modificación'
     modulo = get_modulo_name(instance)

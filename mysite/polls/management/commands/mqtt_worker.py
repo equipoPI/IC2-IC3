@@ -6,6 +6,7 @@ import threading
 import datetime
 from django.core.management.base import BaseCommand
 from django.db import close_old_connections
+from django.db.models import Q
 from django.utils import timezone
 import paho.mqtt.client as mqtt
 
@@ -136,19 +137,21 @@ class Command(BaseCommand):
     def _start_offline_watcher(self):
         def watch_offline():
             while True:
-                time.sleep(15)
+                time.sleep(3)
                 try:
                     close_old_connections()
-                    from django.db.models import Q
-                    cutoff = timezone.now() - datetime.timedelta(seconds=60)
-                    offline_count = DispositivoSCADA.objects.filter(
-                        estado='ONLINE'
-                    ).filter(
-                        Q(ultima_lectura__lt=cutoff) | Q(ultima_lectura__isnull=True)
-                    ).update(estado='OFFLINE')
-                    if offline_count > 0:
-                        self.stdout.write(self.style.WARNING(f"[Offline Watcher] {offline_count} componentes marcados como OFFLINE por inactividad (>60s)."))
-                        broadcast_ws_update({'event': 'device_offline_timeout', 'count': offline_count})
+                    # Si han pasado más de 12 segundos sin ninguna actividad global del gateway, marcar offline
+                    last_seen = getattr(self, '_last_gateway_message_time', None)
+                    if last_seen and (time.time() - last_seen > 12):
+                        offline_count = DispositivoSCADA.objects.filter(estado='ONLINE').update(estado='OFFLINE')
+                        if offline_count > 0:
+                            self.stdout.write(self.style.WARNING(f"[Gateway Watcher] Gateway inactivo (>12s sin telemetría). {offline_count} dispositivos marcados como OFFLINE."))
+                            broadcast_ws_update({
+                                'type': 'system_status',
+                                'event': 'gateway_status',
+                                'status': 'offline',
+                                'online_count': 0
+                            })
                 except Exception as ex:
                     logger.debug(f"Offline watcher error: {ex}")
 
@@ -158,20 +161,20 @@ class Command(BaseCommand):
     def on_message(self, client, userdata, msg):
         try:
             close_old_connections()
+            self._last_gateway_message_time = time.time()
             topic = msg.topic
             payload_str = msg.payload.decode('utf-8').strip()
             telemetria_parts = topic.split('/')
 
-            # 0. Procesar Estado LWT de Gateway (Will / shutdown limpio)
+            # 0. Procesar Estado LWT de Gateway (Will / shutdown limpio de Raspberry Pi)
             if topic.endswith('/status'):
                 status_val = payload_str.lower()
                 gw_id = telemetria_parts[1] if len(telemetria_parts) > 1 else 'd83add60dbb0'
                 if 'offline' in status_val:
-                    from django.db.models import Q
                     DispositivoSCADA.objects.filter(
                         Q(gateway_id=gw_id) | Q(gateway_id='') | Q(gateway_id__isnull=True)
                     ).update(estado='OFFLINE')
-                    self.stdout.write(self.style.WARNING(f"[Gateway LWT] Gateway {gw_id} reportó OFFLINE. Dispositivos marcados como OFFLINE."))
+                    self.stdout.write(self.style.WARNING(f"[Gateway LWT] Gateway {gw_id} reportó OFFLINE. Todos los dispositivos marcados como OFFLINE (0/12)."))
                     broadcast_ws_update({
                         'type': 'system_status',
                         'event': 'gateway_status',
@@ -181,12 +184,16 @@ class Command(BaseCommand):
                     })
                     return
                 elif 'online' in status_val:
-                    DispositivoSCADA.objects.filter(gateway_id=gw_id).update(estado='ONLINE')
+                    online_updated = DispositivoSCADA.objects.filter(
+                        Q(gateway_id=gw_id) | Q(gateway_id='') | Q(gateway_id__isnull=True)
+                    ).update(estado='ONLINE')
+                    self.stdout.write(self.style.SUCCESS(f"[Gateway LWT] Gateway {gw_id} reportó ONLINE. Dispositivos marcados como ONLINE ({online_updated})."))
                     broadcast_ws_update({
                         'type': 'system_status',
                         'event': 'gateway_status',
                         'gateway_id': gw_id,
-                        'status': 'online'
+                        'status': 'online',
+                        'online_count': online_updated
                     })
                     return
 
@@ -352,7 +359,7 @@ class Command(BaseCommand):
                     if dev.gateway_id != gateway_id:
                         dev.gateway_id = gateway_id
                         updated.append('gateway_id')
-                    if dev.topic_mqtt != topic:
+                    if not dev.topic_mqtt:
                         dev.topic_mqtt = topic
                         updated.append('topic_mqtt')
                     
@@ -424,16 +431,12 @@ class Command(BaseCommand):
                     if nivel is not None:
                         try:
                             n_val = float(nivel)
-                            if n_val <= 0.0 or n_val >= 999.0:
+                            if n_val < 0.0 or n_val >= 999.0:
                                 es_invalido = True
                         except (ValueError, TypeError):
                             es_invalido = True
 
                     if es_invalido:
-                        s_dev = DispositivoSCADA.objects.filter(numero_serie=sensor_serie).first()
-                        if s_dev:
-                            s_dev.estado = "OFFLINE"
-                            s_dev.save(update_fields=['estado'])
                         return
 
                     if porcentaje is not None:

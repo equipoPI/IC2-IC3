@@ -863,8 +863,43 @@ class SCADAGateway:
         arduino_status = '✓ Conectado' if stats['arduino'].get('connected') else '✗ Desconectado'
         mqtt_status = '✓ Conectado' if stats['mqtt'].get('connected') else '✗ Desconectado'
         print(f"Arduino: {arduino_status}")
-        print(f"MQTT: {mqtt_status}")
-        print("=" * 60 + "\n")
+    def stop(self):
+        """
+        Detiene todos los componentes del gateway de forma limpia:
+        Desconecta MQTT (enviando status offline), cierra serial Arduino,
+        detiene diagnósticos y guarda eventos pendientes.
+        """
+        logger.info("Deteniendo componentes de SCADAGateway...")
+        self.running = False
+
+        if self.mqtt:
+            try:
+                # Publica explícitamente offline y desconecta socket
+                self.mqtt.disconnect()
+                logger.info("Cliente MQTT desconectado limpiamente con estado OFFLINE")
+            except Exception as e:
+                logger.warning(f"Error desconectando MQTT en stop(): {e}")
+
+        if self.arduino:
+            try:
+                self.arduino.disconnect()
+                logger.info("Conexión serial con Arduino cerrada")
+            except Exception as e:
+                logger.warning(f"Error cerrando Arduino en stop(): {e}")
+
+        if self.diagnostics:
+            try:
+                self.diagnostics.stop()
+            except Exception:
+                pass
+
+        if self.storage:
+            try:
+                self.storage.save_event('system', 'Gateway detenido de forma segura')
+            except Exception:
+                pass
+
+        logger.success("SCADAGateway detenido completamente")
 
 
 def signal_handler(signum, frame):

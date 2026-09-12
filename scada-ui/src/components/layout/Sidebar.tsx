@@ -54,32 +54,25 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
 
         list.forEach((d: any) => {
           const st = String(d.estado || '').toUpperCase();
-          const isExplicitOffline = st.includes('OFF') || st.includes('DESCONECT') || st.includes('INACTIV');
+          const isOnline = st === 'ONLINE' || st === 'ACTIVO' || st === 'OPERATIVO';
 
-          let isRecent = false;
           if (d.ultima_lectura) {
             const ms = new Date(d.ultima_lectura).getTime();
-            if (!isNaN(ms)) {
-              if (ms > latestTimestamp) {
-                latestTimestamp = ms;
-              }
-              if (now - ms <= 60000) {
-                isRecent = true;
-              }
+            if (!isNaN(ms) && ms > latestTimestamp) {
+              latestTimestamp = ms;
             }
           }
 
-          if (!isExplicitOffline && isRecent) {
+          if (isOnline) {
             onlineCount++;
           }
         });
 
         const totalCount = list.length;
-        const finalOnline = onlineCount;
 
         setStats({
           total: totalCount,
-          online: finalOnline,
+          online: onlineCount,
           lastTime: latestTimestamp > 0
             ? new Date(latestTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
             : "Sin señal"

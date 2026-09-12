@@ -106,3 +106,14 @@ Thumbs.db
 desktop.ini
 .project
 .classpath
+
+# ==============================================================================
+# 8. Archivos de Imágenes y Capturas
+# ==============================================================================
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.svg
+!scada-ui/src/**/*.svg

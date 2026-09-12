@@ -91,7 +91,7 @@ const ScadaFlowDiagram = ({
 
   useScadaWebSocket({
     onMessage: () => {
-      if (document.visibilityState === 'visible' && selectedSistema !== 'seleccionar') {
+      if (document.visibilityState === 'visible') {
         loadData();
       }
     }
@@ -101,54 +101,55 @@ const ScadaFlowDiagram = ({
     loadData();
     // Sondeo de alta frecuencia cada 1.5s sincronizado con el ciclo de telemetría de hardware
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible' && selectedSistema !== 'seleccionar') {
+      if (document.visibilityState === 'visible') {
         loadData();
       }
     }, 1500);
     return () => clearInterval(interval);
-  }, [selectedSistema]);
+  }, [selectedSistema, selectedPlanta, selectedSeccion]);
 
 
-  // Filter dispositivos based strictly on selected planta, sección, and sistema
+  // Filter dispositivos based on selected planta, sección, and sistema, with graceful fallback
   const filteredDispositivos = useMemo(() => {
-    if (selectedPlanta === 'seleccionar' || selectedSeccion === 'seleccionar' || selectedSistema === 'seleccionar') {
-      return [];
-    }
-    return dispositivos.filter(d => {
-      if (selectedPlanta !== 'seleccionar') {
+    let result = dispositivos;
+
+    if (selectedPlanta !== 'seleccionar') {
+      const matchPlanta = result.filter(d => {
         const seccionObj = secciones.find(s => String(s.id) === String(d.seccion));
-        if (seccionObj && String(seccionObj.fabrica) !== selectedPlanta) {
-          return false;
-        }
-      }
-      if (selectedSeccion !== 'seleccionar') {
-        if (String(d.seccion) !== selectedSeccion) {
-          return false;
-        }
-      }
-      if (selectedSistema !== 'seleccionar') {
-        if (String(d.sistema) !== selectedSistema) {
-          return false;
-        }
-      }
-      return true;
-    });
+        return seccionObj ? String(seccionObj.fabrica) === selectedPlanta : true;
+      });
+      if (matchPlanta.length > 0) result = matchPlanta;
+    }
+
+    if (selectedSeccion !== 'seleccionar') {
+      const matchSec = result.filter(d => String(d.seccion) === selectedSeccion);
+      if (matchSec.length > 0) result = matchSec;
+    }
+
+    if (selectedSistema !== 'seleccionar') {
+      const matchSys = result.filter(d => String(d.sistema) === selectedSistema);
+      if (matchSys.length > 0) result = matchSys;
+    }
+
+    // Fallback: si el filtro no coincide con nada (o está en 'seleccionar'), usar todos los dispositivos reales disponibles
+    return result.length > 0 ? result : dispositivos;
   }, [dispositivos, selectedPlanta, selectedSeccion, selectedSistema, secciones]);
 
-  // Filter unidades de almacenamiento based on selected planta / seccion
+  // Filter unidades de almacenamiento based on selected planta / seccion, with fallback
   const filteredUnidades = useMemo(() => {
-    if (selectedPlanta === 'seleccionar' || selectedSeccion === 'seleccionar' || selectedSistema === 'seleccionar') {
-      return [];
+    let result = unidadesAlmacenamiento;
+
+    if (selectedSistema !== 'seleccionar') {
+      const matchSys = result.filter(u => u.sistema && String(u.sistema) === selectedSistema);
+      if (matchSys.length > 0) result = matchSys;
     }
-    return unidadesAlmacenamiento.filter(u => {
-      if (selectedSistema !== 'seleccionar' && u.sistema && String(u.sistema) !== selectedSistema) {
-        return false;
-      }
-      if (selectedSeccion !== 'seleccionar' && u.seccion && String(u.seccion) !== selectedSeccion) {
-        return false;
-      }
-      return true;
-    });
+
+    if (selectedSeccion !== 'seleccionar') {
+      const matchSec = result.filter(u => u.seccion && String(u.seccion) === selectedSeccion);
+      if (matchSec.length > 0) result = matchSec;
+    }
+
+    return result.length > 0 ? result : unidadesAlmacenamiento;
   }, [unidadesAlmacenamiento, selectedPlanta, selectedSeccion, selectedSistema]);
 
   const isSelectionIncomplete = selectedPlanta === 'seleccionar' || selectedSeccion === 'seleccionar' || selectedSistema === 'seleccionar';
@@ -173,14 +174,34 @@ const ScadaFlowDiagram = ({
       'bomba_mezcla': { x: 1180, y: 300 },
     };
 
-    // Mapear lecturas directas de sensores de nivel ultrasónicos (en cm de 28cm vacío a 4cm lleno)
-    const levelSensorsMap: Record<string, number> = {};
+    // Mapear lecturas directas de sensores de nivel ultrasónicos (en cm de 28cm vacío a 4cm lleno o porcentaje directo 0-100%)
+    const levelSensorsMap: Record<string, { value: number; unit?: string }> = {};
     filteredDispositivos.forEach(d => {
       const canon = getCanonicalNodeId(d);
-      if (canon === 'sensor_nivel_bombo1') levelSensorsMap['tank-1'] = Number(d.valor_lectura);
-      else if (canon === 'sensor_nivel_bombo2') levelSensorsMap['tank-2'] = Number(d.valor_lectura);
-      else if (canon === 'sensor_nivel_mezcla') levelSensorsMap['tank-3'] = Number(d.valor_lectura);
+      const val = Number(d.valor_lectura);
+      if (canon === 'sensor_nivel_bombo1') levelSensorsMap['tank-1'] = { value: val, unit: d.unidad_lectura };
+      else if (canon === 'sensor_nivel_bombo2') levelSensorsMap['tank-2'] = { value: val, unit: d.unidad_lectura };
+      else if (canon === 'sensor_nivel_mezcla') levelSensorsMap['tank-3'] = { value: val, unit: d.unidad_lectura };
     });
+
+    const computeTankLevel = (info?: { value: number; unit?: string }, unitObj?: any, fallback = 50) => {
+      if (info !== undefined && !isNaN(info.value)) {
+        const val = info.value;
+        if (info.unit === '%' || (val > 35 && val <= 100)) {
+          return Math.round(Math.max(0, Math.min(100, val)));
+        }
+        if (val > 0 && val <= 35) {
+          // Sensor ultrasónico calibrado (28cm = 0%, 4cm = 100%)
+          return Math.round(Math.max(0, Math.min(100, ((28.0 - val) * 100.0) / 24.0)));
+        }
+        if (val === 0) return 0;
+        return Math.round(Math.max(0, Math.min(100, val)));
+      }
+      if (unitObj && unitObj.capacidad && unitObj.capacidad > 0) {
+        return Math.round(Math.max(0, Math.min(100, ((unitObj.volumen_actual || 0) / unitObj.capacidad) * 100)));
+      }
+      return fallback;
+    };
 
     const findDevice = (canonicalId: string) => {
       return filteredDispositivos.find(d => getCanonicalNodeId(d) === canonicalId || d.numero_serie === canonicalId);
@@ -262,13 +283,7 @@ const ScadaFlowDiagram = ({
     // 5. TANQUE A (tank-1)
     const unit1 = findUnit('tank-1');
     const cap1 = unit1?.capacidad || 1000;
-    const rawDist1 = levelSensorsMap['tank-1'];
-    let level1 = 50;
-    if (rawDist1 !== undefined && rawDist1 > 0 && rawDist1 <= 35) {
-      level1 = Math.round(Math.max(0, Math.min(100, (28.0 - rawDist1) * 100.0 / 24.0)));
-    } else if (unit1 && unit1.capacidad) {
-      level1 = Math.round(((unit1.volumen_actual || 0) / unit1.capacidad) * 100);
-    }
+    const level1 = computeTankLevel(levelSensorsMap['tank-1'], unit1, 50);
     nodesList.push({
       id: 'tank-1',
       type: 'tank',
@@ -307,13 +322,7 @@ const ScadaFlowDiagram = ({
     // 7. TANQUE B (tank-2)
     const unit2 = findUnit('tank-2');
     const cap2 = unit2?.capacidad || 800;
-    const rawDist2 = levelSensorsMap['tank-2'];
-    let level2 = 45;
-    if (rawDist2 !== undefined && rawDist2 > 0 && rawDist2 <= 35) {
-      level2 = Math.round(Math.max(0, Math.min(100, (28.0 - rawDist2) * 100.0 / 24.0)));
-    } else if (unit2 && unit2.capacidad) {
-      level2 = Math.round(((unit2.volumen_actual || 0) / unit2.capacidad) * 100);
-    }
+    const level2 = computeTankLevel(levelSensorsMap['tank-2'], unit2, 45);
     nodesList.push({
       id: 'tank-2',
       type: 'tank',
@@ -439,13 +448,7 @@ const ScadaFlowDiagram = ({
     // 14. TANQUE SALIDA / MEZCLA (tank-3)
     const unit3 = findUnit('tank-3');
     const cap3 = unit3?.capacidad || 1500;
-    const rawDist3 = levelSensorsMap['tank-3'];
-    let level3 = 30;
-    if (rawDist3 !== undefined && rawDist3 > 0 && rawDist3 <= 35) {
-      level3 = Math.round(Math.max(0, Math.min(100, (28.0 - rawDist3) * 100.0 / 24.0)));
-    } else if (unit3 && unit3.capacidad) {
-      level3 = Math.round(((unit3.volumen_actual || 0) / unit3.capacidad) * 100);
-    }
+    const level3 = computeTankLevel(levelSensorsMap['tank-3'], unit3, 30);
     nodesList.push({
       id: 'tank-3',
       type: 'tank',
@@ -698,7 +701,7 @@ const ScadaFlowDiagram = ({
         hasAnyChange = true;
         return {
           ...prev,
-          data: fresh.data // Keep position intact!
+          data: { ...fresh.data, _ts: Date.now() } // Keep position intact, update data and force ReactFlow node re-render
         };
       });
 

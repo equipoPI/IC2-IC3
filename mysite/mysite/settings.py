@@ -45,6 +45,7 @@ USE_X_FORWARDED_PORT = True
 INSTALLED_APPS = [
     'daphne',
     'channels',
+    'django_extensions',
     'polls.apps.PollsConfig',
     'django.contrib.admin',
     'django.contrib.auth',

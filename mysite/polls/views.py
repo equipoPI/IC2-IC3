@@ -10,7 +10,7 @@ from django.middleware.csrf import get_token
 from django.contrib.auth.models import User
 from allauth.account.models import EmailConfirmation, EmailAddress
 
-from django.db.models import Q
+from django.db.models import Q, Count
 # --- Importaciones de Django REST Framework ---
 from rest_framework import status, viewsets, permissions, generics
 from rest_framework.decorators import api_view, permission_classes, action
@@ -784,20 +784,59 @@ class RegistroAuditoriaViewSet(viewsets.ModelViewSet):
         if fecha_hasta:
             queryset = queryset.filter(timestamp__lte=fecha_hasta)
             
-        # Filtros de módulo y acción manuales
+        # Filtros de módulo y acción con soporte flexible
         modulo = self.request.query_params.get('modulo')
         accion = self.request.query_params.get('accion')
         sistema_id = self.request.query_params.get('sistema_id')
-        if modulo:
-            queryset = queryset.filter(modulo=modulo)
-        if accion:
-            queryset = queryset.filter(accion=accion)
+
+        if modulo and modulo != 'todos':
+            if modulo == 'COMANDOS_SCADA':
+                queryset = queryset.filter(modulo__in=['SCADA', 'SCADA_WEBSOCKET'])
+            elif modulo in ['Plantas', 'Plantas Industriales', 'Plantas Industrial']:
+                queryset = queryset.filter(modulo__icontains='Planta')
+            elif modulo in ['Secciones', 'Secciones de Planta']:
+                queryset = queryset.filter(modulo__icontains='Seccion')
+            elif modulo in ['Empleados', 'Gestión de Personal / Empleados']:
+                queryset = queryset.filter(modulo__icontains='Empleado')
+            elif modulo in ['Inventario', 'Inventario / Almacenamiento', 'Inventario / Tanques y Almacenes']:
+                queryset = queryset.filter(modulo__icontains='Inventario')
+            elif modulo in ['Dispositivos SCADA', 'Dispositivos y Actuadores SCADA']:
+                queryset = queryset.filter(Q(modulo__icontains='Dispositivo') | Q(modulo='Dispositivos SCADA'))
+            elif modulo in ['Comunicaciones MQTT', 'Comunicaciones y Brokers MQTT']:
+                queryset = queryset.filter(modulo__icontains='Comunicaciones')
+            else:
+                if queryset.filter(modulo=modulo).exists():
+                    queryset = queryset.filter(modulo=modulo)
+                else:
+                    queryset = queryset.filter(modulo__icontains=modulo)
+
+        if accion and accion != 'todas':
+            if accion == 'COMANDOS':
+                queryset = queryset.filter(
+                    Q(accion__startswith='CONTROL_') | 
+                    Q(accion__startswith='WS_') | 
+                    Q(accion__startswith='COMANDO_') | 
+                    Q(accion__startswith='FRENO_') |
+                    Q(accion='EJECUCION_PLANTILLA')
+                )
+            elif accion == 'SEGURIDAD':
+                queryset = queryset.filter(
+                    accion__in=['Inicio de Sesión', 'Cierre de Sesión', 'Registro', 'Cambio de Contraseña']
+                )
+            elif accion == 'CRUD':
+                queryset = queryset.filter(accion__in=['Creación', 'Modificación', 'Eliminación'])
+            else:
+                if queryset.filter(accion=accion).exists():
+                    queryset = queryset.filter(accion=accion)
+                else:
+                    queryset = queryset.filter(accion__icontains=accion)
+
         if sistema_id and sistema_id != 'seleccionar':
             try:
                 s_id = int(sistema_id)
-                queryset = queryset.filter(Q(datos__sistema_id=s_id) | Q(modulo__in=['SCADA', 'PRODUCCION']))
+                queryset = queryset.filter(Q(datos__sistema_id=s_id) | Q(modulo__in=['SCADA', 'PRODUCCION', 'SCADA_WEBSOCKET']))
             except (ValueError, TypeError):
-                queryset = queryset.filter(modulo__in=['SCADA', 'PRODUCCION'])
+                queryset = queryset.filter(modulo__in=['SCADA', 'PRODUCCION', 'SCADA_WEBSOCKET'])
             
         return queryset
     
@@ -807,6 +846,24 @@ class RegistroAuditoriaViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         # List/retrieve: administradores y rangos autorizados de gestión
         return [IsAuthenticated(), CanViewAudit()]
+
+    @action(detail=False, methods=['get'])
+    def opciones_filtro(self, request):
+        """Devuelve los módulos y acciones disponibles en el sistema con sus conteos."""
+        modulos = list(
+            models.RegistroAuditoria.objects.values('modulo')
+            .annotate(total=Count('id'))
+            .order_by('-total')
+        )
+        acciones = list(
+            models.RegistroAuditoria.objects.values('accion')
+            .annotate(total=Count('id'))
+            .order_by('-total')
+        )
+        return Response({
+            'modulos': modulos,
+            'acciones': acciones
+        })
 
     @action(detail=False, methods=['post'])
     def transmitir(self, request):

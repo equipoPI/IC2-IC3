@@ -164,45 +164,25 @@ Una ventaja importante es que el frontend no necesita conocer directamente cómo
 
 ---
 
-## 7. Infraestructura y Contenedores
-Docker Compose actúa como capa de orquestación[cite: 3]. El archivo `docker-compose.yml` define servicios independientes para PostgreSQL, backend, worker MQTT, frontend, Mosquitto y túnel Ngrok[cite: 3].
-
-| Servicio | Función | Puerto principal | Protocolo | Descripción |
-| :--- | :--- | :--- | :--- | :--- |
-| **scada_frontend** | Servidor frontend[cite: 3] | 5173[cite: 3] | HTTP / WS[cite: 3] | Interfaz Web React (Vite dev server)[cite: 3] |
-| **scada_backend** | Backend API[cite: 3] | 8000[cite: 3] | HTTP / WS[cite: 3] | Django REST + Daphne (Channels)[cite: 3] |
-| **scada_db** | Base de datos[cite: 3] | 5432[cite: 3] | TCP[cite: 3] | PostgreSQL 15[cite: 3] |
-| **scada_mqtt_worker** | Ingesta asíncrona[cite: 3] | Interno[cite: 3] | TCP | Worker de ingesta MQTT continuo[cite: 3] |
-| **scada_mosquitto** | Broker MQTT[cite: 3] | 1883[cite: 3] | MQTT / WS[cite: 3] | Broker con autenticación passwd y WS (9001)[cite: 3] |
-| **scada_ngrok** | Túnel seguro[cite: 3] | Externo[cite: 3] | HTTPS[cite: 3] | Túnel público Ngrok para acceso remoto[cite: 3] |
-
-![Figura 7. Stack de servicios con Docker Compose](Figura_7_Docker.png)[cite: 3]  
-*Figura 7. Stack de servicios con Docker Compose.*[cite: 3]
-
-> **[ESPACIO PARA INSERTAR IMAGEN] Figura 3. Stack Docker Compose en Ejecución**[cite: 3]  
-> *Captura de terminal con `docker compose ps` mostrando los seis contenedores con estado `Up` y sus puertos expuestos.*[cite: 3]
-
----
-
-## 8. Capa Física y Gateway Raspberry Pi
+## 7. Capa Física y Gateway Raspberry Pi
 La incorporación de una Raspberry Pi 4 con 8 GB de RAM es uno de los cambios estructurales de la nueva etapa[cite: 3]. Su función es actuar como gateway IoT entre el Arduino y la infraestructura de red[cite: 3]. El Arduino conserva la responsabilidad de adquirir variables y accionar dispositivos; la Raspberry administra comunicaciones, almacenamiento y enrutamiento[cite: 3].
 
 El firmware actual reemplaza el enlace Bluetooth por comunicación Serial USB[cite: 3]. La configuración define 115200 baudios, frente a los 9600 baudios utilizados por el enlace Bluetooth del prototipo original[cite: 3].
 
-El gateway se divide en `arduino_serial.py`, `mqtt_client.py`, `data_storage.py` y `gateway_main.py`[cite: 3]. El primero administra el puerto serie mediante colas y callbacks; el segundo gestiona MQTT; el tercero conserva los parámetros que pueden modificarse mediante la interfaz; el cuarto monitorea recursos; y el último coordina los componentes y sus políticas de recuperación[cite: 3].
+El gateway se divide en cinco módulos principales: `arduino_serial.py`, `mqtt_client.py`, `data_storage.py`, `system_diagnostics.py` y `gateway_main.py` (además de `gui.py` para la interfaz gráfica táctil local)[cite: 3]. El primero administra el puerto serie mediante colas y callbacks; el segundo gestiona MQTT; el tercero conserva los parámetros que pueden modificarse mediante la interfaz; el cuarto monitorea recursos; y el último coordina los componentes y sus políticas de recuperación[cite: 3].
 
 ![Figura 3. Arquitectura interna del Gateway (Raspberry Pi 4)](Figura_3_Gateway.png)[cite: 3]  
 *Figura 3. Arquitectura interna del Gateway (Raspberry Pi 4).*[cite: 3]
 
 La separación permite que una interrupción de red no implique necesariamente detener el control local[cite: 3]. El Arduino puede seguir operando mientras la Raspberry reintenta conexiones, conserva información y restablece el vínculo con el broker[cite: 3].
 
-### 8.1 Migración Bluetooth → Serial USB
+### 7.1 Migración Bluetooth → Serial USB
 La versión IC1 utilizaba HC-05 y una trama ASCII con comandos y valores[cite: 3]. La versión actual mantiene la compatibilidad con esos comandos a nivel del Arduino, pero traslada la comunicación inalámbrica a una capa de red gestionada por el gateway[cite: 3]. Esto reduce el acoplamiento entre la interfaz y el controlador[cite: 3].
 
-### 8.2 Almacenamiento y diagnóstico local
+### 7.2 Almacenamiento y diagnóstico local
 El archivo de configuración del gateway define SQLite con el fin de guardar configuraciones del dispositivo, las cuales luego se usarán para recrear tópicos y hacer efectiva la comunicación[cite: 3]. Dentro de la configuración que permite guardar están: IP del broker, credenciales de conexión (usuario y contraseña), puerto, tenant/empresa, sector (lugar dentro de la empresa) y nombre del sistema representado[cite: 3].
 
-### 8.3 Componentes físicos y función dentro del sistema
+### 7.3 Componentes físicos y función dentro del sistema
 La arquitectura de software no puede analizarse separada de la instalación física que da origen a los datos[cite: 3]. La versión actual conserva los principales componentes descritos en el informe de IC1, pero cambia la forma en que se integran con la red[cite: 3]:
 
 * **Sensores de nivel HC-SR04:** Estiman el nivel de líquido emitiendo ultrasonido y midiendo el tiempo de retorno del eco[cite: 3]. El Arduino convierte tiempo a distancia y luego a porcentaje de llenado (rango aprox. 2 a 400 cm a 40 kHz)[cite: 3]. Intervienen en decisiones críticas de control (protección por sobrellenado o alarma por nivel bajo)[cite: 3].
@@ -242,50 +222,12 @@ La arquitectura de software no puede analizarse separada de la instalación fís
 | **Arduino** | Control local[cite: 3] | Mantiene lógica del proceso[cite: 3] |
 | **Raspberry Pi** | Gateway[cite: 3] | Adapta serial, MQTT, almacenamiento y diagnóstico[cite: 3] |
 
-### 8.4 Protocolo serial entre Arduino y Gateway
-El enlace serial conserva una interfaz textual simple (/dev/ttyACM0, 115200 baud, timeout de 1 s)[cite: 3]. El Arduino envía `ARDUINO_READY` al iniciar y luego transmite las variables[cite: 3]. El gateway mantiene un buffer y colas de comunicación (`Queue`), desacoplando lectura y escritura antes de la publicación MQTT[cite: 3].
+### 7.4 Protocolo serial entre Arduino y Gateway
+El firmware del microcontrolador (`Sistema_SCADA_Serial.ino`) conserva una interfaz textual simple y estructurada (/dev/ttyACM0, 115200 baud, timeout de 1 s)[cite: 3]. El Arduino envía `ARDUINO_READY` al iniciar y luego transmite las variables[cite: 3]. El gateway mantiene un buffer y colas de comunicación (`Queue`), desacoplando lectura y escritura antes de la publicación MQTT[cite: 3].
 
 ---
 
-## 9. Backend: Django, API REST y Modelo de Datos
-![Figura 4. Flujo bidireccional de telemetría y comandos](Figura_4_Flujo.png)[cite: 3]  
-*Figura 4. Flujo bidireccional de telemetría y comandos.*[cite: 3]
-
-El backend está organizado como una aplicación Django con Django REST Framework (DRF)[cite: 3]. Entre los recursos expuestos se encuentran fábricas, secciones, sistemas, dispositivos, configuraciones MQTT, auditoría y mapeos de acciones[cite: 3].
-
-### 9.1 Lógica de negocio y autorización
-El modelo `Fabrica` contiene nombre, ubicación, país y métricas SCADA agregadas (producción, eficiencia, temperatura, consumo y alarmas)[cite: 3]. El método `actualizar_metricas()` encapsula reglas de negocio modificando el estado de la planta a OPERATIVO, ADVERTENCIA o CRÍTICO según la severidad de alarmas activas[cite: 3].
-
-El modelo `Empleado` vincula al usuario de Django con una planta/sección y utiliza el campo `rango` como fuente de autorización para derivar perfiles (administrador, manager u operador)[cite: 3].
-
-### 9.2 Publicación MQTT desde la API (Trade-off de latencia)
-Cuando el usuario ejecuta una acción desde la interfaz, Django recibe una petición HTTP y delega la publicación MQTT a un hilo daemon (`threading.Thread`) para no bloquear la respuesta HTTP[cite: 3]. 
-
-Este mecanismo implementa un patrón *fire-and-forget*: prioriza una baja latencia percibida por el operador, pero para entornos productivos de alta criticidad requiere complementarse con confirmación física explícita (handshake ACK retornado por el actuador)[cite: 3].
-
-### 9.3 Modelo de Datos Principal (ER)
-![Figura 8. Modelo de datos principal (ER)](Figura_8_ERD.png)[cite: 3]  
-*Figura 8. Modelo de datos principal (ER).*[cite: 3]
-
-| Entidad | Relación / Responsabilidad |
-| :--- | :--- |
-| **Fabrica** | Representa una planta y concentra métricas SCADA[cite: 3] |
-| **Seccion** | Agrupa áreas físicas dentro de una fábrica[cite: 3] |
-| **Sistema** | Representa una línea o proceso industrial[cite: 3] |
-| **DispositivoSCADA** | Representa sensores y actuadores[cite: 3] |
-| **LecturaSensor** | Registra mediciones históricas[cite: 3] |
-| **Alarma** | Representa condiciones anómalas de operación[cite: 3] |
-| **Receta / DetalleReceta** | Define combinaciones e insumos parametrizados[cite: 3] |
-| **OrdenProduccion** | Representa una ejecución productiva planificada[cite: 3] |
-| **Inventario / ItemInventario**| Control de existencias y almacenamiento de insumos[cite: 3] |
-| **Empleado / Profile** | Usuarios, rangos jerárquicos y permisos[cite: 3] |
-
-> **[ESPACIO PARA INSERTAR IMAGEN] Figura 7. Respuesta JSON de la API REST**[cite: 3]  
-> *Captura de Postman o del DRF Browsable API mostrando una petición GET a `/api/fabricas/` con su respuesta JSON estructurada.*[cite: 3]
-
----
-
-## 10. Comunicaciones MQTT y Jerarquía de Tópicos
+## 8. Comunicaciones MQTT y Jerarquía de Tópicos
 ![Figura 5. Jerarquía de tópicos MQTT](Figura_5_Topicos.png)[cite: 3]  
 *Figura 5. Jerarquía de tópicos MQTT.*[cite: 3]
 
@@ -310,7 +252,7 @@ El sistema organiza las comunicaciones en dos formatos estructurados:
 
 ---
 
-## 11. Worker MQTT e Ingesta de Telemetría
+## 9. Worker MQTT e Ingesta de Telemetría
 El archivo `mqtt_worker.py` implementa un proceso en segundo plano encargado de conectarse al broker, suscribirse a los tópicos y procesar mensajes[cite: 3].
 * **Suscripción wildcard (`#`):** Permite capturar todos los tópicos entrantes facilitando el auto-descubrimiento en desarrollo[cite: 3].
 * **Auto-descubrimiento:** Si el worker recibe telemetría de un dispositivo o sección que aún no está dado de alta en la base de datos, lo crea automáticamente[cite: 3].
@@ -319,8 +261,54 @@ El archivo `mqtt_worker.py` implementa un proceso en segundo plano encargado de 
 
 ---
 
-## 12. WebSockets y Tiempo Real
-Django Channels implementa el consumidor asíncrono `SCADAConsumer`, el cual agrupa a los navegadores en el grupo `scada_telemetry`[cite: 3]. El método `scada_update` recibe eventos generados por el backend y los transmite como JSON al cliente[cite: 3].
+## 10. Backend: Django, API REST y Modelo de Datos
+![Figura 4. Flujo bidireccional de telemetría y comandos](Figura_4_Flujo.png)[cite: 3]  
+*Figura 4. Flujo bidireccional de telemetría y comandos.*[cite: 3]
+
+El backend está organizado como una aplicación Django con Django REST Framework (DRF)[cite: 3]. Entre los recursos expuestos se encuentran fábricas, secciones, sistemas, dispositivos, configuraciones MQTT, auditoría y mapeos de acciones[cite: 3].
+
+### 10.1 Lógica de negocio y autorización
+El modelo `Fabrica` contiene nombre, ubicación, país y métricas SCADA agregadas (producción, eficiencia, temperatura, consumo y alarmas)[cite: 3]. El método `actualizar_metricas()` encapsula reglas de negocio modificando el estado de la planta a OPERATIVO, ADVERTENCIA o CRÍTICO según la severidad de alarmas activas[cite: 3].
+
+El modelo `Empleado` vincula al usuario de Django con una planta/sección y utiliza el campo `rango` como fuente de autorización para derivar perfiles (administrador, manager u operador)[cite: 3].
+
+### 10.2 Despacho de Comandos: Arquitectura Híbrida (WebSocket Directo vs. API REST)
+El sistema implementa una **arquitectura de doble canal** para el despacho de comandos de control industrial desde la interfaz de usuario:
+
+1. **Canal Reactivo WebSocket (Ultra-baja latencia, prioritario):**
+   * Cuando el operador acciona un control en la interfaz, el comando viaja directamente en formato JSON a través del canal bidireccional WebSocket ya establecido hacia `SCADAConsumer` (`consumers.py`)[cite: 3].
+   * La función `SCADAConsumer.receive` parsea el mensaje (`msg_type: "command"`), resuelve dinámicamente el tópico correspondiente según el dispositivo y despacha de forma asíncrona la publicación al broker Mosquitto mediante `_publish_mqtt_single`[cite: 3].
+   * De manera simultánea, genera una entrada transaccional en `RegistroAuditoria` (almacenando usuario, acción, payload y timestamp) y emite un acuse de recibo inmediato (`command_ack`) hacia el cliente web con una latencia típica inferior a **15 ms**[cite: 3].
+
+2. **Canal API REST (Fallback y Acceso Externo):**
+   * Como mecanismo de respaldo y punto de integración para sistemas de terceros, se dispone del endpoint HTTP POST (`/api/scada/transmitir_comando/` y `/api/scada/accion_comando/`)[cite: 3].
+   * Para evitar bloquear la respuesta HTTP ante la comunicación de red con el broker, la publicación MQTT se delega a un hilo daemon concurrente (`threading.Thread`)[cite: 3].
+   * Este canal aplica un patrón *fire-and-forget*, garantizando una respuesta inmediata al cliente HTTP mientras el hilo secundario ejecuta la entrega del paquete MQTT[cite: 3].
+
+### 10.3 Modelo de Datos Principal (ER)
+![Figura 8. Modelo de datos principal (ER)](Figura_8_ERD.png)[cite: 3]  
+*Figura 8. Modelo de datos principal (ER).*[cite: 3]
+
+| Entidad | Relación / Responsabilidad |
+| :--- | :--- |
+| **Fabrica** | Representa una planta y concentra métricas SCADA[cite: 3] |
+| **Seccion** | Agrupa áreas físicas dentro de una fábrica[cite: 3] |
+| **Sistema** | Representa una línea o proceso industrial[cite: 3] |
+| **DispositivoSCADA** | Representa sensores y actuadores[cite: 3] |
+| **LecturaSensor** | Registra mediciones históricas[cite: 3] |
+| **Alarma** | Representa condiciones anómalas de operación[cite: 3] |
+| **Receta / DetalleReceta** | Define combinaciones e insumos parametrizados[cite: 3] |
+| **OrdenProduccion** | Representa una ejecución productiva planificada[cite: 3] |
+| **Inventario / ItemInventario**| Control de existencias y almacenamiento de insumos[cite: 3] |
+| **Empleado / Profile** | Usuarios, rangos jerárquicos y permisos[cite: 3] |
+
+> **[ESPACIO PARA INSERTAR IMAGEN] Figura 7. Respuesta JSON de la API REST**[cite: 3]  
+> *Captura de Postman o del DRF Browsable API mostrando una petición GET a `/api/fabricas/` con su respuesta JSON estructurada.*[cite: 3]
+
+---
+
+## 11. WebSockets y Tiempo Real
+Django Channels implementa el consumidor asíncrono `SCADAConsumer`, que gestiona una conexión dúplex completa: en sentido descendente agrupa a los navegadores en el grupo `scada_telemetry` transmitiendo eventos mediante `scada_update`, y en sentido ascendente procesa comandos de control en tiempo real mediante `receive`[cite: 3].
 
 En el frontend, el hook personalizado `useScadaWebSocket`:
 * Selecciona dinámicamente `ws://` o `wss://` según el protocolo de la página[cite: 3].
@@ -329,7 +317,7 @@ En el frontend, el hook personalizado `useScadaWebSocket`:
 
 ---
 
-## 13. Frontend React + TypeScript
+## 12. Frontend React + TypeScript
 Construido con React 18, TypeScript, Vite y Tailwind CSS[cite: 3].
 
 | Página (TSX) | Funcionalidad |
@@ -339,7 +327,7 @@ Construido con React 18, TypeScript, Vite y Tailwind CSS[cite: 3].
 | `PlanificacionProduccion.tsx`[cite: 3] | Diagrama de Gantt, calendario mensual y ejecución de recetas[cite: 3] |
 | `MonitorizacionSCADA.tsx`[cite: 3] | Gráficos Recharts en tiempo real y panel de alarmas[cite: 3] |
 | `AdministracionAlmacenamiento.tsx`[cite: 3]| Gestión de tanques, bombos y reposición automática[cite: 3] |
-| `CredencialesPermisos.tsx`[cite: 3] | Claves de registro, passwd Mosquitto y matriz de roles 1-8[cite: 3] |
+| `Credenciales.tsx`[cite: 3] | Claves de registro, passwd Mosquitto y matriz de roles 1-8[cite: 3] |
 
 > **[ESPACIO PARA INSERTAR IMAGEN] Figura 9. Página VisualizacionSCADA - Diagrama P&ID en Vivo**[cite: 3]  
 > *Captura de pantalla de la página VisualizacionSCADA con componentes en vivo (sensores, bombas, tanques animados).*[cite: 3]
@@ -349,15 +337,29 @@ Construido con React 18, TypeScript, Vite y Tailwind CSS[cite: 3].
 
 ---
 
-## 14. Visualización P&ID y Experiencia SCADA
-El componente `ScadaFlowDiagram` representa visualmente el proceso[cite: 3]. Integra:
-* Tanques con niveles porcentuales y volumétricos animados[cite: 3].
-* Bombas y electroválvulas con indicación cromática de estado (activo/inactivo/falla)[cite: 3].
-* Controles operativos directos para usuarios autorizados[cite: 3].
+## 13. Visualización P&ID y Gemelo Digital
+La representación gráfica del proceso industrial se implementa en la página `VisualizacionSCADA.tsx` (ruta `/scada`), cuyo núcleo visual es el componente `ScadaFlowDiagram.tsx`, desarrollado sobre la biblioteca especializada `@xyflow/react` (React Flow)[cite: 3].
+
+### 13.1 Arquitectura de Nodos Industriales Personalizados
+En lugar de componentes estáticos genéricos, el diagrama se compone de **nodos SVG customizados** (`src/components/scada/nodes/`) que reaccionan directamente a los estados del modelo de telemetría:
+
+* **`TankNode.tsx` (Tanques de Reposición y Mezcla):** Representa los depósitos físicos con cálculo volumétrico dinámico. Incluye animación visual SVG/CSS de llenado de líquido en gradiente según el porcentaje de nivel reportado por los sensores ultrasónicos HC-SR04, junto con indicadores de alarma por sobrellenado o vaciado[cite: 3].
+* **`PumpNode.tsx` (Bombas Centrífugas y Dosificadoras):** Representa las bombas de trasvase con animación giratoria de rotor cuando están en funcionamiento. Emplea codificación cromática estándar industrial: verde (activa/en marcha), gris oscuro (detenida/standby) y rojo pulsante (falla o disparo de protección)[cite: 3].
+* **`ValveNode.tsx` (Electroválvulas Solenoide):** Representa las válvulas de paso y desvío de fluidos con animación de apertura/cierre y cambio dinámico de estado cromático[cite: 3].
+* **`MixerNode.tsx` (Agitador Industrial):** Modela el motor DC de paleta mezcladora en el bombo central, mostrando animación continua de rotación durante los ciclos de agitación temporizados de la receta[cite: 3].
+* **`SensorNode.tsx` (Transmisores de Nivel y Flujo):** Módulos de lectura digital que exhiben en pantalla los valores numéricos normalizados de caudal (L/min) y nivel porcentual (%)[cite: 3].
+
+### 13.2 Tuberías Dinámicas (Edges Reactivos) y Modales de Control
+* **Flujo de Fluidos Animado:** Las interconexiones de tuberías (aristas/edges de React Flow) incorporan la propiedad reactiva `animated: true`. Un algoritmo de propagación de estado activa el desplazamiento visual de partículas CSS únicamente cuando las bombas impulsoras y las electroválvulas de la línea correspondiente se encuentran abiertas y activas[cite: 3].
+* **Modales Operativos Parametrizados:** La interfaz desacopla la supervisión gráfica de la parametrización avanzada mediante modales especializados:
+  * `ControlRecetaLiquidosModal.tsx`: Permite configurar dosificación de componentes A y B, tiempos de mezcla y consignas de producción[cite: 3].
+  * `ControlReposicionModal.tsx`: Permite disparar la recarga controlada de tanques con tope porcentual de seguridad y parada de emergencia inmediata (`Freno Reposición`)[cite: 3].
+  * `GestorComandosModal.tsx` y `ControlDinamicoModal.tsx`: Proveen consolas manuales para mantenimiento y accionamiento directo de actuadores por parte de usuarios con rango de autorización suficiente[cite: 3].
+* **Integración Macro-Planta:** Mediante `VistaMacroPlanta.tsx`, el operador puede alternar entre la visión global de la planta (fábricas, secciones y líneas de proceso) y el gemelo digital P&ID focalizado en un sistema específico[cite: 3].
 
 ---
 
-## 15. Planificación, Recetas e Inventario
+## 14. Planificación, Recetas e Inventario
 * **Recetas:** `Receta` y `DetalleReceta` permiten parametrizar volúmenes y tiempos de mezclado[cite: 3].
 * **Producción:** `OrdenProduccion` independiza la formulación de su ejecución física, admitiendo estados de progreso y auditoría[cite: 3].
 * **Inventario:** `Inventario` e `ItemInventario` asocian existencias de insumos a plantas y secciones físicas[cite: 3].
@@ -370,16 +372,36 @@ El componente `ScadaFlowDiagram` representa visualmente el proceso[cite: 3]. Int
 
 ---
 
-## 16. Seguridad, Credenciales y Acceso Remoto
+## 15. Seguridad, Credenciales y Acceso Remoto
 * **Control de acceso:** Matriz jerárquica de rangos del 1 al 8 modelada en `Empleado`[cite: 3].
 * **Broker MQTT:** Autenticación local mediante fichero `passwd`[cite: 3].
 * **Acceso remoto:** Integración del túnel **Ngrok** en Docker Compose para exponer la interfaz web mediante HTTPS sin necesidad de abrir puertos (port forwarding) en el router local[cite: 3].
 
 > **[ESPACIO PARA INSERTAR IMAGEN] Figura 12. Matriz de Roles y Gestión de Credenciales**[cite: 3]  
-> *Captura de la página CredencialesPermisos mostrando la matriz de acceso por rangos 1-8 y usuarios Mosquitto.*[cite: 3]
+> *Captura de la página Credenciales (`Credenciales.tsx`) mostrando la matriz de acceso por rangos 1-8 y usuarios Mosquitto.*[cite: 3]
 
 > **[ESPACIO PARA INSERTAR IMAGEN] Figura 13. Túnel Ngrok en Funcionamiento**[cite: 3]  
 > *Captura del navegador accediendo a la URL pública HTTPS de Ngrok mostrando el frontend cargado remotamente.*[cite: 3]
+
+---
+
+## 16. Infraestructura de Virtualización y Despliegue
+Docker Compose actúa como capa de orquestación[cite: 3]. El archivo `docker-compose.yml` define servicios independientes para PostgreSQL, backend, worker MQTT, frontend, Mosquitto y túnel Ngrok[cite: 3].
+
+| Servicio Compose | Contenedor Docker | Puerto principal | Protocolo | Descripción |
+| :--- | :--- | :--- | :--- | :--- |
+| **frontend** | `scada_frontend`[cite: 3] | 5173:5173[cite: 3] | HTTP / WS[cite: 3] | Interfaz Web React (Vite dev server)[cite: 3] |
+| **backend** | `scada_backend`[cite: 3] | 8000:8000[cite: 3] | HTTP / WS[cite: 3] | Django REST + Daphne ASGI (Channels)[cite: 3] |
+| **db** | `scada_postgres`[cite: 3] | 5432:5432[cite: 3] | TCP[cite: 3] | PostgreSQL 15 (persistencia relacional)[cite: 3] |
+| **mqtt_worker** | `scada_mqtt_worker`[cite: 3] | Interno (bridge)[cite: 3]| TCP[cite: 3] | Ingesta asíncrona y auto-descubrimiento[cite: 3] |
+| **mosquitto** | `scada_mqtt_broker`[cite: 3] | 1883 / 9001[cite: 3] | MQTT / WS[cite: 3] | Eclipse Mosquitto con autenticación passwd[cite: 3] |
+| **ngrok** | `scada_ngrok`[cite: 3] | Externo (cloud)[cite: 3]| HTTPS[cite: 3] | Túnel público Ngrok para acceso seguro remoto[cite: 3] |
+
+![Figura 7. Stack de servicios con Docker Compose](Figura_7_Docker.png)[cite: 3]  
+*Figura 7. Stack de servicios con Docker Compose.*[cite: 3]
+
+> **[ESPACIO PARA INSERTAR IMAGEN] Figura 3. Stack Docker Compose en Ejecución**[cite: 3]  
+> *Captura de terminal con `docker compose ps` mostrando los seis contenedores con estado `Up` y sus puertos expuestos.*[cite: 3]
 
 ---
 

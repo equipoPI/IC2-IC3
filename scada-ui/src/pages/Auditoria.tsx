@@ -56,19 +56,35 @@ type SortField = "id" | "fechaHora" | "usuario" | "accion" | "modulo";
 type SortDirection = "asc" | "desc";
 
 const getAccionColor = (accion: string) => {
-  const colors: Record<string, string> = {
-    "Creación": "bg-success/20 text-success border-success/30",
-    "Modificación": "bg-blue-500/20 text-blue-400 border-blue-500/30",
-    "Eliminación": "bg-destructive/20 text-destructive border-destructive/30",
-    "Alarma": "bg-warning/20 text-warning border-warning/30",
-    "Inicio de Sesión": "bg-purple-500/20 text-purple-400 border-purple-500/30",
-    "Inicio Sesión": "bg-purple-500/20 text-purple-400 border-purple-500/30",
-    "Backup": "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-  };
-  const foundKey = Object.keys(colors).find(key => 
-    accion.toLowerCase().includes(key.toLowerCase())
-  );
-  return foundKey ? colors[foundKey] : "bg-muted text-muted-foreground";
+  const upper = accion.toUpperCase();
+  if (upper.includes("CREACIÓN") || upper.includes("CREACION")) {
+    return "bg-success/20 text-success border-success/30 font-medium";
+  }
+  if (upper.includes("MODIFICACIÓN") || upper.includes("MODIFICACION")) {
+    return "bg-blue-500/20 text-blue-400 border-blue-500/30 font-medium";
+  }
+  if (upper.includes("ELIMINACIÓN") || upper.includes("ELIMINACION")) {
+    return "bg-destructive/20 text-destructive border-destructive/30 font-medium";
+  }
+  if (upper.includes("ALARMA")) {
+    return "bg-warning/20 text-warning border-warning/30 font-medium";
+  }
+  if (upper.includes("INICIO") && upper.includes("SESI")) {
+    return "bg-purple-500/20 text-purple-400 border-purple-500/30 font-medium";
+  }
+  if (upper.includes("CIERRE") && upper.includes("SESI")) {
+    return "bg-slate-500/20 text-slate-400 border-slate-500/30 font-medium";
+  }
+  if (upper.includes("FRENO")) {
+    return "bg-amber-500/20 text-amber-400 border-amber-500/30 font-bold";
+  }
+  if (upper.startsWith("CONTROL_") || upper.startsWith("WS_") || upper.startsWith("COMANDO_") || upper.includes("EJECUCION_PLANTILLA")) {
+    return "bg-cyan-500/20 text-cyan-400 border-cyan-500/30 font-bold";
+  }
+  if (upper.includes("CONTRASEÑA") || upper.includes("PASSWORD") || upper.includes("REGISTRO")) {
+    return "bg-indigo-500/20 text-indigo-400 border-indigo-500/30 font-medium";
+  }
+  return "bg-muted text-muted-foreground";
 };
 
 const RANGOS_AUTORIZADOS = ['1', '2', '3', '4', '8'];
@@ -85,6 +101,7 @@ const Auditoria = () => {
   // Estados de edición locales para los filtros
   const [searchVal, setSearchVal] = useState("");
   const [filtroModulo, setFiltroModulo] = useState<string>("todos");
+  const [filtroAccion, setFiltroAccion] = useState<string>("todas");
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaFin, setFechaFin] = useState("");
   const [horaInicio, setHoraInicio] = useState("");
@@ -94,6 +111,7 @@ const Auditoria = () => {
   const [activeFilters, setActiveFilters] = useState({
     search: "",
     modulo: "todos",
+    accion: "todas",
     fechaInicio: "",
     fechaFin: "",
     horaInicio: "",
@@ -107,21 +125,34 @@ const Auditoria = () => {
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
-  // Módulos estáticos del sistema
-  // Módulos estáticos del sistema alineados con el backend
+  // Módulos del sistema alineados con la base de datos real
   const modulos = [
-    { label: "Plantas / Fábricas", value: "Plantas" },
-    { label: "Secciones", value: "Secciones" },
-    { label: "Dispositivos SCADA", value: "Dispositivos SCADA" },
-    { label: "Comunicaciones MQTT", value: "Comunicaciones MQTT" },
-    { label: "Empleados", value: "Empleados" },
+    { label: "Sistemas SCADA (Diseño y Diagramas)", value: "Sistemas SCADA" },
+    { label: "Comandos SCADA / WebSockets", value: "COMANDOS_SCADA" },
+    { label: "Plantillas y Acciones MQTT", value: "Plantillas Tópicos y Acciones MQTT" },
+    { label: "Dispositivos y Actuadores SCADA", value: "Dispositivos y Actuadores SCADA" },
+    { label: "Seguridad y Accesos", value: "Seguridad" },
+    { label: "Inventario / Tanques y Almacenes", value: "Inventario / Tanques y Almacenes" },
     { label: "Órdenes de Producción", value: "Órdenes de Producción" },
-    { label: "Recetas de Producción", value: "Recetas de Producción" },
-    { label: "Inventario / Almacenamiento", value: "Inventario / Almacenamiento" },
     { label: "Gestión de Alarmas", value: "Gestión de Alarmas" },
-    { label: "Planificación de la Producción", value: "Planificación de la Producción" },
-    { label: "Seguridad / Sesiones", value: "Seguridad" },
-    { label: "General", value: "General" }
+    { label: "Personal / Empleados", value: "Gestión de Personal / Empleados" },
+    { label: "Plantas Industriales", value: "Plantas Industriales" },
+    { label: "Secciones de Planta", value: "Secciones de Planta" },
+    { label: "Recetas de Producción", value: "Recetas de Producción" },
+    { label: "Comunicaciones MQTT", value: "Comunicaciones MQTT" },
+    { label: "Perfiles de Usuario", value: "Perfiles de Usuario" }
+  ];
+
+  // Acciones disponibles para filtrado
+  const acciones = [
+    { label: "Todas las acciones", value: "todas" },
+    { label: "Modificaciones", value: "Modificación" },
+    { label: "Creaciones", value: "Creación" },
+    { label: "Eliminaciones", value: "Eliminación" },
+    { label: "Comandos SCADA (Control y WS)", value: "COMANDOS" },
+    { label: "Inicios de Sesión", value: "Inicio de Sesión" },
+    { label: "Cierres de Sesión", value: "Cierre de Sesión" },
+    { label: "Seguridad (Claves y Registros)", value: "SEGURIDAD" }
   ];
 
   // Estado del diálogo de detalle
@@ -159,6 +190,9 @@ const Auditoria = () => {
       }
       if (activeFilters.modulo && activeFilters.modulo !== "todos") {
         url += `&modulo=${encodeURIComponent(activeFilters.modulo)}`;
+      }
+      if (activeFilters.accion && activeFilters.accion !== "todas") {
+        url += `&accion=${encodeURIComponent(activeFilters.accion)}`;
       }
       if (activeFilters.fechaInicio) {
         url += `&fecha_desde=${encodeURIComponent(toLocalISOString(activeFilters.fechaInicio, activeFilters.horaInicio, '00:00'))}`;
@@ -217,6 +251,7 @@ const Auditoria = () => {
     setActiveFilters({
       search: searchVal,
       modulo: filtroModulo,
+      accion: filtroAccion,
       fechaInicio: fechaInicio,
       fechaFin: fechaFin,
       horaInicio: horaInicio,
@@ -227,6 +262,7 @@ const Auditoria = () => {
   const handleClearFilters = () => {
     setSearchVal("");
     setFiltroModulo("todos");
+    setFiltroAccion("todas");
     setFechaInicio("");
     setFechaFin("");
     setHoraInicio("");
@@ -236,6 +272,7 @@ const Auditoria = () => {
     setActiveFilters({
       search: "",
       modulo: "todos",
+      accion: "todas",
       fechaInicio: "",
       fechaFin: "",
       horaInicio: "",
@@ -253,6 +290,7 @@ const Auditoria = () => {
       
       if (activeFilters.search) url += `&search=${encodeURIComponent(activeFilters.search)}`;
       if (activeFilters.modulo && activeFilters.modulo !== "todos") url += `&modulo=${encodeURIComponent(activeFilters.modulo)}`;
+      if (activeFilters.accion && activeFilters.accion !== "todas") url += `&accion=${encodeURIComponent(activeFilters.accion)}`;
       if (activeFilters.fechaInicio) {
         url += `&fecha_desde=${encodeURIComponent(toLocalISOString(activeFilters.fechaInicio, activeFilters.horaInicio, '00:00'))}`;
       }
@@ -487,13 +525,23 @@ const Auditoria = () => {
                 className="sm:max-w-xs bg-background border-border"
               />
               <Select value={filtroModulo} onValueChange={setFiltroModulo}>
-                <SelectTrigger className="w-[180px] bg-background border-border">
-                  <SelectValue placeholder="Filtrar módulo" />
+                <SelectTrigger className="w-full sm:w-[220px] bg-background border-border">
+                  <SelectValue placeholder="Filtrar por módulo" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border-border">
                   <SelectItem value="todos">Todos los módulos</SelectItem>
                   {modulos.map((modulo) => (
                     <SelectItem key={modulo.value} value={modulo.value}>{modulo.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filtroAccion} onValueChange={setFiltroAccion}>
+                <SelectTrigger className="w-full sm:w-[200px] bg-background border-border">
+                  <SelectValue placeholder="Filtrar por acción" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border-border">
+                  {acciones.map((acc) => (
+                    <SelectItem key={acc.value} value={acc.value}>{acc.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

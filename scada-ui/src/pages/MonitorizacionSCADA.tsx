@@ -422,11 +422,9 @@ const MonitorizacionSCADA = () => {
         const list: LecturaSensor[] = Array.isArray(data) ? data : data.results || [];
         setLecturasHistoricas(list);
 
-        // Actualización dinámica en tiempo real de estado ONLINE/OFFLINE del dispositivo en el estado React
+        // Actualización de valores recientes sin sobreescribir el estado de conectividad gestionado por el Gateway
         if (list.length > 0) {
           const latestReading = list[list.length - 1];
-          const lastMs = latestReading?.timestamp ? new Date(latestReading.timestamp).getTime() : 0;
-          const computedEstado = ((Date.now() - lastMs) < 60000) ? "ONLINE" : "OFFLINE";
 
           setDispositivos((prevDisps) =>
             prevDisps.map((d) => {
@@ -434,7 +432,6 @@ const MonitorizacionSCADA = () => {
               if (isMatch) {
                 return {
                   ...d,
-                  estado: d.estado === "OFFLINE" ? "OFFLINE" : computedEstado,
                   valor_lectura: Number(latestReading.valor),
                   unidad_lectura: latestReading.unidad || d.unidad_lectura,
                   ultima_lectura: latestReading.timestamp
@@ -657,7 +654,14 @@ const MonitorizacionSCADA = () => {
 
     // MODO 3: AGREGACIÓN HOMOGÉNEA (50 Intervalos Temporales de igual tamaño - Predeterminado)
     const NUM_BUCKETS = 50;
-    const startTime = startDate.getTime();
+    const firstReadingTime = sorted[0]?.timestamp ? new Date(sorted[0].timestamp).getTime() : 0;
+    // Si los datos en base de datos comenzaron más recientemente que el rango teórico (ej. 30d o 1y pero el sistema se inició hace pocos días),
+    // anclar el inicio a los datos reales disponibles para que cubran toda la gráfica sin aplanarse en el extremo derecho.
+    const effectiveStartTime = (modoConsulta === "historico" && firstReadingTime > 0 && firstReadingTime > startDate.getTime())
+      ? firstReadingTime
+      : startDate.getTime();
+
+    const startTime = effectiveStartTime;
     const endTime = endDate.getTime();
     const totalDurationMs = Math.max(endTime - startTime, 1000);
     const bucketDurationMs = totalDurationMs / NUM_BUCKETS;
@@ -690,18 +694,24 @@ const MonitorizacionSCADA = () => {
       }
     }
 
+    let lastKnownVal: number | null = sorted.length > 0 ? Number(sorted[0].valor) : 0;
+
     return buckets.map((b) => {
       let val = 0;
+      let calidad = 'GOOD';
       if (b.values.length > 0) {
         val = Number((b.values.reduce((sum, v) => sum + v, 0) / b.values.length).toFixed(2));
-      } else {
-        val = 0; // Tratar intervalos sin datos como 0
+        lastKnownVal = val;
+      } else if (lastKnownVal !== null) {
+        // En SCADA industrial, intervalos sin cambio retienen el último valor medido en vez de desplomarse a cero
+        val = lastKnownVal;
+        calidad = 'HOLD';
       }
       return {
         hora: b.label,
         valor: val,
         unidad: b.unidad,
-        calidad: b.values.length > 0 ? 'GOOD' : 'NO_DATA',
+        calidad: calidad,
         fullTimestamp: new Date(b.timeMs).toISOString(),
         timestampMs: b.timeMs
       };

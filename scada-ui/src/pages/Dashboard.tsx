@@ -64,23 +64,15 @@ const Dashboard = () => {
         if (dispResp.status === 'fulfilled' && dispResp.value.ok) {
           const jd = await dispResp.value.json();
           const list = Array.isArray(jd) ? jd : jd.results || [];
-          const now = Date.now();
           let onlineCount = 0;
           list.forEach((d: any) => {
             const st = String(d.estado || '').toUpperCase();
-            const isOnlineState = st === 'ONLINE' || st === 'OPERATIVO' || st === 'ACTIVE' || st === 'ACTIVO';
-            let isRecent = false;
-            if (d.ultima_lectura) {
-              const ms = new Date(d.ultima_lectura).getTime();
-              if (!isNaN(ms) && Math.abs(now - ms) < 10 * 60 * 1000) isRecent = true;
-            }
-            if (isOnlineState || isRecent || (d.valor_lectura !== null && d.valor_lectura !== undefined)) {
+            if (st === 'ONLINE' || st === 'OPERATIVO' || st === 'ACTIVO') {
               onlineCount++;
             }
           });
           const totalCount = list.length;
-          const finalOnline = totalCount > 0 ? Math.max(onlineCount, list.filter((x: any) => String(x.estado).toUpperCase() !== 'OFFLINE').length || 1) : 0;
-          onlineSensorsStr = totalCount > 0 ? `${finalOnline}/${totalCount}` : '0/0';
+          onlineSensorsStr = totalCount > 0 ? `${onlineCount}/${totalCount}` : '0/0';
         }
 
         // Auditoria / actividad
