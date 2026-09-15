@@ -1,0 +1,1073 @@
+/*
+ * Sistema SCADA - Versión con comunicación Serial para Raspberry Pi
+ * 
+ * Migración del sistema original que usaba Bluetooth (HC-05)
+ * Ahora usa comunicación Serial nativa (USB) con Raspberry Pi
+ * 
+ * CAMBIOS PRINCIPALES:
+ * - Reemplaza SoftwareSerial(BT) por Serial para comunicación con Raspberry
+ * - Mantiene TODA la lógica de sensores, actuadores y control
+ * - Optimiza la velocidad de comunicación (115200 baud vs 9600 baud)
+ * - Mantiene compatibilidad con el protocolo original
+ * 
+ * FUNCIONALIDADES COMPLETAS:
+ * - Control de 3 sensores ultrasónicos de nivel
+ * - 2 Caudalímetros con interrupciones
+ * - Control de bombas de reposición
+ * - Sistema de mezcla con motor intermitente
+ * - Filtrado estadístico de mediciones
+ * - Control de electroválvulas
+ */
+
+#include <TimerFive.h>
+
+// ============================================================
+// CONFIGURACIÓN DE COMUNICACIÓN SERIAL
+// ============================================================
+
+// Usar Serial nativo para comunicación con Raspberry Pi
+#define RASPBERRY_SERIAL Serial
+#define BAUD_RATE 115200  // Mayor velocidad que Bluetooth (antes 9600)
+
+// ============================================================
+// PARÁMETROS GLOBALES EDITABLES
+// ============================================================
+
+// Factor de conversión de caudalímetros (pulsos por litro)
+// Calibrado experimentalmente: 1 Litro = 1003.5 pulsos (1.0035 pulsos por ml)
+float pulsosnecesarios = 1003.5;
+
+// Porcentaje de corte de nivel para vaciado y desecho (%)
+// El bombo queda suspendido en el líquido y nunca se vacía completamente
+float PORCENTAJE_CORTE_VACIADO = 5.0;
+
+// ============================================================
+// VARIABLES GLOBALES - TEMPORIZACIÓN
+// ============================================================
+
+unsigned long tiempoEnvio = 0;
+unsigned long tiempoMonitoreo = 0;
+unsigned long tiempoLecturaNivel = 0;
+const unsigned long INTERVALO_LECTURA_NIVEL = 100; // Leer sensores cada 100 ms para evitar acumulación de ecos
+unsigned long TInicioMezclado = 0;
+unsigned long tiempoMezcladoAcumulado = 0; // Tiempo de mezcla acumulado previamente (ms)
+unsigned long previousMillis = 0;
+unsigned long TiempoMotorOn = 3000;   // 3 segundos trabajando (para no sobreexigir el motor)
+unsigned long TiempoMotorOff = 5000;  // 5 segundos parado
+
+// ============================================================
+// VARIABLES GLOBALES - COMUNICACIÓN
+// ============================================================
+
+int g = 0;
+char valor = 'F';
+String estado;
+byte flagTransmicion = 1;
+byte continuar = 0;
+
+// Variables de recepción desde Raspberry
+int convinacion = 0;
+int bomboSeleccionado = 0;
+int valorMaxReposicion = 0;
+byte activarMezcla = 0;
+byte vaciar = 0;
+
+// ============================================================
+// VARIABLES GLOBALES - ESTADOS DE MOTORES/ACTUADORES
+// ============================================================
+
+byte flagParadaR = 0;  // Controla el parado de emergencia de la reposición
+byte flagR = 0;        // Detecta si los niveles que se envían son para Reposición
+byte flagM = 0;        // Detecta si los niveles que se envían son para Mezcla
+byte EMezclador = 0;
+byte EBomba1 = 0;
+byte EBomba2 = 0;
+byte EBombaM = 0;
+byte EBombaR = 0;
+byte EValvula1 = 0;
+byte EValvula2 = 0;
+byte EProceso = 0;
+byte EBomboM = 0;
+int horaRest = 0;
+int minRest = 0;
+int error = 0;
+byte desechar = 0;
+byte arranque2 = 0;
+byte detener = 0;
+
+// ============================================================
+// VARIABLES GLOBALES - CONTROL DE NIVEL
+// ============================================================
+
+int i = 0;
+int x = 25;
+int bandera1 = 0;
+
+// Pines de control de los sensores ultrasónicos
+int trig = 16;
+int eco = 17;
+
+// Variables de medición
+float duracion;
+float distancia;
+float distancia1;
+float distancia2;
+float distancia3;
+float ultimaDistanciaValida1 = 28.0; // Valor por defecto (tanque vacío)
+float ultimaDistanciaValida2 = 28.0;
+float ultimaDistanciaValida3 = 28.0;
+float constrainedPorcentaje1 = 0.0;
+float constrainedPorcentaje2 = 0.0;
+float constrainedPorcentaje3 = 0.0;
+
+// Mediciones filtradas
+float Fporcentaje1 = 0.0;
+float Fporcentaje2 = 0.0;
+float Fporcentaje3 = 0.0;
+
+// ============================================================
+// VARIABLES GLOBALES - ESTADÍSTICA/FILTRADO
+// ============================================================
+
+#define NUM_READINGS 10  // Número de lecturas a promediar
+#define ALPHA 0.8      // Factor suavizado exponencial (0-1: menor=más suave, más latencia)
+
+float readings1[NUM_READINGS];
+float readings2[NUM_READINGS];
+float readings3[NUM_READINGS];
+int readIndex = 0;
+float total1 = 0;
+float total2 = 0;
+float total3 = 0;
+float average1 = 0;
+float average2 = 0;
+float average3 = 0;
+
+// Variables para suavizado exponencial complementario
+float smoothed1 = 0;
+float smoothed2 = 0;
+float smoothed3 = 0;
+bool initialized1 = false;
+bool initialized2 = false;
+bool initialized3 = false;
+
+// ============================================================
+// VARIABLES GLOBALES - CONTROL DE CAUDAL
+// ============================================================
+
+volatile double waterFlow1;
+volatile double waterFlow2;
+double Ingrediente1 = 0;
+double Ingrediente2 = 0;
+double cantidad1 = 0;
+double cantidad2 = 0;
+double liquido1 = 0;
+double liquido2 = 0;
+int bandera_c = 1;
+byte terminoLlenadoLiquido1 = 0;
+byte terminoLlenadoLiquido2 = 0;
+
+// ============================================================
+// VARIABLES GLOBALES - TIEMPO DE MEZCLA
+// ============================================================
+
+int TiempoHor = 0;
+int TiempoMin = 0;
+long TiempoHorUso = 0;
+long TiempoMinUso = TiempoMin * 60000;
+byte MotorOn = 1;
+byte MotorOff = 0;
+
+
+// ============================================================
+// SETUP
+// ============================================================
+
+void setup() {
+  // Configuración puerto serie para comunicación con Raspberry Pi
+  RASPBERRY_SERIAL.begin(BAUD_RATE);
+  RASPBERRY_SERIAL.println("ARDUINO_READY");
+
+  // ============================================================
+  // CONFIGURACIÓN PINES SENSORES ULTRASÓNICOS (NIVEL)
+  // ============================================================
+  
+  pinMode(17, INPUT);   // Echo Bombo 2
+  pinMode(19, INPUT);   // Echo Bombo Mezcla (3)
+  pinMode(21, INPUT);   // Echo Bombo 1
+  pinMode(16, OUTPUT);  // Trigger Bombo 2
+  pinMode(18, OUTPUT);  // Trigger Bombo Mezcla (3)
+  pinMode(20, OUTPUT);  // Trigger Bombo 1
+
+  // ============================================================
+  // CONFIGURACIÓN PINES ACTUADORES
+  // ============================================================
+  
+  // Bombas DC y motor mezclador
+  pinMode(4, OUTPUT);  // Bomba depósito mezcla
+  pinMode(5, OUTPUT);  // Bomba depósito 2
+  pinMode(6, OUTPUT);  // Bomba depósito 1
+  pinMode(7, OUTPUT);  // Motor mezclador
+  
+  // Bomba AC y electroválvulas
+  pinMode(8, OUTPUT);   // Electroválvula bombo 2
+  pinMode(9, OUTPUT);   // Bomba camión (reposición)
+  pinMode(10, OUTPUT);  // Electroválvula bombo 1
+  pinMode(13, OUTPUT);  // Reservado
+
+  // Estado inicial: todo apagado (HIGH = OFF para relés activos bajos)
+  digitalWrite(4, HIGH);   // Bomba depósito mezcla OFF
+  digitalWrite(5, HIGH);   // Bomba depósito 1 OFF
+  digitalWrite(6, HIGH);   // Bomba depósito 2 OFF
+  digitalWrite(7, HIGH);   // Mezclador OFF
+  digitalWrite(8, HIGH);   // Electroválvula bombo 2 OFF
+  digitalWrite(9, HIGH);   // Bomba camión OFF
+  digitalWrite(10, HIGH);  // Electroválvula bombo 1 OFF
+  digitalWrite(13, LOW);   // No utilizado
+
+  // ============================================================
+  // CONFIGURACIÓN CAUDALÍMETROS (INTERRUPCIONES)
+  // ============================================================
+  
+  waterFlow1 = 0;
+  waterFlow2 = 0;
+  
+  attachInterrupt(digitalPinToInterrupt(2), pulse1, RISING);
+  attachInterrupt(digitalPinToInterrupt(3), pulse2, RISING);
+
+  // ============================================================
+  // INICIALIZACIÓN BUFFERS ESTADÍSTICOS
+  // ============================================================
+  
+  for (int K = 0; K < NUM_READINGS; K++) {
+    readings1[K] = 28.0;
+    readings2[K] = 28.0;
+    readings3[K] = 28.0;
+  }
+  total1 = 28.0 * NUM_READINGS;
+  total2 = 28.0 * NUM_READINGS;
+  total3 = 28.0 * NUM_READINGS;
+
+  // Inicializar valores suavizados
+  smoothed1 = 28.0;
+  smoothed2 = 28.0;
+  smoothed3 = 28.0;
+  initialized1 = true;
+  initialized2 = true;
+  initialized3 = true;
+
+  // ============================================================
+  // CONFIGURACIÓN TIMER PARA LECTURA DE COMANDOS
+  // ============================================================
+  
+  Timer5.initialize(250000);        // 250 ms = 0.25 segundos
+  Timer5.attachInterrupt(lectura);  // Función que lee comandos desde Raspberry
+  
+  RASPBERRY_SERIAL.println("SYSTEM_INITIALIZED");
+}
+
+
+// ============================================================
+// LOOP PRINCIPAL
+// ============================================================
+
+void loop() {
+  // Monitoreo interno (opcional, para debugging)
+  if ((tiempoMonitoreo + 2000) <= millis()) {
+    // monitoreo();  // Descomentar para debug por Serial
+    tiempoMonitoreo = millis();
+  }
+
+  // ============================================================
+  // SELECCIÓN DE MODO DE MEDICIÓN DE NIVEL:
+  // ============================================================
+
+  // ---> MODO 1: FUNCIONAL CON FILTRO (Normal) <---
+  if ((tiempoLecturaNivel + INTERVALO_LECTURA_NIVEL) <= millis()) {
+    nivel();      // Lee los 3 sensores ultrasónicos con pausas entre ellos
+    filtrado();   // Aplica filtrado estadístico y suavizado
+    tiempoLecturaNivel = millis();
+  }
+  if ((tiempoEnvio + 1000) <= millis()) {
+    enviarValores();
+    tiempoEnvio = millis();
+  }
+
+  // ---> MODO 2: CALIBRACIÓN DIRECTA SIN FILTRO (Pruebas) <---
+  // Para usar: comenta el bloque MODO 1 de arriba y descomenta la siguiente línea:
+  // calibracionNivelDirecto();
+
+  // Control de procesos
+  activacion();  // Control de bombas de reposición y mezcla
+  caudal();      // Actualiza variables de caudal
+}
+
+
+// ============================================================
+// FUNCIÓN: nivel()
+// Descripción: Lee los 3 sensores ultrasónicos de nivel con retardo entre lecturas
+// ============================================================
+
+void nivel() {
+  while (i < 3) {
+    // Asegurar LOW antes de emitir pulso
+    digitalWrite(trig, LOW);
+    delayMicroseconds(2);
+
+    // Pulso de disparo de 10 microsegundos según datasheet HC-SR04
+    digitalWrite(trig, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trig, LOW);
+    
+    // pulseIn con timeout de 5000 microsegundos (~86 cm máximo para evitar bloqueos)
+    duracion = pulseIn(eco, HIGH, 5000);
+    
+    // Validar que la medición sea válida (2-30 cm = rango de operación)
+    distancia = duracion / 58.2;  // Conversión a cm
+    
+    // Si la medición es inválida (< 1cm o > 40cm), marcar como 999
+    if (distancia < 1.0 || distancia > 40.0) {
+      distancia = 999.0;  // Valor inválido que será sustituido por la última medición válida
+    }
+    
+    // Mapeo ordenado con el conexionado físico documentado:
+    // i = 0 -> Pines 16 (Trig) y 17 (Echo) = Bombo 2
+    // i = 1 -> Pines 18 (Trig) y 19 (Echo) = Bombo mezcla (3)
+    // i = 2 -> Pines 20 (Trig) y 21 (Echo) = Bombo 1
+    if (i == 0) {
+      distancia2 = distancia;
+    }
+    if (i == 1) {
+      distancia3 = distancia;
+    }
+    if (i == 2) {
+      distancia1 = distancia;
+    }
+    
+    trig = trig + 2;
+    eco = eco + 2;
+    i = i + 1;
+
+    // Pausa de 30 ms entre sensores para permitir la extinción de rebotes acústicos residuales
+    delay(30);
+  }
+  
+  // Resetear variables para próxima lectura
+  distancia = 0;
+  i = 0;
+  trig = 16;
+  eco = 17;
+}
+
+
+// ============================================================
+// FUNCIÓN: filtrado()
+// Descripción: Aplica filtrado estadístico de media móvil + suavizado exponencial
+// ============================================================
+
+void filtrado() {
+  // Restar la lectura más antigua de la suma total
+  total1 = total1 - readings1[readIndex];
+  total2 = total2 - readings2[readIndex];
+  total3 = total3 - readings3[readIndex];
+
+  // Si la medición es válida, actualizar última válida; si es 999, reutilizar la última válida
+  if (distancia1 != 999.0) {
+    ultimaDistanciaValida1 = distancia1;
+  }
+  readings1[readIndex] = ultimaDistanciaValida1;
+
+  if (distancia2 != 999.0) {
+    ultimaDistanciaValida2 = distancia2;
+  }
+  readings2[readIndex] = ultimaDistanciaValida2;
+
+  if (distancia3 != 999.0) {
+    ultimaDistanciaValida3 = distancia3;
+  }
+  readings3[readIndex] = ultimaDistanciaValida3;
+
+  // Añadir la nueva lectura a la suma total
+  total1 = total1 + readings1[readIndex];
+  total2 = total2 + readings2[readIndex];
+  total3 = total3 + readings3[readIndex];
+
+  // Avanzar al próximo índice
+  readIndex = readIndex + 1;
+
+  // Si llegamos al final del arreglo, volver al inicio
+  if (readIndex >= NUM_READINGS) {
+    readIndex = 0;
+  }
+
+  // Calcular el promedio (media móvil)
+  average1 = total1 / NUM_READINGS;
+  average2 = total2 / NUM_READINGS;
+  average3 = total3 / NUM_READINGS;
+
+  // ========== SUAVIZADO EXPONENCIAL COMPLEMENTARIO ==========
+  // Aplica filtro exponencial al promedio para reducir oscilaciones residuales
+  // Formula: smoothed = smoothed_anterior + ALPHA * (average - smoothed_anterior)
+  
+  if (!initialized1) {
+    smoothed1 = average1;
+    initialized1 = true;
+  } else {
+    smoothed1 = smoothed1 + ALPHA * (average1 - smoothed1);
+  }
+  
+  if (!initialized2) {
+    smoothed2 = average2;
+    initialized2 = true;
+  } else {
+    smoothed2 = smoothed2 + ALPHA * (average2 - smoothed2);
+  }
+  
+  if (!initialized3) {
+    smoothed3 = average3;
+    initialized3 = true;
+  } else {
+    smoothed3 = smoothed3 + ALPHA * (average3 - smoothed3);
+  }
+
+  // Mapear distancia suavizada a porcentaje continuo con flotantes (28.0cm = vacío, 4.0cm = lleno)
+  Fporcentaje1 = (28.0 - smoothed1) * 100.0 / (28.0 - 4.0);
+  Fporcentaje2 = (28.0 - smoothed2) * 100.0 / (28.0 - 4.0);
+  Fporcentaje3 = (28.0 - smoothed3) * 100.0 / (28.0 - 4.0);
+
+  // Limitar el valor para que no se pase de 0.0-100.0
+  constrainedPorcentaje1 = constrain(Fporcentaje1, 0.0, 100.0);
+  constrainedPorcentaje2 = constrain(Fporcentaje2, 0.0, 100.0);
+  constrainedPorcentaje3 = constrain(Fporcentaje3, 0.0, 100.0);
+}
+
+
+// ============================================================
+// FUNCIÓN: calibracionNivelDirecto()
+// Descripción: MODO DE PRUEBA Y CALIBRACIÓN DIRECTA (SIN FILTRO)
+// Lee los 3 sensores ultrasónicos y envía inmediatamente el dato
+// crudo (RAW) a la Raspberry Pi tal como lo mide el sensor,
+// sin promedios, sin filtro exponencial ALPHA y sin retención de última válida.
+// Si un sensor da timeout, se verá 0.0 cm de inmediato para diagnosticar fallas.
+// ============================================================
+
+void calibracionNivelDirecto() {
+  static unsigned long tiempoEnvioCal = 0;
+  if ((tiempoEnvioCal + 300) > millis()) {
+    return; // Envío cada 300 ms (tiempo real ágil sin saturar el puerto serial)
+  }
+  tiempoEnvioCal = millis();
+
+  int trigCal = 16;
+  int ecoCal = 17;
+
+  for (int idx = 0; idx < 3; idx++) {
+    digitalWrite(trigCal, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigCal, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigCal, LOW);
+
+    duracion = pulseIn(ecoCal, HIGH, 5000);
+    float distCruda = duracion / 58.2;
+
+    // Mapeo ordenado con el conexionado físico documentado:
+    // idx = 0 -> Pines 16 (Trig) y 17 (Echo) = Bombo 2
+    // idx = 1 -> Pines 18 (Trig) y 19 (Echo) = Bombo mezcla (3)
+    // idx = 2 -> Pines 20 (Trig) y 21 (Echo) = Bombo 1
+    if (idx == 0) {
+      distancia2 = distCruda;
+      average2 = distCruda;
+      constrainedPorcentaje2 = constrain((28.0 - distCruda) * 100.0 / (28.0 - 4.0), 0.0, 100.0);
+      Fporcentaje2 = constrainedPorcentaje2;
+    }
+    if (idx == 1) {
+      distancia3 = distCruda;
+      average3 = distCruda;
+      constrainedPorcentaje3 = constrain((28.0 - distCruda) * 100.0 / (28.0 - 4.0), 0.0, 100.0);
+      Fporcentaje3 = constrainedPorcentaje3;
+    }
+    if (idx == 2) {
+      distancia1 = distCruda;
+      average1 = distCruda;
+      constrainedPorcentaje1 = constrain((28.0 - distCruda) * 100.0 / (28.0 - 4.0), 0.0, 100.0);
+      Fporcentaje1 = constrainedPorcentaje1;
+    }
+
+    trigCal += 2;
+    ecoCal += 2;
+    delay(30); // Pausa de 30 ms para disipar rebotes acústicos entre sensores
+  }
+
+  // Envío INMEDIATO del paquete CSV completo tal como lo espera la Raspberry Pi
+  enviarValores();
+}
+
+
+// ============================================================
+// FUNCIÓN: pulse1()
+// Descripción: Interrupción para caudalímetro 1
+// ============================================================
+
+void pulse1() {
+  waterFlow1 += 1000.0 / pulsosnecesarios;  // Acumulador en mililitros (ml)
+}
+
+
+// ============================================================
+// FUNCIÓN: pulse2()
+// Descripción: Interrupción para caudalímetro 2
+// ============================================================
+
+void pulse2() {
+  if (terminoLlenadoLiquido1 == 1) {
+    waterFlow2 += 1000.0 / pulsosnecesarios;  // Acumulador en mililitros (ml)
+  }
+}
+
+
+// ============================================================
+// FUNCIÓN: caudal()
+// Descripción: Actualiza variables de cantidad de líquidos
+// ============================================================
+
+void caudal() {
+  cantidad1 = waterFlow1;
+  cantidad2 = waterFlow2;
+}
+
+
+// ============================================================
+// FUNCIÓN: frenadoReposicion()
+// Descripción: Detiene proceso de reposición de emergencia
+// ============================================================
+
+void frenadoReposicion() {
+  flagParadaR = 1;
+  EBombaR = 0;
+  EValvula1 = 0;
+  EValvula2 = 0;
+  bomboSeleccionado = 0;
+  valorMaxReposicion = 0;
+  convinacion = 0;
+  
+  // Apagar bomba de reposición
+  digitalWrite(9, HIGH);
+  
+  // Apagar electroválvulas
+  digitalWrite(10, HIGH);  // Electroválvula Bombo 1
+  digitalWrite(8, HIGH);   // Electroválvula Bombo 2
+}
+
+
+// ============================================================
+// FUNCIÓN: activacion()
+// Descripción: Control completo de bombas, reposición y mezcla
+// ============================================================
+
+void activacion() {
+  // ========== DECODIFICACIÓN DE COMBINACIÓN ==========
+  if (convinacion >= 1000 && convinacion <= 1100) {
+    bomboSeleccionado = 1;
+    valorMaxReposicion = convinacion - 1000;
+  }
+
+  if (convinacion >= 2000 && convinacion <= 2200) {
+    bomboSeleccionado = 2;
+    valorMaxReposicion = convinacion - 2000;
+  }
+
+  // ========== CONTROL DE REPOSICIÓN ==========
+  if (flagParadaR == 0) {
+    // REPOSICIÓN BOMBO 1
+    if (bomboSeleccionado == 1) {
+      if (valorMaxReposicion <= constrainedPorcentaje1 && EBombaR == 0 && convinacion != 0) {
+        error = 722;  // Error: nivel ya alcanzado
+      }
+
+      if (valorMaxReposicion > constrainedPorcentaje1 && constrainedPorcentaje1 < 100) {
+        EBombaR = 1;
+        EValvula1 = 1;
+        EValvula2 = 0;
+        digitalWrite(10, LOW);  // Encender electroválvula Bombo 1
+        digitalWrite(9, LOW);   // Encender bomba reposición
+      }
+
+      if (valorMaxReposicion <= constrainedPorcentaje1) {
+        EBombaR = 0;
+        EValvula1 = 0;
+        flagParadaR = 1;
+        valorMaxReposicion = 0;
+        convinacion = 0;
+        bomboSeleccionado = 0;
+        digitalWrite(9, HIGH);   // Apagar bomba reposición
+        digitalWrite(10, HIGH);  // Apagar electroválvula Bombo 1
+      }
+    }
+
+    // REPOSICIÓN BOMBO 2
+    if (bomboSeleccionado == 2) {
+      if (valorMaxReposicion <= constrainedPorcentaje2 && EBombaR == 0 && convinacion != 0) {
+        error = 722;  // Error: nivel ya alcanzado
+      }
+
+      if (valorMaxReposicion > constrainedPorcentaje2 && constrainedPorcentaje2 < 100) {
+        EBombaR = 1;
+        EValvula1 = 0;
+        EValvula2 = 1;
+        digitalWrite(9, LOW);  // Encender bomba reposición
+        digitalWrite(8, LOW);  // Encender electroválvula Bombo 2
+      }
+
+      if (valorMaxReposicion <= constrainedPorcentaje2 || constrainedPorcentaje2 >= 100.0) {
+        EBombaR = 0;
+        EValvula2 = 0;
+        flagParadaR = 1;
+        valorMaxReposicion = 0;
+        convinacion = 0;
+        bomboSeleccionado = 0;
+        digitalWrite(9, HIGH);  // Apagar bomba reposición
+        digitalWrite(8, HIGH);  // Apagar electroválvula Bombo 2
+      }
+    }
+  }
+
+  // ========== CÁLCULO DE TIEMPOS Y LÍQUIDOS ==========
+  TiempoHorUso = (unsigned long)TiempoHor * 3600000UL;
+  TiempoMinUso = (unsigned long)TiempoMin * 60000UL;
+  
+  // Las cantidades de receta se interpretan en mililitros (ml) para prototipo a escala
+  if (Ingrediente1 >= 10000.0) {
+    liquido1 = (Ingrediente1 - 10000.0);
+  } else {
+    liquido1 = Ingrediente1;
+  }
+
+  if (Ingrediente2 >= 20000.0) {
+    liquido2 = (Ingrediente2 - 20000.0);
+  } else {
+    liquido2 = Ingrediente2;
+  }
+
+  // ========== CONTROL DE TRANSFERENCIA DE LÍQUIDOS ==========
+  if (continuar == 1) {
+    // Si la receta no requiere liquido 1 (liquido1 <= 0), marcarlo completado directamente
+    if (liquido1 <= 0) {
+      terminoLlenadoLiquido1 = 1;
+      arranque2 = 1;
+    } else if (cantidad1 < liquido1) {
+      digitalWrite(5, LOW);  // Encender bomba depósito 1
+      EBomba1 = 1;
+      EProceso = 1;
+    } else { // cantidad1 >= liquido1
+      terminoLlenadoLiquido1 = 1;
+      digitalWrite(5, HIGH);  // Apagar bomba depósito 1
+      EBomba1 = 0;
+      arranque2 = 1;
+    }
+
+    // Si la receta no requiere liquido 2 (liquido2 <= 0), marcarlo completado cuando Bombo 1 haya finalizado
+    if (liquido2 <= 0) {
+      if (terminoLlenadoLiquido1 == 1) {
+        terminoLlenadoLiquido2 = 1;
+      }
+    } else if (arranque2 == 1 && terminoLlenadoLiquido1 == 1) {
+      if (cantidad2 < liquido2) {
+        digitalWrite(6, LOW);  // Encender bomba depósito 2
+        EBomba2 = 1;
+        EProceso = 1;
+      } else { // cantidad2 >= liquido2
+        terminoLlenadoLiquido2 = 1;
+        digitalWrite(6, HIGH);  // Apagar bomba depósito 2
+        EBomba2 = 0;
+        arranque2 = 0;
+      }
+    }
+
+    // Activar mezcla cuando ambos líquidos están transferidos
+    if (terminoLlenadoLiquido1 == 1 && terminoLlenadoLiquido2 == 1) {
+      activarMezcla = 1;
+      continuar = 0;           // CRÍTICO: Detener ciclo de dosificación
+      terminoLlenadoLiquido1 = 0;
+      terminoLlenadoLiquido2 = 0;
+      arranque2 = 0;
+      liquido1 = 0;
+      liquido2 = 0;
+      tiempoMezcladoAcumulado = 0;
+      TInicioMezclado = millis();
+      previousMillis = millis();
+      digitalWrite(7, LOW);    // Encender motor mezclador inmediatamente (activo bajo)
+      EMezclador = 1;
+      MotorOn = 1;
+      MotorOff = 0;
+    }
+  }
+
+  // ========== CONTROL DE MEZCLADO (ON/OFF INTERMITENTE) ==========
+  if (activarMezcla == 1) {
+    unsigned long currentMillis = millis();
+    unsigned long tiempoTranscurridoSesion = currentMillis - TInicioMezclado;
+    unsigned long tiempoTranscurridoTotal = tiempoMezcladoAcumulado + tiempoTranscurridoSesion;
+    unsigned long tiempoTotalMezclado = TiempoHorUso + TiempoMinUso;
+
+    // Verificar si el tiempo de mezcla ya finalizó
+    if (tiempoTotalMezclado > 0 && tiempoTranscurridoTotal >= tiempoTotalMezclado) {
+      activarMezcla = 0;
+      tiempoMezcladoAcumulado = 0;
+      digitalWrite(7, HIGH);  // Apagar motor mezclador
+      EMezclador = 0;
+      horaRest = 0;
+      minRest = 0;
+      EProceso = 2;           // Estado 2: Mezcla finalizada
+    } else {
+      EProceso = 1;
+
+      // Cálculo de tiempo restante en tiempo real
+      if (tiempoTotalMezclado > tiempoTranscurridoTotal) {
+        unsigned long tiempoRestanteMs = tiempoTotalMezclado - tiempoTranscurridoTotal;
+        horaRest = tiempoRestanteMs / 3600000UL;
+        minRest = (tiempoRestanteMs % 3600000UL) / 60000UL;
+      } else {
+        horaRest = 0;
+        minRest = 0;
+      }
+
+      // Encender el motor por TiempoMotorOn (3 segundos trabajando)
+      if ((currentMillis - previousMillis) >= TiempoMotorOn && MotorOn == 1) {
+        digitalWrite(7, HIGH);  // Apagar motor mezclador
+        EMezclador = 0;
+        previousMillis = currentMillis;
+        MotorOn = 0;
+        MotorOff = 1;
+      }
+
+      // Apagar el motor por TiempoMotorOff (5 segundos parado)
+      if ((currentMillis - previousMillis) >= TiempoMotorOff && MotorOff == 1) {
+        digitalWrite(7, LOW);   // Encender motor mezclador (activo bajo)
+        EMezclador = 1;
+        previousMillis = currentMillis;
+        MotorOn = 1;
+        MotorOff = 0;
+      }
+    }
+  }
+
+  // ========== DETENCIÓN / PAUSA DE PROCESO ==========
+  if ((activarMezcla == 0 && continuar == 0 && vaciar == 0 && desechar == 0) || detener == 1) {
+    if (detener == 1) {
+      // Si la mezcla estaba corriendo al pausar, acumular el tiempo transcurrido hasta ahora
+      if (activarMezcla == 1) {
+        tiempoMezcladoAcumulado += (millis() - TInicioMezclado);
+      }
+      EProceso = 0;
+      activarMezcla = 0;
+      continuar = 0;
+      vaciar = 0;
+      desechar = 0;
+      detener = 0;
+      convinacion = 0;
+      bomboSeleccionado = 0;
+      valorMaxReposicion = 0;
+    }
+    digitalWrite(7, HIGH);  // Apagar motor mezclador
+    digitalWrite(5, HIGH);  // Apagar bomba Bombo 1
+    digitalWrite(6, HIGH);  // Apagar bomba Bombo 2
+    digitalWrite(4, HIGH);  // Apagar bomba mezcla
+    EBomba1 = 0;
+    EBomba2 = 0;
+    EBombaM = 0;
+    EMezclador = 0;
+  }
+
+  // ========== DESECHAR PRODUCCIÓN ==========
+  if (desechar == 1) {
+    digitalWrite(4, LOW);  // Encender bomba del bombo de mezcla
+    EBombaM = 1;
+    liquido1 = 0;
+    cantidad1 = 0;
+    liquido2 = 0;
+    cantidad2 = 0;
+    waterFlow1 = 0;
+    waterFlow2 = 0;
+    tiempoMezcladoAcumulado = 0;
+    activarMezcla = 0;
+    continuar = 0;
+    digitalWrite(7, HIGH); // Apagar motor mezclador
+    EMezclador = 0;
+
+    // Corte automático por porcentaje de nivel
+    if (constrainedPorcentaje3 <= PORCENTAJE_CORTE_VACIADO) {
+      digitalWrite(4, HIGH); // Apagar bomba mezcla
+      EBombaM = 0;
+      desechar = 0;
+      EProceso = 0;
+    }
+  }
+
+  // ========== VACIAR BOMBO DE MEZCLA ==========
+  if (vaciar == 1) {
+    digitalWrite(4, LOW);  // Encender bomba del bombo de mezcla
+    EBombaM = 1;
+    liquido1 = 0;
+    cantidad1 = 0;
+    liquido2 = 0;
+    cantidad2 = 0;
+    waterFlow1 = 0;
+    waterFlow2 = 0;
+    tiempoMezcladoAcumulado = 0;
+    activarMezcla = 0;
+    continuar = 0;
+    digitalWrite(7, HIGH); // Apagar motor mezclador
+    EMezclador = 0;
+
+    // Corte automático por porcentaje de nivel
+    if (constrainedPorcentaje3 <= PORCENTAJE_CORTE_VACIADO) {
+      digitalWrite(4, HIGH); // Apagar bomba mezcla
+      EBombaM = 0;
+      vaciar = 0;
+      EProceso = 0;
+    }
+  }
+}
+
+
+// ============================================================
+// FUNCIÓN: enviarValores()
+// Descripción: Envía todos los datos a Raspberry Pi en formato CSV
+// ============================================================
+
+void enviarValores() {
+  RASPBERRY_SERIAL.print(average1);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(constrainedPorcentaje1, 1);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(average2);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(constrainedPorcentaje2, 1);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(average3);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(constrainedPorcentaje3, 1);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(cantidad1);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(cantidad2);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(EBomba1);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(EBomba2);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(EBombaM);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(EMezclador);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(EBombaR);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(error);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(horaRest);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(minRest);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(EProceso);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(EValvula1);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.println(EValvula2);
+}
+
+
+// ============================================================
+// FUNCIÓN: lectura()
+// Descripción: Interrupción del Timer - Lee comandos desde Raspberry
+// ============================================================
+
+void lectura() {
+  if (RASPBERRY_SERIAL.available()) {
+    valor = RASPBERRY_SERIAL.read();
+
+    if (valor == 'F') {
+      g = 1;
+      frenadoReposicion();
+      flagParadaR = 1;
+    }
+
+    if (valor == 'R') {
+      g = 2;
+      obtencionEntero();
+      flagR = 1;
+      flagM = 0;
+      flagParadaR = 0;
+    }
+
+    if (valor == 'G') {
+      g = 3;
+      obtencionEntero();
+    }
+
+    if (valor == 'S') {
+      g = 4;
+      obtencionEntero();
+    }
+
+    if (valor == 'C') {
+      g = 5;
+      obtencionEntero();
+      continuar = 1;
+    }
+
+    if (valor == 'c') {
+      g = 6;
+      obtencionEntero();
+    }
+
+    if (valor == 'L' || valor == 'l') {
+      // Admite comandos "L1..." o "L2..." o "L..."
+      delay(2);
+      char sub = RASPBERRY_SERIAL.peek();
+      if (sub == '1') {
+        RASPBERRY_SERIAL.read(); // consumir '1'
+        g = 5;
+        obtencionEntero();
+        continuar = 1;
+      } else if (sub == '2') {
+        RASPBERRY_SERIAL.read(); // consumir '2'
+        g = 6;
+        obtencionEntero();
+      } else {
+        g = 5;
+        obtencionEntero();
+        continuar = 1;
+      }
+    }
+
+    if (valor == 'V') {
+      g = 7;
+      vaciar = 1;
+      activarMezcla = 0;
+      continuar = 0;
+      terminoLlenadoLiquido1 = 0;
+      terminoLlenadoLiquido2 = 0;
+      arranque2 = 0;
+      liquido1 = 0;
+      liquido2 = 0;
+      // No llama obtencionEntero() para evitar bloqueo
+    }
+
+    if (valor == 'D') {
+      g = 8;
+      activarMezcla = 0;
+      continuar = 0;
+      detener = 1;
+    }
+
+    if (valor == 'A') {
+      g = 10;
+      continuar = 1;
+      // Si la carga de líquidos ya finalizó (o no se requiere), reanudar la marcha del mezclador desde donde quedó
+      if ((terminoLlenadoLiquido1 == 1 && terminoLlenadoLiquido2 == 1) || (liquido1 <= 0 && liquido2 <= 0)) {
+        if ((TiempoHorUso + TiempoMinUso) > 0 && activarMezcla == 0) {
+          activarMezcla = 1;
+          TInicioMezclado = millis();
+          previousMillis = millis();
+          digitalWrite(7, LOW);   // Reanudar motor mezclador inmediatamente (activo bajo)
+          EMezclador = 1;
+          MotorOn = 1;
+          MotorOff = 0;
+        }
+      }
+    }
+
+    if (valor == 'T') {
+      flagTransmicion = 1;
+    }
+
+    if (valor == 'H') {
+      g = 11;
+      obtencionEntero();
+    }
+
+    if (valor == 'h' || valor == 'M' || valor == 'm') {
+      g = 12;
+      obtencionEntero();
+    }
+
+    if (valor == 'X') {
+      desechar = 1;
+      activarMezcla = 0;
+      continuar = 0;
+      terminoLlenadoLiquido1 = 0;
+      terminoLlenadoLiquido2 = 0;
+      arranque2 = 0;
+      liquido1 = 0;
+      liquido2 = 0;
+    }
+  }
+}
+
+
+// ============================================================
+// FUNCIÓN: obtencionEntero()
+// Descripción: Lee valores numéricos desde Raspberry
+// ============================================================
+
+void obtencionEntero() {
+  delay(15);
+  while (RASPBERRY_SERIAL.available()) {
+    char c = RASPBERRY_SERIAL.read();
+    if (c == '\r' || c == '\n') break;
+    if ((c >= '0' && c <= '9') || c == '.') {
+      estado += c;
+    }
+  }
+
+  if (estado.length() > 0) {
+    if (g == 2) {
+      convinacion = estado.toInt();
+    }
+    if (g == 3) {
+      bomboSeleccionado = estado.toInt();
+    }
+    if (g == 5) {
+      Ingrediente1 = estado.toDouble();
+    }
+    if (g == 6) {
+      Ingrediente2 = estado.toDouble();
+    }
+    if (g == 11) {
+      TiempoHor = estado.toInt();
+    }
+    if (g == 12) {
+      TiempoMin = estado.toInt();
+    }
+
+    g = 0;
+    estado = "";
+  }
+}
+
+
+// ============================================================
+// FUNCIÓN: monitoreo()
+// Descripción: Función de debugging (opcional)
+// ============================================================
+
+void monitoreo() {
+  RASPBERRY_SERIAL.println(valor);
+  RASPBERRY_SERIAL.print("TiempoHor:");
+  RASPBERRY_SERIAL.print(TiempoHor);
+  RASPBERRY_SERIAL.print("  TiempoMin:");
+  RASPBERRY_SERIAL.println(TiempoMin);
+  RASPBERRY_SERIAL.print("Cantidad1:");
+  RASPBERRY_SERIAL.print(cantidad1);
+  RASPBERRY_SERIAL.print("  Cantidad2:");
+  RASPBERRY_SERIAL.println(cantidad2);
+  RASPBERRY_SERIAL.print("activarMezcla:");
+  RASPBERRY_SERIAL.print(activarMezcla);
+  RASPBERRY_SERIAL.print("  terminoLlenadoLiquido1:");
+  RASPBERRY_SERIAL.print(terminoLlenadoLiquido1);
+  RASPBERRY_SERIAL.print("  terminoLlenadoLiquido2:");
+  RASPBERRY_SERIAL.println(terminoLlenadoLiquido2);
+  RASPBERRY_SERIAL.print(" arranque2:");
+  RASPBERRY_SERIAL.println(arranque2);
+}

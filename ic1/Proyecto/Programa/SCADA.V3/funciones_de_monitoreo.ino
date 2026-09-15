@@ -1,0 +1,30 @@
+void monitoreo() {
+  Serial.print("liquido 1:");
+  Serial.print(liquido1);
+  Serial.print("  liquido 2:");
+  Serial.print(liquido2);
+  Serial.print(" duracion hora:");
+  Serial.print(duracion_horas);
+  Serial.print(" duracion min:");
+  Serial.println(duracion_minutos);
+  Serial.print("duracion_total_ms:");
+  Serial.print(duracion_total_ms);
+  Serial.print("  horas_restantes:");
+  Serial.print(horas_restantes);
+  Serial.print("  minutos_restantes:");
+  Serial.print(minutos_restantes);
+  Serial.print("  empezar:");
+  Serial.println(empezar);
+  Serial.print("tiempo pausado:");
+  Serial.print(tiempo_pausado);
+  Serial.print("  tiempor rest (ms):");
+  Serial.print(tiempo_restante);
+  Serial.print("  tiempor trasnc (ms):");
+  Serial.print(tiempo_transcurrido);
+  Serial.print("  tiempor inicio (ms):");
+  Serial.println(tiempo_inicio);
+  Serial.print("duracion_total_ms:");
+  Serial.print(duracion_total_ms);
+  Serial.print("  mezcla:");
+  Serial.println(mezcla_en_progreso);
+}

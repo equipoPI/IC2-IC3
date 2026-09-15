@@ -1,0 +1,8 @@
+# Indicar a Git que maneje los archivos de texto automáticamente
+* text=auto
+
+# Forzar a que los scripts de Linux, Docker y Python SIEMPRE mantengan LF (salto de línea Linux)
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.py text eol=lf
+*.md text eol=lf

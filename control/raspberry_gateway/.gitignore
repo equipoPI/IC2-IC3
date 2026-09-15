@@ -1,0 +1,56 @@
+# Raspberry Pi SCADA Gateway
+
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+
+# Entorno virtual
+venv/
+env/
+ENV/
+
+# Variables de entorno
+.env
+
+# Base de datos
+data/*.db
+data/*.db-journal
+
+# Logs
+logs/*.log
+
+# Backups
+backups/*.db
+backups/*.zip
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Compilación Python
+*.egg-info/
+dist/
+build/
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Temporales
+*.tmp
+*.temp
+test.py
+debug.py

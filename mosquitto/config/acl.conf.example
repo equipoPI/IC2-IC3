@@ -1,0 +1,112 @@
+# Mosquitto ACL (Access Control List) - Sistema SCADA
+# Control de acceso por topics y usuarios
+#
+# Para habilitar, descomentar en mosquitto.conf:
+# acl_file /mosquitto/config/acl.conf
+
+# ==============================================================================
+# SINTAXIS
+# ==============================================================================
+# user <usuario>           - Define usuario
+# topic [read|write|readwrite] <topic/pattern>
+#
+# Wildcards:
+# +  - Un nivel (ej: sensores/+/nivel)
+# #  - Múltiples niveles (ej: sensores/#)
+
+# ==============================================================================
+# USUARIOS ADMINISTRATIVOS
+# ==============================================================================
+
+# Usuario admin - acceso total
+user admin
+topic readwrite #
+
+# Usuario monitor - solo lectura
+user monitor
+topic read #
+
+# ==============================================================================
+# RASPBERRY PI GATEWAY
+# ==============================================================================
+
+user scada_gateway
+# Publicar datos de sensores
+topic write scada/planta1/sensores/#
+topic write scada/planta1/actuadores/#
+topic write scada/planta1/estado/#
+topic write scada/planta1/alarmas
+topic write scada/planta1/diagnostico
+
+# Recibir comandos
+topic read scada/planta1/comandos/#
+topic read scada/planta1/configuracion
+
+# ==============================================================================
+# BACKEND (Django/DRF)
+# ==============================================================================
+
+user scada_backend
+# Leer datos de sensores
+topic read scada/planta1/sensores/#
+topic read scada/planta1/actuadores/#
+topic read scada/planta1/estado/#
+topic read scada/planta1/alarmas
+topic read scada/planta1/diagnostico
+
+# Enviar comandos
+topic write scada/planta1/comandos/#
+topic write scada/planta1/configuracion
+
+# ==============================================================================
+# FRONTEND (Web App)
+# ==============================================================================
+
+user scada_webapp
+# Leer estado y sensores
+topic read scada/planta1/sensores/#
+topic read scada/planta1/actuadores/#
+topic read scada/planta1/estado/#
+topic read scada/planta1/alarmas
+
+# Enviar comandos limitados
+topic write scada/planta1/comandos/reposicion
+topic write scada/planta1/comandos/mezcla
+
+# ==============================================================================
+# USUARIOS DE SOLO LECTURA (Monitores, Dashboards)
+# ==============================================================================
+
+user dashboard_viewer
+topic read scada/+/sensores/#
+topic read scada/+/estado/#
+topic read scada/+/alarmas
+
+# ==============================================================================
+# REGLAS POR ROL
+# ==============================================================================
+
+# Operadores - Pueden enviar comandos básicos
+user operador1
+user operador2
+topic read scada/planta1/#
+topic write scada/planta1/comandos/reposicion
+topic write scada/planta1/comandos/mezcla
+
+# Supervisores - Comandos avanzados
+user supervisor1
+topic read scada/planta1/#
+topic write scada/planta1/comandos/#
+
+# Técnicos - Acceso a diagnóstico y configuración
+user tecnico1
+topic readwrite scada/planta1/#
+topic readwrite scada/planta1/configuracion
+
+# ==============================================================================
+# PATRÓN ANÓNIMO (si allow_anonymous=true)
+# ==============================================================================
+
+# Descomentar para permitir lectura limitada sin autenticación
+# topic read scada/planta1/estado/general
+# topic read scada/planta1/sensores/+/nivel
