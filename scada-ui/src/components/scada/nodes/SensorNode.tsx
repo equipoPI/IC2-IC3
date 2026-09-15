@@ -62,7 +62,9 @@ const SensorNode = ({ data }: { data: SensorNodeData }) => {
         <span className={`text-lg font-bold font-mono ${getStatusColor().split(' ')[1]}`}>
           {data.value}
         </span>
-        <span className="text-xs text-muted-foreground ml-1 font-semibold">{data.unit || (data.type === 'level' ? 'cm' : 'L/min')}</span>
+        <span className="text-xs text-muted-foreground ml-1 font-semibold">
+          {data.unit && data.unit.toLowerCase() !== 'ml' ? data.unit : (data.type === 'level' ? 'cm' : 'L')}
+        </span>
       </div>
 
       {/* Status indicator */}

@@ -42,20 +42,7 @@ const MixerNode = ({ data }: { data: MixerNodeData }) => {
         </span>
       </div>
 
-      {/* Data display */}
-      <div className="space-y-1 text-xs">
-        <div className="flex items-center justify-between text-muted-foreground">
-          <span>Velocidad:</span>
-          <span className="font-mono text-foreground">{data.speed} rpm</span>
-        </div>
-        <div className="flex items-center justify-between text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Thermometer className="h-3 w-3" />
-            <span>Temp:</span>
-          </div>
-          <span className="font-mono text-foreground">{data.temperature}°C</span>
-        </div>
-      </div>
+
 
       <Handle type="source" position={Position.Right} id="source-right" className="!bg-cyan-400 !w-3 !h-3" />
       <Handle type="target" position={Position.Right} id="target-right" className="!bg-cyan-400 !w-3 !h-3 opacity-0" />
