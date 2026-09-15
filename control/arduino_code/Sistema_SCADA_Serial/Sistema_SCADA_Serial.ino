@@ -34,8 +34,9 @@
 // ============================================================
 
 // Factor de conversión de caudalímetros (pulsos por litro)
-// Calibrado experimentalmente: 1 Litro = 1003.5 pulsos (1.0035 pulsos por ml)
-float pulsosnecesarios = 1003.5;
+// Calibrados experimentalmente según la presión y flujo de cada bomba
+float pulsosnecesarios1 = 1700.0; // Caudalímetro 1
+float pulsosnecesarios2 = 11760.0; // Caudalímetro 2
 
 // Porcentaje de corte de nivel para vaciado y desecho (%)
 // El bombo queda suspendido en el líquido y nunca se vacía completamente
@@ -228,6 +229,9 @@ void setup() {
   // ============================================================
   // CONFIGURACIÓN CAUDALÍMETROS (INTERRUPCIONES)
   // ============================================================
+  
+  pinMode(2, INPUT_PULLUP); // Caudalímetro 1 con Pull-Up interno para filtrar ruido
+  pinMode(3, INPUT_PULLUP); // Caudalímetro 2 con Pull-Up interno para filtrar ruido
   
   waterFlow1 = 0;
   waterFlow2 = 0;
@@ -506,22 +510,32 @@ void calibracionNivelDirecto() {
 
 // ============================================================
 // FUNCIÓN: pulse1()
-// Descripción: Interrupción para caudalímetro 1
+// Descripción: Interrupción para caudalímetro 1 (Con filtro antirrebote de ruido electromagnético)
 // ============================================================
 
 void pulse1() {
-  waterFlow1 += 1000.0 / pulsosnecesarios;  // Acumulador en mililitros (ml)
+  static unsigned long lastPulse1 = 0;
+  unsigned long now = micros();
+  // Ignora pulsos parásitos producidos a intervalos menores a 2500 microsegundos (~400 Hz máx)
+  if (EBomba1 == 1 && (now - lastPulse1 >= 2500UL)) {
+    waterFlow1 += 1000.0 / pulsosnecesarios1;  // Acumulador en mililitros (ml)
+    lastPulse1 = now;
+  }
 }
 
 
 // ============================================================
 // FUNCIÓN: pulse2()
-// Descripción: Interrupción para caudalímetro 2
+// Descripción: Interrupción para caudalímetro 2 (Con filtro antirrebote de ruido electromagnético)
 // ============================================================
 
 void pulse2() {
-  if (terminoLlenadoLiquido1 == 1) {
-    waterFlow2 += 1000.0 / pulsosnecesarios;  // Acumulador en mililitros (ml)
+  static unsigned long lastPulse2 = 0;
+  unsigned long now = micros();
+  // Ignora pulsos parásitos producidos a intervalos menores a 2500 microsegundos (~400 Hz máx)
+  if (EBomba2 == 1 && (now - lastPulse2 >= 2500UL)) {
+    waterFlow2 += 1000.0 / pulsosnecesarios2;  // Acumulador en mililitros (ml)
+    lastPulse2 = now;
   }
 }
 
