@@ -11,8 +11,15 @@ export default defineConfig(({ mode }) => ({
     watch: {
       usePolling: true,
     },
-    // Permitir peticiones desde túneles y dominios remotos
-    allowedHosts: true,
+    // Permitir peticiones desde túneles Ngrok y dominios remotos
+    allowedHosts: [
+      '.ngrok-free.dev',
+      '.ngrok.io',
+      '.ngrok.app',
+      'remarry-anyplace-appraiser.ngrok-free.dev',
+      'localhost',
+      '127.0.0.1',
+    ],
     proxy: {
       '/api': {
         target: process.env.VITE_API_URL || 'http://backend:8000',

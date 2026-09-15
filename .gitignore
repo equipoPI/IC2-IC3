@@ -41,6 +41,7 @@ node_modules/
 scada-ui/node_modules/
 scada-ui/dist/
 scada-ui/.cache/
+scada-ui/.vite/
 scada-ui/build.log
 scada-ui/nohup.out
 scada-ui/bun.lock
