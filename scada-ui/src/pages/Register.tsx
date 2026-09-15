@@ -82,7 +82,7 @@ const Register = () => {
         registration_key: registrationKey,
         documento: username,
         direccion: direccion.trim() || undefined,
-        fecha_contratacion: fechaContratacion || undefined,
+        fecha_contratacion: new Date().toISOString().split('T')[0],
         fabrica: fabrica || undefined,
         seccion: seccion || undefined,
       };
@@ -238,10 +238,7 @@ const Register = () => {
               <Label htmlFor="direccion">Dirección</Label>
               <Input id="direccion" type="text" value={direccion} onChange={(e) => setDireccion(e.target.value)} />
             </div>
-            <div>
-              <Label htmlFor="fechaContratacion">Fecha de contratación</Label>
-              <Input id="fechaContratacion" type="date" value={fechaContratacion} onChange={(e) => setFechaContratacion(e.target.value)} />
-            </div>
+
             <div>
               <Label htmlFor="firstName">Nombre</Label>
               <Input id="firstName" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
