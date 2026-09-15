@@ -40,20 +40,7 @@ const PumpNode = ({ data }: { data: PumpNodeData }) => {
         </span>
       </div>
 
-      {/* Data display */}
-      <div className="space-y-1 text-xs">
-        <div className="flex items-center justify-between text-muted-foreground">
-          <span>RPM:</span>
-          <span className="font-mono text-foreground">{data.rpm}</span>
-        </div>
-        <div className="flex items-center justify-between text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Zap className="h-3 w-3" />
-            <span>Pot:</span>
-          </div>
-          <span className="font-mono text-foreground">{data.power}%</span>
-        </div>
-      </div>
+
 
       <Handle type="source" position={Position.Right} id="source-right" className="!bg-cyan-400 !w-3 !h-3" />
       <Handle type="target" position={Position.Right} id="target-right" className="!bg-cyan-400 !w-3 !h-3 opacity-0" />

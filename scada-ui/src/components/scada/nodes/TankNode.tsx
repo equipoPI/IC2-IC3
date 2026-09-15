@@ -1,10 +1,10 @@
 import { Handle, Position } from '@xyflow/react';
-import { Droplets, Thermometer } from 'lucide-react';
+import { Droplets } from 'lucide-react';
 
 interface TankNodeData {
   label: string;
   level: number;
-  temperature: number;
+  temperature?: number;
   capacity: number;
   unit: string;
   status: 'active' | 'inactive' | 'warning' | 'error';
@@ -62,19 +62,12 @@ const TankNode = ({ data }: { data: TankNodeData }) => {
       <div className="space-y-1 text-xs">
         <div className="flex items-center justify-between text-muted-foreground">
           <div className="flex items-center gap-1">
-            <Droplets className="h-3 w-3" />
+            <Droplets className="h-3 w-3 text-cyan-400" />
             <span>Vol:</span>
           </div>
-          <span className="font-mono text-foreground">
-            {Math.round(data.level * data.capacity / 100)} {data.unit}
+          <span className="font-mono text-foreground font-semibold">
+            {Math.round(data.level * data.capacity / 100)} {data.unit && data.unit.toLowerCase() !== 'ml' ? data.unit : 'L'}
           </span>
-        </div>
-        <div className="flex items-center justify-between text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Thermometer className="h-3 w-3" />
-            <span>Temp:</span>
-          </div>
-          <span className="font-mono text-foreground">{data.temperature}°C</span>
         </div>
       </div>
 

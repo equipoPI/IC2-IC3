@@ -325,9 +325,14 @@ const VisualizacionSCADA = () => {
     }
   };
 
+  const [tiempoRestanteMin, setTiempoRestanteMin] = useState<number | null>(null);
+
   const { isConnected: isWsConnected, sendScadaCommand } = useScadaWebSocket({
     onMessage: (data) => {
       console.log("[VisualizacionSCADA] Evento WebSocket recibido:", data);
+      if (data && (data.device_id === 'tiempo_restante' || data.tiempo_restante_min !== undefined)) {
+        setTiempoRestanteMin(Number(data.tiempo_restante_min || data.minutos || 0));
+      }
       loadDispositivos();
       if (selectedSistema !== 'seleccionar') {
         loadUltimaTransmision();
@@ -488,6 +493,14 @@ const VisualizacionSCADA = () => {
   const selectedPlantaObj = useMemo(() => plantas.find(p => String(p.id) === selectedPlanta), [plantas, selectedPlanta]);
   const selectedSeccionObj = useMemo(() => secciones.find(s => String(s.id) === selectedSeccion), [secciones, selectedSeccion]);
   const selectedSistemaObj = useMemo(() => sistemas.find(s => String(s.id) === selectedSistema), [sistemas, selectedSistema]);
+  const currentGatewayId = useMemo(() => {
+    if (selectedSistemaObj && (selectedSistemaObj as any).gateway_id) return (selectedSistemaObj as any).gateway_id;
+    if (selectedSistema !== 'seleccionar' && selectedSistema !== 'todas') {
+      const sysDev = dispositivos.find(d => String(d.sistema) === selectedSistema && d.gateway_id);
+      if (sysDev && sysDev.gateway_id) return sysDev.gateway_id;
+    }
+    return 'd83add60dbb0';
+  }, [selectedSistemaObj, dispositivos, selectedSistema]);
   const isSelectionIncomplete = selectedPlanta === 'seleccionar' || selectedSeccion === 'seleccionar' || selectedSistema === 'seleccionar';
 
   // Filtros dinámicos basados en la selección de Planta
@@ -574,7 +587,7 @@ const VisualizacionSCADA = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary-foreground bg-clip-text text-transparent">
+          <h1 className="text-3xl font-bold tracking-tight text-cyan-400">
             Visualización SCADA
           </h1>
           <p className="text-muted-foreground text-sm">
@@ -627,9 +640,16 @@ const VisualizacionSCADA = () => {
 
                     <Badge variant="outline" className="text-xs font-mono bg-cyan-950/40 text-cyan-300 border-cyan-800/80 gap-1.5">
                       <Cpu className="h-3 w-3 text-cyan-400" />
-                      Gateway: <span className="font-bold text-cyan-200">{selectedSistemaObj.gateway_id || 'd83add60dbb0'}</span>
+                      Gateway: <span className="font-bold text-cyan-200">{currentGatewayId}</span>
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" title="Gateway Online"></span>
                     </Badge>
+
+                    {tiempoRestanteMin !== null && tiempoRestanteMin > 0 && (
+                      <Badge variant="outline" className="text-xs font-mono bg-blue-950/50 text-blue-300 border-blue-800/80 gap-1.5 animate-pulse">
+                        <Clock className="h-3 w-3 text-blue-400" />
+                        Tiempo Restante: <span className="font-bold">{tiempoRestanteMin} min</span>
+                      </Badge>
+                    )}
                   </>
                 )}
 
@@ -864,9 +884,9 @@ const VisualizacionSCADA = () => {
                           <Droplet className="h-3.5 w-3.5" />
                           Parámetros Transmitidos al Broker
                         </h5>
-                        <div className="p-3 rounded bg-muted/40 border border-border/50 text-xs font-mono text-foreground leading-relaxed break-words">
+                        <pre className="p-3 rounded bg-slate-950 border border-cyan-800/50 text-xs font-mono text-cyan-300 leading-relaxed whitespace-pre-wrap break-all select-all max-h-56 overflow-y-auto">
                           {ultimaTransmision.descripcion}
-                        </div>
+                        </pre>
                       </div>
                     </div>
                   ) : (

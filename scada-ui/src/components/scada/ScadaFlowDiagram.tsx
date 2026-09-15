@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   Node,
@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import apiFetch from '@/lib/api';
-import { Save, RotateCcw, BoxSelect, Cpu, Layers, AlertCircle } from 'lucide-react';
+import { Save, RotateCcw, BoxSelect, Cpu, Layers, AlertCircle, Lock, Unlock } from 'lucide-react';
 import { useScadaWebSocket } from '@/hooks/useScadaWebSocket';
 
 
@@ -595,8 +595,20 @@ const ScadaFlowDiagram = ({
     ];
   }, []);
 
+  const [isLocked, setIsLocked] = useState(true);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+  const nodesRef = useRef<Node[]>([]);
+  const edgesRef = useRef<Edge[]>([]);
+
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
+  useEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
 
   // Helper para resolver el ID numérico del sistema a partir de selectedSistema
   const resolveSistemaId = (sysIdOrName: string): string => {
@@ -818,36 +830,38 @@ const ScadaFlowDiagram = ({
 
   // Handle drag stop to auto-persist node positions safely
   const onNodeDragStop = useCallback((_: any, node: Node) => {
-    setNodes(prev => prev.map(n => n.id === node.id ? { ...n, position: node.position } : n));
+    setNodes(prev => {
+      const updated = prev.map(n => n.id === node.id ? { ...n, position: node.position } : n);
+      nodesRef.current = updated;
+      return updated;
+    });
 
-    setTimeout(() => {
-      try {
-        const positions: Record<string, { x: number; y: number }> = {};
-        nodes.forEach(n => {
-          positions[n.id] = n.id === node.id ? node.position : n.position;
-        });
+    try {
+      const positions: Record<string, { x: number; y: number }> = {};
+      nodesRef.current.forEach(n => {
+        positions[n.id] = n.id === node.id ? node.position : n.position;
+      });
 
-        const cached = localStorage.getItem(storageKey);
-        let layout: any = {};
-        if (cached) {
-          try { layout = JSON.parse(cached); } catch {}
-        }
-        const dataToSave = {
-          ...layout,
-          positions,
-          edges,
-          saved_at: new Date().toISOString()
-        };
-
-        localStorage.setItem(storageKey, JSON.stringify(dataToSave));
-        if (selectedSistema && selectedSistema !== 'todas' && selectedSistema !== 'seleccionar') {
-          saveBackendLayout(selectedSistema, dataToSave);
-        }
-      } catch (e) {
-        console.warn("Error guardando posición de nodo:", e);
+      const cached = localStorage.getItem(storageKey);
+      let layout: any = {};
+      if (cached) {
+        try { layout = JSON.parse(cached); } catch {}
       }
-    }, 50);
-  }, [storageKey, edges, selectedSistema, nodes]);
+      const dataToSave = {
+        ...layout,
+        positions,
+        edges: edgesRef.current,
+        saved_at: new Date().toISOString()
+      };
+
+      localStorage.setItem(storageKey, JSON.stringify(dataToSave));
+      if (selectedSistema && selectedSistema !== 'todas' && selectedSistema !== 'seleccionar') {
+        saveBackendLayout(selectedSistema, dataToSave);
+      }
+    } catch (e) {
+      console.warn("Error guardando posición de nodo:", e);
+    }
+  }, [storageKey, selectedSistema]);
 
   // Connect edges interactively by dragging connection lines
   const onConnect = useCallback(
@@ -855,6 +869,7 @@ const ScadaFlowDiagram = ({
       let updatedEdges: Edge[] = [];
       setEdges((eds) => {
         updatedEdges = addEdge({ ...params, animated: false, style: { stroke: 'hsl(var(--primary))', strokeWidth: 2 } }, eds);
+        edgesRef.current = updatedEdges;
         return updatedEdges;
       });
 
@@ -879,13 +894,13 @@ const ScadaFlowDiagram = ({
   // Save current node positions and connection edges for this system
   const handleSaveDiagram = async () => {
     const positions: Record<string, { x: number; y: number }> = {};
-    nodes.forEach(n => {
+    nodesRef.current.forEach(n => {
       positions[n.id] = n.position;
     });
 
     const dataToSave = {
       positions,
-      edges,
+      edges: edgesRef.current,
       saved_at: new Date().toISOString()
     };
 
@@ -901,7 +916,7 @@ const ScadaFlowDiagram = ({
       if (ok) {
         toast({
           title: "✅ Diagrama Guardado en Servidor (Centralizado)",
-          description: `La distribución y conexiones de ${nodes.length} componentes se guardaron en la base de datos PostgreSQL.`,
+          description: `La distribución y conexiones de ${nodesRef.current.length} componentes se guardaron en la base de datos PostgreSQL.`,
         });
       } else {
         toast({
@@ -913,7 +928,7 @@ const ScadaFlowDiagram = ({
     } else {
       toast({
         title: "✅ Diagrama Guardado Localmente",
-        description: `Se guardó la distribución de ${nodes.length} componentes y ${edges.length} conexiones.`,
+        description: `Se guardó la distribución de ${nodesRef.current.length} componentes y ${edgesRef.current.length} conexiones.`,
       });
     }
   };
@@ -975,6 +990,30 @@ const ScadaFlowDiagram = ({
           <Cpu className="h-3.5 w-3.5" />
           {nodes.length} Componentes
         </Badge>
+        
+        {/* Lock/Unlock diagram editing toggle button */}
+        <Button
+          size="sm"
+          variant={isLocked ? "outline" : "default"}
+          onClick={() => {
+            const nextLocked = !isLocked;
+            setIsLocked(nextLocked);
+            toast({
+              title: nextLocked ? "🔒 Edición del Diagrama Bloqueada" : "🔓 Edición del Diagrama Habilitada",
+              description: nextLocked ? "El candado está cerrado. Los componentes no se pueden desplazar." : "Podés arrastrar y cambiar la posición de los componentes.",
+            });
+          }}
+          className={`h-8 px-2.5 text-xs font-semibold gap-1.5 transition-all shadow-sm ${
+            isLocked
+              ? "border-emerald-500/60 bg-emerald-950/30 text-emerald-300 hover:bg-emerald-900/40"
+              : "bg-amber-600 hover:bg-amber-500 text-white animate-pulse"
+          }`}
+          title={isLocked ? "Candado cerrado: la edición del diagrama está desactivada. Haz clic para desbloquear." : "Candado abierto: la edición está activa. Haz clic para bloquear."}
+        >
+          {isLocked ? <Lock className="h-3.5 w-3.5 text-emerald-400" /> : <Unlock className="h-3.5 w-3.5 text-white" />}
+          <span>{isLocked ? "Bloqueado" : "Modo Edición"}</span>
+        </Button>
+
         <Button
           size="sm"
           variant="secondary"
@@ -1028,6 +1067,9 @@ const ScadaFlowDiagram = ({
         onNodeDragStop={onNodeDragStop}
         onConnect={onConnect}
         onEdgeClick={onEdgeClick}
+        nodesDraggable={!isLocked}
+        nodesConnectable={!isLocked}
+        elementsSelectable={!isLocked}
         deleteKeyCode={['Backspace', 'Delete']}
         nodeTypes={nodeTypes}
         fitView
