@@ -3,7 +3,7 @@ import random
 from datetime import datetime, timedelta
 from django.db import models
 from django.contrib.auth.models import User
-from django.utils.timezone import now
+from django.utils.timezone import now, localdate
 from django.core.exceptions import ValidationError
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -25,7 +25,7 @@ class Fabrica(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
     ubicacion = models.CharField(max_length=255, blank=True, null=True)
     pais = models.CharField(max_length=100)
-    fecha_creacion = models.DateField(default=now)
+    fecha_creacion = models.DateField(default=localdate)
 
     # Campos SCADA
     estado = models.CharField(max_length=20, choices=ESTADOS_PLANTA, default='OPERATIVO')
@@ -173,7 +173,7 @@ class Empleado(models.Model):
 class EmpleadoSeccion(models.Model):
     empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="secciones")
     seccion = models.ForeignKey('Seccion', on_delete=models.CASCADE, related_name="empleados_historial")
-    fecha_union = models.DateField(default=now)
+    fecha_union = models.DateField(default=localdate)
     fecha_salida = models.DateField(blank=True, null=True)
 
     class Meta:
@@ -535,7 +535,7 @@ class DispositivoSCADA(models.Model):
     estado = models.CharField(max_length=20, choices=ESTADOS, default='OFFLINE')
     topic_mqtt = models.CharField(max_length=255, blank=True, null=True, help_text="Topic MQTT para este dispositivo")
     gateway_id = models.CharField(max_length=100, blank=True, null=True, help_text="ID del gateway/Raspberry asignado")
-    fecha_instalacion = models.DateField(default=now)
+    fecha_instalacion = models.DateField(default=localdate)
     creado_el = models.DateTimeField(auto_now_add=True)
     ultima_lectura = models.DateTimeField(null=True, blank=True)
     valor_lectura = models.FloatField(null=True, blank=True, help_text="Último valor medido")

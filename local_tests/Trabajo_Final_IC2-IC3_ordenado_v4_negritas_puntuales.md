@@ -255,9 +255,18 @@ El sistema organiza las comunicaciones en dos formatos estructurados:
 ## 9. Worker MQTT e Ingesta de Telemetría
 El archivo `mqtt_worker.py` implementa un proceso en segundo plano encargado de conectarse al broker, suscribirse a los tópicos y procesar mensajes[cite: 3].
 * **Suscripción wildcard (`#`):** Permite capturar todos los tópicos entrantes facilitando el auto-descubrimiento en desarrollo[cite: 3].
-* **Auto-descubrimiento:** Si el worker recibe telemetría de un dispositivo o sección que aún no está dado de alta en la base de datos, lo crea automáticamente[cite: 3].
+* **Auto-descubrimiento y Desacoplamiento Multi-Tenant:** Si el worker recibe telemetría de un dispositivo, sección o fábrica que aún no está dado de alta en la base de datos, lo crea automáticamente[cite: 3]. Para permitir la convivencia simultánea de múltiples plantas industriales (ej. la planta física `rafaela_sa` y simuladores/pasarelas remotas como `sunchales_sa`), el worker aplica un **mecanismo de scoping dinámico por tenant**:
+  - Para la planta canónica `rafaela_sa`, se conservan estrictamente los identificadores originales (`tank-1`, `tank-2`, `tank-3`, `sensor_nivel_bombo1`, `pump-1`, etc.), asegurando compatibilidad total hacia atrás con la maqueta física y el firmware de Arduino.
+  - Para cualquier otra fábrica o gateway adicional (ej. `sunchales_sa`), los identificadores se prefijan de forma determinista (`sunchales_sa_tank-1`, `sunchales_sa_pump-1`, `sunchales_sa_sensor-3`), garantizando que la restricción de unicidad `unique=True` en `UnidadAlmacenamiento.node_id` y la clave primaria en `DispositivoSCADA.numero_serie` no colisionen ni sobreescriban los datos entre plantas.
+* **Parser Dinámico y Genérico de Tópicos:** Reconoce de forma flexible la jerarquía de tópicos (`<tenant>/<gateway>/<seccion>/<sistema>/<categoria>/<dispositivo>`), adaptándose automáticamente a configuraciones de 4, 5, 6 o más niveles sin generar fallos en la persistencia.
+* **Salida Formateada y Coloreada en Terminal:** El worker incorpora trazabilidad en tiempo real mediante `self.stdout.write` utilizando estilos ANSI diferenciados:
+  - `[Nivel SCADA]`: Notificación en verde del porcentaje y volumen calculado de cada tanque por planta.
+  - `[Caudal SCADA]`: Registro en verde del flujo instantáneo en caudalímetros de tubería.
+  - `[Actuador SCADA]`: Notificación en cian del cambio de estado en bombas, electroválvulas y mezclador.
+  - `[Telemetría SCADA]`: Sensores de temperatura, presión y diagnóstico ambiental.
 * **Persistencia y Alarmas:** Parsea payloads JSON, actualiza `LecturaSensor` y evalúa umbrales para crear registros en `Alarma`[cite: 3].
-* **Difusión en tiempo real:** Remite las actualizaciones instantáneas a Django Channels vía `scada_telemetry`[cite: 3].
+* **Difusión en tiempo real:** Remite las actualizaciones instantáneas a Django Channels vía `scada_telemetry` enriquecidas con metadatos de tenant y sistema para su consumo en la interfaz web[cite: 3].
+
 
 ---
 
@@ -356,6 +365,11 @@ En lugar de componentes estáticos genéricos, el diagrama se compone de **nodos
   * `ControlReposicionModal.tsx`: Permite disparar la recarga controlada de tanques con tope porcentual de seguridad y parada de emergencia inmediata (`Freno Reposición`)[cite: 3].
   * `GestorComandosModal.tsx` y `ControlDinamicoModal.tsx`: Proveen consolas manuales para mantenimiento y accionamiento directo de actuadores por parte de usuarios con rango de autorización suficiente[cite: 3].
 * **Integración Macro-Planta:** Mediante `VistaMacroPlanta.tsx`, el operador puede alternar entre la visión global de la planta (fábricas, secciones y líneas de proceso) y el gemelo digital P&ID focalizado en un sistema específico[cite: 3].
+
+### 13.3 Desacoplamiento y Filtrado Jerárquico Multi-Tenant (Mapeo Canónico)
+Para garantizar una experiencia de usuario multi-tenant transparente y sin fuga de información entre fábricas:
+* **Filtrado Estricto de Componentes:** Los selectores superiores de `VisualizacionSCADA.tsx` permiten alternar entre fábricas (`rafaela_sa`, `sunchales_sa`), secciones y líneas de proceso. El diagrama `ScadaFlowDiagram.tsx` filtra rigurosamente las entidades de telemetría y unidades de almacenamiento en base al `sistema_id` seleccionado, eliminando fallbacks que pudiesen mostrar componentes de otra planta.
+* **Resolución Canónica de Nodos (`getCanonicalNodeId`):** El módulo `scadaConstants.ts` implementa una función de normalización que correlaciona tanto identificadores directos (`tank-1`, `pump-1`) como identificadores con prefijo multi-tenant (`sunchales_sa_tank-1`, `sunchales_sa_pump-1`) con los slots correspondientes de la topología P&ID. De este modo, cualquier fábrica dada de alta en el sistema adquiere automáticamente su propio gemelo digital animado en tiempo real sin requerir modificaciones en el código de la interfaz.
 
 ---
 

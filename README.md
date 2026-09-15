@@ -135,6 +135,36 @@ IC2-IC3/
 
 ---
 
+## 🌐 Arquitectura Multi-Tenant y Multi-Gateway
+
+El sistema implementa desacoplamiento total a nivel de pasarela y modelo de datos para permitir la coexistencia simultánea de múltiples fábricas físicas y simuladas (ej. `rafaela_sa` con maqueta física Arduino y `sunchales_sa` mediante gateway Raspberry Pi o simulador):
+
+1. **Jerarquía Flexible de Tópicos MQTT**:
+   ```
+   <tenant>/<gateway>/<seccion>/<sistema>/<categoria>/<dispositivo>
+   ```
+   *Ejemplo*: `sunchales_sa/sim_gateway_test/A3/linea_ensamblado_3/nivel/sensor_nivel_bombo1`
+
+2. **Scoping Determinista por Tenant**:
+   - **Planta Canónica (`rafaela_sa`)**: Conserva los identificadores originales (`tank-1`, `pump-1`, `sensor_nivel_bombo1`), garantizando 100% retrocompatibilidad con el hardware de Rafaela.
+   - **Plantas Adicionales (`sunchales_sa`, etc.)**: Generan automáticamente identificadores prefijados (`sunchales_sa_tank-1`, `sunchales_sa_pump-1`), resolviendo la unicidad en PostgreSQL (`UnidadAlmacenamiento.node_id` y `DispositivoSCADA.numero_serie`).
+
+3. **Monitoreo en Tiempo Real del Worker MQTT**:
+   ```powershell
+   # Visualizar telemetría de todas las plantas con colores ANSI diferenciados:
+   docker compose logs -f mqtt_worker
+   ```
+   - `[Nivel SCADA]` (Verde): Tanques, volúmenes en litros y porcentajes de llenado.
+   - `[Caudal SCADA]` (Verde): Flujo de líquido instantáneo en L/min.
+   - `[Actuador SCADA]` (Cian): Estados operativos de bombas, electroválvulas y mezcladores.
+   - `[Telemetría SCADA]` (Blanco): Sensores genéricos (temperatura, presión).
+
+4. **Visualización Aislada en `/scada`**:
+   - Al seleccionar una fábrica y sistema, la interfaz filtra rigurosamente las variables de dicho sistema.
+   - El mapeo canónico (`getCanonicalNodeId`) enlaza automáticamente los dispositivos prefijados con la topología del diagrama P&ID.
+
+---
+
 ## 🧪 Comandos Útiles
 
 ```powershell
@@ -147,6 +177,10 @@ docker compose exec backend python manage.py check
 # Monitorear todo el tráfico MQTT en consola
 docker compose exec mosquitto mosquitto_sub -u admin -P admin -t "#" -v
 
-# Ejecutar el Worker MQTT manualmente
-docker compose exec backend python manage.py mqtt_worker
+# Ver registros en vivo del Worker MQTT
+docker compose logs -f mqtt_worker
+
+# Reiniciar el worker tras cambios
+docker compose restart mqtt_worker
 ```
+

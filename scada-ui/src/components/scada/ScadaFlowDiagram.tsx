@@ -109,48 +109,53 @@ const ScadaFlowDiagram = ({
   }, [selectedSistema, selectedPlanta, selectedSeccion]);
 
 
-  // Filter dispositivos based on selected planta, sección, and sistema, with graceful fallback
+  // Filtrar dispositivos estrictamente según planta, sección y sistema seleccionados
   const filteredDispositivos = useMemo(() => {
     let result = dispositivos;
 
-    if (selectedPlanta !== 'seleccionar') {
-      const matchPlanta = result.filter(d => {
+    if (selectedSistema !== 'seleccionar' && selectedSistema !== 'todas') {
+      return result.filter(d => d.sistema && String(d.sistema) === selectedSistema);
+    }
+
+    if (selectedSeccion !== 'seleccionar' && selectedSeccion !== 'todas') {
+      return result.filter(d => d.seccion && String(d.seccion) === selectedSeccion);
+    }
+
+    if (selectedPlanta !== 'seleccionar' && selectedPlanta !== 'todas') {
+      return result.filter(d => {
         const seccionObj = secciones.find(s => String(s.id) === String(d.seccion));
-        return seccionObj ? String(seccionObj.fabrica) === selectedPlanta : true;
+        if (seccionObj && String(seccionObj.fabrica) === selectedPlanta) return true;
+        const sistemaObj = sistemas.find(s => String(s.id) === String(d.sistema));
+        return sistemaObj ? String(sistemaObj.fabrica) === selectedPlanta : false;
       });
-      if (matchPlanta.length > 0) result = matchPlanta;
     }
 
-    if (selectedSeccion !== 'seleccionar') {
-      const matchSec = result.filter(d => String(d.seccion) === selectedSeccion);
-      if (matchSec.length > 0) result = matchSec;
-    }
+    return result;
+  }, [dispositivos, selectedPlanta, selectedSeccion, selectedSistema, secciones, sistemas]);
 
-    if (selectedSistema !== 'seleccionar') {
-      const matchSys = result.filter(d => String(d.sistema) === selectedSistema);
-      if (matchSys.length > 0) result = matchSys;
-    }
-
-    // Fallback: si el filtro no coincide con nada (o está en 'seleccionar'), usar todos los dispositivos reales disponibles
-    return result.length > 0 ? result : dispositivos;
-  }, [dispositivos, selectedPlanta, selectedSeccion, selectedSistema, secciones]);
-
-  // Filter unidades de almacenamiento based on selected planta / seccion, with fallback
+  // Filtrar unidades de almacenamiento estrictamente por sistema, sección o planta seleccionada
   const filteredUnidades = useMemo(() => {
     let result = unidadesAlmacenamiento;
 
-    if (selectedSistema !== 'seleccionar') {
-      const matchSys = result.filter(u => u.sistema && String(u.sistema) === selectedSistema);
-      if (matchSys.length > 0) result = matchSys;
+    if (selectedSistema !== 'seleccionar' && selectedSistema !== 'todas') {
+      return result.filter(u => u.sistema && String(u.sistema) === selectedSistema);
     }
 
-    if (selectedSeccion !== 'seleccionar') {
-      const matchSec = result.filter(u => u.seccion && String(u.seccion) === selectedSeccion);
-      if (matchSec.length > 0) result = matchSec;
+    if (selectedSeccion !== 'seleccionar' && selectedSeccion !== 'todas') {
+      return result.filter(u => u.seccion && String(u.seccion) === selectedSeccion);
     }
 
-    return result.length > 0 ? result : unidadesAlmacenamiento;
-  }, [unidadesAlmacenamiento, selectedPlanta, selectedSeccion, selectedSistema]);
+    if (selectedPlanta !== 'seleccionar' && selectedPlanta !== 'todas') {
+      return result.filter(u => {
+        const sistemaObj = sistemas.find(s => String(s.id) === String(u.sistema));
+        if (sistemaObj && String(sistemaObj.fabrica) === selectedPlanta) return true;
+        const seccionObj = secciones.find(s => String(s.id) === String(u.seccion));
+        return seccionObj ? String(seccionObj.fabrica) === selectedPlanta : false;
+      });
+    }
+
+    return result;
+  }, [unidadesAlmacenamiento, selectedPlanta, selectedSeccion, selectedSistema, sistemas, secciones]);
 
   const isSelectionIncomplete = selectedPlanta === 'seleccionar' || selectedSeccion === 'seleccionar' || selectedSistema === 'seleccionar';
 
@@ -213,275 +218,309 @@ const ScadaFlowDiagram = ({
 
     const nodesList: Node[] = [];
 
+    const showMockFallbacks = selectedSistema === 'todas' || selectedSistema === 'seleccionar';
+
     // 1. BOMBA REPOSICIÓN
     const devRepo = findDevice('bomba_reposicion');
-    const isRepoActive = isDeviceActive(devRepo);
-    nodesList.push({
-      id: 'bomba_reposicion',
-      type: 'pump',
-      position: defaultLayoutPositions['bomba_reposicion'],
-      data: {
-        label: devRepo?.nombre || 'Bomba Reposición',
-        numero_serie: devRepo?.numero_serie || 'bomba_reposicion',
-        isRunning: isRepoActive,
-        rpm: isRepoActive ? 1450 : 0,
-        power: isRepoActive ? 75 : 0,
-        estado: devRepo?.estado || 'ONLINE',
-      }
-    });
+    if (devRepo || showMockFallbacks) {
+      const isRepoActive = isDeviceActive(devRepo);
+      nodesList.push({
+        id: 'bomba_reposicion',
+        type: 'pump',
+        position: defaultLayoutPositions['bomba_reposicion'],
+        data: {
+          label: devRepo?.nombre || 'Bomba Reposición',
+          numero_serie: devRepo?.numero_serie || 'bomba_reposicion',
+          isRunning: isRepoActive,
+          rpm: isRepoActive ? 1450 : 0,
+          power: isRepoActive ? 75 : 0,
+          estado: devRepo?.estado || 'ONLINE',
+        }
+      });
+    }
 
     // 2. ELECTROVÁLVULA 1 (Válvula Rep. A)
     const devValv1 = findDevice('electrovalvula-1');
-    const isValv1Active = isDeviceActive(devValv1);
-    nodesList.push({
-      id: 'electrovalvula-1',
-      type: 'valve',
-      position: defaultLayoutPositions['electrovalvula-1'],
-      data: {
-        label: devValv1?.nombre || 'Válvula Rep. A',
-        numero_serie: devValv1?.numero_serie || 'electrovalvula-1',
-        isOpen: isValv1Active,
-        flowRate: isValv1Active ? 12.5 : 0,
-        estado: devValv1?.estado || 'ONLINE',
-      }
-    });
+    if (devValv1 || showMockFallbacks) {
+      const isValv1Active = isDeviceActive(devValv1);
+      nodesList.push({
+        id: 'electrovalvula-1',
+        type: 'valve',
+        position: defaultLayoutPositions['electrovalvula-1'],
+        data: {
+          label: devValv1?.nombre || 'Válvula Rep. A',
+          numero_serie: devValv1?.numero_serie || 'electrovalvula-1',
+          isOpen: isValv1Active,
+          flowRate: isValv1Active ? 12.5 : 0,
+          estado: devValv1?.estado || 'ONLINE',
+        }
+      });
+    }
 
     // 3. ELECTROVÁLVULA 2 (Válvula Rep. B)
     const devValv2 = findDevice('electrovalvula-2');
-    const isValv2Active = isDeviceActive(devValv2);
-    nodesList.push({
-      id: 'electrovalvula-2',
-      type: 'valve',
-      position: defaultLayoutPositions['electrovalvula-2'],
-      data: {
-        label: devValv2?.nombre || 'Válvula Rep. B',
-        numero_serie: devValv2?.numero_serie || 'electrovalvula-2',
-        isOpen: isValv2Active,
-        flowRate: isValv2Active ? 12.5 : 0,
-        estado: devValv2?.estado || 'ONLINE',
-      }
-    });
+    if (devValv2 || showMockFallbacks) {
+      const isValv2Active = isDeviceActive(devValv2);
+      nodesList.push({
+        id: 'electrovalvula-2',
+        type: 'valve',
+        position: defaultLayoutPositions['electrovalvula-2'],
+        data: {
+          label: devValv2?.nombre || 'Válvula Rep. B',
+          numero_serie: devValv2?.numero_serie || 'electrovalvula-2',
+          isOpen: isValv2Active,
+          flowRate: isValv2Active ? 12.5 : 0,
+          estado: devValv2?.estado || 'ONLINE',
+        }
+      });
+    }
 
     // 4. SENSOR DE NIVEL BOMBO 1 (Ultrasónico)
     const devLvl1 = findDevice('sensor_nivel_bombo1');
-    const valLvl1 = devLvl1 ? Number(devLvl1.valor_lectura || 0) : 0;
-    nodesList.push({
-      id: 'sensor_nivel_bombo1',
-      type: 'sensor',
-      position: defaultLayoutPositions['sensor_nivel_bombo1'],
-      data: {
-        label: devLvl1?.nombre || 'Sensor Nivel Bombo 1',
-        numero_serie: devLvl1?.numero_serie || 'sensor_nivel_bombo1',
-        value: valLvl1,
-        unit: 'cm',
-        type: 'level',
-        status: (valLvl1 > 0 && valLvl1 < 35) ? 'normal' : 'warning',
-        estado: devLvl1?.estado || 'ONLINE',
-      }
-    });
+    if (devLvl1 || showMockFallbacks) {
+      const valLvl1 = devLvl1 ? Number(devLvl1.valor_lectura || 0) : 0;
+      nodesList.push({
+        id: 'sensor_nivel_bombo1',
+        type: 'sensor',
+        position: defaultLayoutPositions['sensor_nivel_bombo1'],
+        data: {
+          label: devLvl1?.nombre || 'Sensor Nivel Bombo 1',
+          numero_serie: devLvl1?.numero_serie || 'sensor_nivel_bombo1',
+          value: valLvl1,
+          unit: 'cm',
+          type: 'level',
+          status: (valLvl1 > 0 && valLvl1 < 35) ? 'normal' : 'warning',
+          estado: devLvl1?.estado || 'ONLINE',
+        }
+      });
+    }
 
     // 5. TANQUE A (tank-1)
     const unit1 = findUnit('tank-1');
-    const cap1 = unit1?.capacidad || 1000;
-    const level1 = computeTankLevel(levelSensorsMap['tank-1'], unit1, 50);
-    nodesList.push({
-      id: 'tank-1',
-      type: 'tank',
-      position: defaultLayoutPositions['tank-1'],
-      data: {
-        label: unit1?.nombre || 'Tanque A (Líquido 1)',
-        node_id: 'tank-1',
-        level: level1,
-        temperature: unit1?.temperatura || 25,
-        capacity: cap1,
-        volume: Math.round((level1 / 100) * cap1),
-        unit: 'ml',
-        status: (unit1?.estado || 'ACTIVE').toLowerCase(),
-        content: unit1?.contenido || 'Líquido 1 (ml)',
-      }
-    });
+    if (unit1 || showMockFallbacks) {
+      const cap1 = unit1?.capacidad || 1000;
+      const level1 = computeTankLevel(levelSensorsMap['tank-1'], unit1, 50);
+      nodesList.push({
+        id: 'tank-1',
+        type: 'tank',
+        position: defaultLayoutPositions['tank-1'],
+        data: {
+          label: unit1?.nombre || 'Tanque A (Líquido 1)',
+          node_id: 'tank-1',
+          level: level1,
+          temperature: unit1?.temperatura || 25,
+          capacity: cap1,
+          volume: Math.round((level1 / 100) * cap1),
+          unit: 'ml',
+          status: (unit1?.estado || 'ACTIVE').toLowerCase(),
+          content: unit1?.contenido || 'Líquido 1 (ml)',
+        }
+      });
+    }
 
     // 6. SENSOR DE NIVEL BOMBO 2 (Ultrasónico)
     const devLvl2 = findDevice('sensor_nivel_bombo2');
-    const valLvl2 = devLvl2 ? Number(devLvl2.valor_lectura || 0) : 0;
-    nodesList.push({
-      id: 'sensor_nivel_bombo2',
-      type: 'sensor',
-      position: defaultLayoutPositions['sensor_nivel_bombo2'],
-      data: {
-        label: devLvl2?.nombre || 'Sensor Nivel Bombo 2',
-        numero_serie: devLvl2?.numero_serie || 'sensor_nivel_bombo2',
-        value: valLvl2,
-        unit: 'cm',
-        type: 'level',
-        status: (valLvl2 > 0 && valLvl2 < 35) ? 'normal' : 'warning',
-        estado: devLvl2?.estado || 'ONLINE',
-      }
-    });
+    if (devLvl2 || showMockFallbacks) {
+      const valLvl2 = devLvl2 ? Number(devLvl2.valor_lectura || 0) : 0;
+      nodesList.push({
+        id: 'sensor_nivel_bombo2',
+        type: 'sensor',
+        position: defaultLayoutPositions['sensor_nivel_bombo2'],
+        data: {
+          label: devLvl2?.nombre || 'Sensor Nivel Bombo 2',
+          numero_serie: devLvl2?.numero_serie || 'sensor_nivel_bombo2',
+          value: valLvl2,
+          unit: 'cm',
+          type: 'level',
+          status: (valLvl2 > 0 && valLvl2 < 35) ? 'normal' : 'warning',
+          estado: devLvl2?.estado || 'ONLINE',
+        }
+      });
+    }
 
     // 7. TANQUE B (tank-2)
     const unit2 = findUnit('tank-2');
-    const cap2 = unit2?.capacidad || 800;
-    const level2 = computeTankLevel(levelSensorsMap['tank-2'], unit2, 45);
-    nodesList.push({
-      id: 'tank-2',
-      type: 'tank',
-      position: defaultLayoutPositions['tank-2'],
-      data: {
-        label: unit2?.nombre || 'Tanque B (Líquido 2)',
-        node_id: 'tank-2',
-        level: level2,
-        temperature: unit2?.temperatura || 28,
-        capacity: cap2,
-        volume: Math.round((level2 / 100) * cap2),
-        unit: 'ml',
-        status: (unit2?.estado || 'ACTIVE').toLowerCase(),
-        content: unit2?.contenido || 'Líquido 2 (ml)',
-      }
-    });
+    if (unit2 || showMockFallbacks) {
+      const cap2 = unit2?.capacidad || 800;
+      const level2 = computeTankLevel(levelSensorsMap['tank-2'], unit2, 45);
+      nodesList.push({
+        id: 'tank-2',
+        type: 'tank',
+        position: defaultLayoutPositions['tank-2'],
+        data: {
+          label: unit2?.nombre || 'Tanque B (Líquido 2)',
+          node_id: 'tank-2',
+          level: level2,
+          temperature: unit2?.temperatura || 28,
+          capacity: cap2,
+          volume: Math.round((level2 / 100) * cap2),
+          unit: 'ml',
+          status: (unit2?.estado || 'ACTIVE').toLowerCase(),
+          content: unit2?.contenido || 'Líquido 2 (ml)',
+        }
+      });
+    }
 
     // 8. BOMBA A (pump-1 / bomba1)
     const devPump1 = findDevice('pump-1');
-    const isPump1Active = isDeviceActive(devPump1);
-    nodesList.push({
-      id: 'pump-1',
-      type: 'pump',
-      position: defaultLayoutPositions['pump-1'],
-      data: {
-        label: devPump1?.nombre || 'Bomba P1',
-        numero_serie: devPump1?.numero_serie || 'bomba1',
-        isRunning: isPump1Active,
-        rpm: isPump1Active ? 1450 : 0,
-        power: isPump1Active ? 75 : 0,
-        estado: devPump1?.estado || 'ONLINE',
-      }
-    });
+    if (devPump1 || showMockFallbacks) {
+      const isPump1Active = isDeviceActive(devPump1);
+      nodesList.push({
+        id: 'pump-1',
+        type: 'pump',
+        position: defaultLayoutPositions['pump-1'],
+        data: {
+          label: devPump1?.nombre || 'Bomba P1',
+          numero_serie: devPump1?.numero_serie || 'bomba1',
+          isRunning: isPump1Active,
+          rpm: isPump1Active ? 1450 : 0,
+          power: isPump1Active ? 75 : 0,
+          estado: devPump1?.estado || 'ONLINE',
+        }
+      });
+    }
 
     // 9. BOMBA B (pump-2 / bomba2)
     const devPump2 = findDevice('pump-2');
-    const isPump2Active = isDeviceActive(devPump2);
-    nodesList.push({
-      id: 'pump-2',
-      type: 'pump',
-      position: defaultLayoutPositions['pump-2'],
-      data: {
-        label: devPump2?.nombre || 'Bomba P2',
-        numero_serie: devPump2?.numero_serie || 'bomba2',
-        isRunning: isPump2Active,
-        rpm: isPump2Active ? 1450 : 0,
-        power: isPump2Active ? 75 : 0,
-        estado: devPump2?.estado || 'ONLINE',
-      }
-    });
+    if (devPump2 || showMockFallbacks) {
+      const isPump2Active = isDeviceActive(devPump2);
+      nodesList.push({
+        id: 'pump-2',
+        type: 'pump',
+        position: defaultLayoutPositions['pump-2'],
+        data: {
+          label: devPump2?.nombre || 'Bomba P2',
+          numero_serie: devPump2?.numero_serie || 'bomba2',
+          isRunning: isPump2Active,
+          rpm: isPump2Active ? 1450 : 0,
+          power: isPump2Active ? 75 : 0,
+          estado: devPump2?.estado || 'ONLINE',
+        }
+      });
+    }
 
     // 10. SENSOR DE FLUJO A (sensor-3 / caudalímetro 1)
     const devFlow1 = findDevice('sensor-3');
-    const valFlow1 = devFlow1 ? Number(devFlow1.valor_lectura || 0) : 0;
-    nodesList.push({
-      id: 'sensor-3',
-      type: 'sensor',
-      position: defaultLayoutPositions['sensor-3'],
-      data: {
-        label: devFlow1?.nombre || 'Caudalímetro 1',
-        numero_serie: devFlow1?.numero_serie || 'sensor-3',
-        value: valFlow1,
-        unit: 'ml',
-        type: 'flow',
-        status: (valFlow1 > 0 || isPump1Active) ? 'normal' : 'warning',
-        estado: devFlow1?.estado || 'ONLINE',
-      }
-    });
+    if (devFlow1 || showMockFallbacks) {
+      const valFlow1 = devFlow1 ? Number(devFlow1.valor_lectura || 0) : 0;
+      const isPump1Active = isDeviceActive(devPump1);
+      nodesList.push({
+        id: 'sensor-3',
+        type: 'sensor',
+        position: defaultLayoutPositions['sensor-3'],
+        data: {
+          label: devFlow1?.nombre || 'Caudalímetro 1',
+          numero_serie: devFlow1?.numero_serie || 'sensor-3',
+          value: valFlow1,
+          unit: 'ml',
+          type: 'flow',
+          status: (valFlow1 > 0 || isPump1Active) ? 'normal' : 'warning',
+          estado: devFlow1?.estado || 'ONLINE',
+        }
+      });
+    }
 
     // 11. SENSOR DE FLUJO B (sensor_caudal_02 / caudalímetro 2)
     const devFlow2 = findDevice('sensor_caudal_02');
-    const valFlow2 = devFlow2 ? Number(devFlow2.valor_lectura || 0) : 0;
-    nodesList.push({
-      id: 'sensor_caudal_02',
-      type: 'sensor',
-      position: defaultLayoutPositions['sensor_caudal_02'],
-      data: {
-        label: devFlow2?.nombre || 'Caudalímetro 2',
-        numero_serie: devFlow2?.numero_serie || 'sensor_caudal_02',
-        value: valFlow2,
-        unit: 'ml',
-        type: 'flow',
-        status: (valFlow2 > 0 || isPump2Active) ? 'normal' : 'warning',
-        estado: devFlow2?.estado || 'ONLINE',
-      }
-    });
+    if (devFlow2 || showMockFallbacks) {
+      const valFlow2 = devFlow2 ? Number(devFlow2.valor_lectura || 0) : 0;
+      const isPump2Active = isDeviceActive(devPump2);
+      nodesList.push({
+        id: 'sensor_caudal_02',
+        type: 'sensor',
+        position: defaultLayoutPositions['sensor_caudal_02'],
+        data: {
+          label: devFlow2?.nombre || 'Caudalímetro 2',
+          numero_serie: devFlow2?.numero_serie || 'sensor_caudal_02',
+          value: valFlow2,
+          unit: 'ml',
+          type: 'flow',
+          status: (valFlow2 > 0 || isPump2Active) ? 'normal' : 'warning',
+          estado: devFlow2?.estado || 'ONLINE',
+        }
+      });
+    }
 
     // 12. MEZCLADOR (mixer-1)
     const devMixer = findDevice('mixer-1');
-    const isMixerActive = isDeviceActive(devMixer);
-    nodesList.push({
-      id: 'mixer-1',
-      type: 'mixer',
-      position: defaultLayoutPositions['mixer-1'],
-      data: {
-        label: devMixer?.nombre || 'Mezclador M1',
-        numero_serie: devMixer?.numero_serie || 'mixer-1',
-        isRunning: isMixerActive,
-        speed: isMixerActive ? 120 : 0,
-        temperature: 25,
-        estado: devMixer?.estado || 'ONLINE',
-      }
-    });
+    if (devMixer || showMockFallbacks) {
+      const isMixerActive = isDeviceActive(devMixer);
+      nodesList.push({
+        id: 'mixer-1',
+        type: 'mixer',
+        position: defaultLayoutPositions['mixer-1'],
+        data: {
+          label: devMixer?.nombre || 'Mezclador M1',
+          numero_serie: devMixer?.numero_serie || 'mixer-1',
+          isRunning: isMixerActive,
+          speed: isMixerActive ? 120 : 0,
+          temperature: 25,
+          estado: devMixer?.estado || 'ONLINE',
+        }
+      });
+    }
 
     // 13. SENSOR DE NIVEL BOMBO MEZCLA (Ultrasónico)
     const devLvl3 = findDevice('sensor_nivel_mezcla');
-    const valLvl3 = devLvl3 ? Number(devLvl3.valor_lectura || 0) : 0;
-    nodesList.push({
-      id: 'sensor_nivel_mezcla',
-      type: 'sensor',
-      position: defaultLayoutPositions['sensor_nivel_mezcla'],
-      data: {
-        label: devLvl3?.nombre || 'Sensor Nivel Mezcla',
-        numero_serie: devLvl3?.numero_serie || 'sensor_nivel_mezcla',
-        value: valLvl3,
-        unit: 'cm',
-        type: 'level',
-        status: (valLvl3 > 0 && valLvl3 < 35) ? 'normal' : 'warning',
-        estado: devLvl3?.estado || 'ONLINE',
-      }
-    });
+    if (devLvl3 || showMockFallbacks) {
+      const valLvl3 = devLvl3 ? Number(devLvl3.valor_lectura || 0) : 0;
+      nodesList.push({
+        id: 'sensor_nivel_mezcla',
+        type: 'sensor',
+        position: defaultLayoutPositions['sensor_nivel_mezcla'],
+        data: {
+          label: devLvl3?.nombre || 'Sensor Nivel Mezcla',
+          numero_serie: devLvl3?.numero_serie || 'sensor_nivel_mezcla',
+          value: valLvl3,
+          unit: 'cm',
+          type: 'level',
+          status: (valLvl3 > 0 && valLvl3 < 35) ? 'normal' : 'warning',
+          estado: devLvl3?.estado || 'ONLINE',
+        }
+      });
+    }
 
     // 14. TANQUE SALIDA / MEZCLA (tank-3)
     const unit3 = findUnit('tank-3');
-    const cap3 = unit3?.capacidad || 1500;
-    const level3 = computeTankLevel(levelSensorsMap['tank-3'], unit3, 30);
-    nodesList.push({
-      id: 'tank-3',
-      type: 'tank',
-      position: defaultLayoutPositions['tank-3'],
-      data: {
-        label: unit3?.nombre || 'Tanque Salida (Mezcla)',
-        node_id: 'tank-3',
-        level: level3,
-        temperature: unit3?.temperatura || 26,
-        capacity: cap3,
-        volume: Math.round((level3 / 100) * cap3),
-        unit: 'ml',
-        status: (unit3?.estado || 'ACTIVE').toLowerCase(),
-        content: unit3?.contenido || 'Mezcla Homogénea (ml)',
-      }
-    });
+    if (unit3 || showMockFallbacks) {
+      const cap3 = unit3?.capacidad || 1500;
+      const level3 = computeTankLevel(levelSensorsMap['tank-3'], unit3, 30);
+      nodesList.push({
+        id: 'tank-3',
+        type: 'tank',
+        position: defaultLayoutPositions['tank-3'],
+        data: {
+          label: unit3?.nombre || 'Tanque Salida (Mezcla)',
+          node_id: 'tank-3',
+          level: level3,
+          temperature: unit3?.temperatura || 26,
+          capacity: cap3,
+          volume: Math.round((level3 / 100) * cap3),
+          unit: 'ml',
+          status: (unit3?.estado || 'ACTIVE').toLowerCase(),
+          content: unit3?.contenido || 'Mezcla Homogénea (ml)',
+        }
+      });
+    }
 
     // 15. BOMBA DE MEZCLA / VACIADO (bomba_mezcla)
     const devBombaM = findDevice('bomba_mezcla');
-    const isBombaMActive = isDeviceActive(devBombaM);
-    nodesList.push({
-      id: 'bomba_mezcla',
-      type: 'pump',
-      position: defaultLayoutPositions['bomba_mezcla'],
-      data: {
-        label: devBombaM?.nombre || 'Bomba de Mezcla',
-        numero_serie: devBombaM?.numero_serie || 'bomba_mezcla',
-        isRunning: isBombaMActive,
-        rpm: isBombaMActive ? 1450 : 0,
-        power: isBombaMActive ? 75 : 0,
-        estado: devBombaM?.estado || 'ONLINE',
-      }
-    });
+    if (devBombaM || showMockFallbacks) {
+      const isBombaMActive = isDeviceActive(devBombaM);
+      nodesList.push({
+        id: 'bomba_mezcla',
+        type: 'pump',
+        position: defaultLayoutPositions['bomba_mezcla'],
+        data: {
+          label: devBombaM?.nombre || 'Bomba de Mezcla',
+          numero_serie: devBombaM?.numero_serie || 'bomba_mezcla',
+          isRunning: isBombaMActive,
+          rpm: isBombaMActive ? 1450 : 0,
+          power: isBombaMActive ? 75 : 0,
+          estado: devBombaM?.estado || 'ONLINE',
+        }
+      });
+    }
 
     // Agregar cualquier dispositivo físico adicional registrado que no forme parte de la topología base de 15 nodos
     const coreCanonicalIds = new Set([
@@ -687,10 +726,16 @@ const ScadaFlowDiagram = ({
       const freshMap = new Map(initialNodes.map(n => [n.id, n]));
       let hasAnyChange = false;
 
-      const updatedNodes = prevNodes.map(prev => {
-        const fresh = freshMap.get(prev.id);
-        if (!fresh) return prev;
+      // 1. Filtrar nodos que fueron eliminados de la BD o desasignados del sistema
+      const survivingNodes = prevNodes.filter(prev => {
+        const exists = freshMap.has(prev.id);
+        if (!exists) hasAnyChange = true;
+        return exists;
+      });
 
+      // 2. Actualizar telemetría de los nodos sobrevivientes
+      const updatedNodes = survivingNodes.map(prev => {
+        const fresh = freshMap.get(prev.id)!;
         const prevData = prev.data || {};
         const freshData = fresh.data || {};
         const isDataEqual = Object.keys(freshData).every(k => freshData[k] === prevData[k]) &&
@@ -705,6 +750,7 @@ const ScadaFlowDiagram = ({
         };
       });
 
+      // 3. Incorporar nodos dados de alta recientemente
       const prevIds = new Set(prevNodes.map(p => p.id));
       initialNodes.forEach(fresh => {
         if (!prevIds.has(fresh.id)) {

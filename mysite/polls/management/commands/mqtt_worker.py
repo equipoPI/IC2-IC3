@@ -282,30 +282,57 @@ class Command(BaseCommand):
                 tenant = telemetria_parts[0]
                 gateway_id = telemetria_parts[1] if len(telemetria_parts) > 1 else 'd83add60dbb0'
 
-                parts_lower = [p.lower() for p in telemetria_parts]
-                if 'sensores' in parts_lower:
-                    category = 'sensores'
-                elif 'actuadores' in parts_lower:
-                    category = 'actuadores'
-                elif 'proceso' in parts_lower:
-                    category = 'proceso'
-                elif 'nivel' in parts_lower:
-                    category = 'nivel'
-                elif 'caudal' in parts_lower:
-                    category = 'caudal'
+                # Función helper para aislar IDs por tenant y sistema sin colisión de unicidad
+                def get_scoped_id(base_id, tenant_name, system_name=None):
+                    # Preservar identificadores canónicos para Rafaela en su línea principal
+                    if tenant_name.lower() in ['rafaela_sa', 'rafaela', 'planta principal'] and (
+                        not system_name or system_name.lower() in ['linea_mezclado_1', 'sistema de mezcla a1', 'sistema_principal']
+                    ):
+                        return base_id
+                    clean_tenant = re.sub(r'[^a-zA-Z0-9_]', '_', tenant_name.lower())
+                    clean_base = re.sub(r'[^a-zA-Z0-9_-]', '_', base_id)
+                    if system_name:
+                        clean_sys = re.sub(r'[^a-zA-Z0-9_]', '_', system_name.lower())
+                        if clean_sys.startswith('linea_'):
+                            clean_sys = clean_sys[6:]
+                        scoped = f"{clean_tenant}_{clean_sys}_{clean_base}"
+                        return scoped[:50]
+                    scoped = f"{clean_tenant}_{clean_base}"
+                    return scoped[:50]
+
+                # Detección dinámica de categoría por palabras clave
+                cat_keywords = {'sensores', 'actuadores', 'proceso', 'nivel', 'caudal', 'alarmas', 'diagnostico'}
+                cat_idx = None
+                for idx, p in enumerate(telemetria_parts):
+                    if p.lower() in cat_keywords:
+                        cat_idx = idx
+                        break
+
+                if cat_idx is not None:
+                    category = telemetria_parts[cat_idx].lower()
+                    mid_parts = telemetria_parts[2:cat_idx]
+                    if len(mid_parts) >= 2:
+                        sector = mid_parts[0]
+                        system = mid_parts[1]
+                    elif len(mid_parts) == 1:
+                        sector = 'general'
+                        system = mid_parts[0]
+                    else:
+                        sector = 'a1' if tenant.lower() in ['rafaela_sa', 'rafaela'] else 'general'
+                        system = 'linea_mezclado_1' if tenant.lower() in ['rafaela_sa', 'rafaela'] else 'sistema_principal'
                 else:
                     category = telemetria_parts[-2].lower() if len(telemetria_parts) >= 2 else 'general'
+                    if len(telemetria_parts) >= 6:
+                        sector = telemetria_parts[2]
+                        system = telemetria_parts[3]
+                    elif len(telemetria_parts) == 5:
+                        sector = 'general'
+                        system = telemetria_parts[2]
+                    else:
+                        sector = 'a1' if tenant.lower() in ['rafaela_sa', 'rafaela'] else 'general'
+                        system = 'linea_mezclado_1' if tenant.lower() in ['rafaela_sa', 'rafaela'] else 'sistema_principal'
 
                 device_id = telemetria_parts[-1].lower()
-
-                # Extraer sector y sistema
-                sector = 'a1'
-                system = 'linea_mezclado_1'
-                if len(telemetria_parts) >= 6:
-                    if telemetria_parts[2].lower() not in ['sensores', 'actuadores', 'proceso', 'nivel', 'caudal']:
-                        sector = telemetria_parts[2]
-                    if telemetria_parts[3].lower() not in ['sensores', 'actuadores', 'proceso', 'nivel', 'caudal']:
-                        system = telemetria_parts[3]
 
                 # Resolver Fábrica, Sección y Sistema
                 fabrica, _ = Fabrica.objects.get_or_create(
@@ -331,7 +358,8 @@ class Command(BaseCommand):
                     nombre=system,
                     fabrica=fabrica,
                     defaults={
-                        'descripcion': f"Sistema {system} auto-detectado"
+                        'descripcion': f"Sistema {system} auto-detectado",
+                        'tipo_sistema': 'FLUIDOS'
                     }
                 )
 
@@ -369,14 +397,16 @@ class Command(BaseCommand):
                     dev.save(update_fields=updated)
                     return dev
 
-                def registrar_actuador(serie, name, cat, val_num):
-                    dev = get_or_create_device(serie, name, cat)
+                def registrar_actuador(base_serie, base_name, cat, val_num):
+                    scoped_serie = get_scoped_id(base_serie, tenant, system)
+                    disp_name = f"{base_name} ({system})" if tenant.lower() not in ['rafaela_sa', 'rafaela'] else base_name
+                    dev = get_or_create_device(scoped_serie, disp_name, cat)
                     if not hasattr(self, '_last_actuator_state'):
                         self._last_actuator_state = {}
-                    last_val = self._last_actuator_state.get(serie)
+                    last_val = self._last_actuator_state.get(scoped_serie)
                     has_reading = dev.lecturas.exists()
                     if not has_reading or last_val is None or abs(last_val - val_num) > 0.001:
-                        self._last_actuator_state[serie] = val_num
+                        self._last_actuator_state[scoped_serie] = val_num
                         LecturaSensor.objects.create(
                             dispositivo=dev,
                             valor=val_num,
@@ -388,6 +418,11 @@ class Command(BaseCommand):
                     dev.ultima_lectura = timezone.now()
                     dev.estado = 'ONLINE'
                     dev.save(update_fields=['valor_lectura', 'unidad_lectura', 'ultima_lectura', 'estado'])
+
+                    # Salida de consola formateada y coloreada para actuadores
+                    self.stdout.write(self.style.HTTP_INFO(
+                        f"[Actuador SCADA] {tenant}/{gateway_id} | {dev.nombre} [{scoped_serie}] -> Estado: {val_num} | Tópico: '{topic}'"
+                    ))
                     return dev
 
                 # -------------------------------------------------------------
@@ -415,7 +450,12 @@ class Command(BaseCommand):
                 }
 
                 if device_id in tank_aliases:
-                    node_id, sensor_serie, sensor_nombre, tank_nombre, tank_mat, tank_cap = tank_aliases[device_id]
+                    raw_node_id, raw_sensor_serie, sensor_nombre, tank_nombre, tank_mat, tank_cap = tank_aliases[device_id]
+                    scoped_node_id = get_scoped_id(raw_node_id, tenant, system)
+                    scoped_sensor_serie = get_scoped_id(raw_sensor_serie, tenant, system)
+                    disp_tank_nombre = f"{tank_nombre} ({system})" if tenant.lower() not in ['rafaela_sa', 'rafaela'] else tank_nombre
+                    disp_sensor_nombre = f"{sensor_nombre} ({system})" if tenant.lower() not in ['rafaela_sa', 'rafaela'] else sensor_nombre
+
                     porcentaje = payload_dict.get('porcentaje', payload_dict.get('percent'))
                     nivel = payload_dict.get('nivel', payload_dict.get('valor', payload_dict.get('value')))
 
@@ -439,6 +479,7 @@ class Command(BaseCommand):
                     if es_invalido:
                         return
 
+                    tank = None
                     if porcentaje is not None:
                         try:
                             inventario, _ = Inventario.objects.get_or_create(
@@ -449,10 +490,10 @@ class Command(BaseCommand):
                                 }
                             )
                             tank, _ = UnidadAlmacenamiento.objects.get_or_create(
-                                node_id=node_id,
+                                node_id=scoped_node_id,
                                 defaults={
                                     'inventario': inventario,
-                                    'nombre': tank_nombre,
+                                    'nombre': disp_tank_nombre,
                                     'tipo': 'TANK',
                                     'contenido': tank_mat,
                                     'capacidad': tank_cap,
@@ -473,13 +514,13 @@ class Command(BaseCommand):
                                 tank_updated.append('sistema')
                             tank.save(update_fields=tank_updated)
                         except Exception as ex:
-                            logger.error(f"Error actualizando UnidadAlmacenamiento {node_id}: {ex}")
+                            logger.error(f"Error actualizando UnidadAlmacenamiento {scoped_node_id}: {ex}")
 
                     if nivel is not None or porcentaje is not None:
                         try:
                             val_to_store = float(nivel if nivel is not None else porcentaje)
-                            unidad_to_store = 'cm' if nivel is not None else '%'
-                            sensor_dev = get_or_create_device(sensor_serie, sensor_nombre, 'SENSOR_NIVEL')
+                            unidad_to_store = 'cm' if (nivel is not None and payload_dict.get('unidad') != '%') else '%'
+                            sensor_dev = get_or_create_device(scoped_sensor_serie, disp_sensor_nombre, 'SENSOR_NIVEL')
                             sensor_dev.valor_lectura = val_to_store
                             sensor_dev.unidad_lectura = unidad_to_store
                             sensor_dev.ultima_lectura = timezone.now()
@@ -491,9 +532,26 @@ class Command(BaseCommand):
                                 unidad=unidad_to_store,
                                 calidad='BUENA'
                             )
+                            if tank and not tank.dispositivo_sensor:
+                                tank.dispositivo_sensor = sensor_dev
+                                tank.save(update_fields=['dispositivo_sensor'])
                         except (ValueError, TypeError):
                             pass
-                    broadcast_ws_update({'topic': topic, 'device_id': device_id})
+
+                    # Salida formateada y coloreada en consola
+                    vol_txt = f"{getattr(tank, 'volumen_actual', 0)} L" if tank else ""
+                    self.stdout.write(self.style.SUCCESS(
+                        f"[Nivel SCADA] {tenant}/{gateway_id} | {disp_tank_nombre} [{scoped_node_id}] -> {porcentaje}% {vol_txt} | Tópico: '{topic}'"
+                    ))
+                    broadcast_ws_update({
+                        'type': 'telemetry_update',
+                        'topic': topic,
+                        'device_id': device_id,
+                        'tenant': tenant,
+                        'sistema_id': sistema.id,
+                        'node_id': scoped_node_id,
+                        'porcentaje': porcentaje
+                    })
                     return
 
                 # -------------------------------------------------------------
@@ -504,57 +562,77 @@ class Command(BaseCommand):
                     caudal_2 = payload_dict.get('caudal_2')
                     if caudal_1 is not None:
                         try:
-                            dev1 = get_or_create_device('sensor-3', 'Sensor de Flujo Tubería A', 'SENSOR_FLUJO')
+                            scoped_c1 = get_scoped_id('sensor-3', tenant, system)
+                            disp_c1 = f"Sensor de Flujo Tubería A ({system})" if tenant.lower() not in ['rafaela_sa', 'rafaela'] else 'Sensor de Flujo Tubería A'
+                            dev1 = get_or_create_device(scoped_c1, disp_c1, 'SENSOR_FLUJO')
                             dev1.valor_lectura = float(caudal_1)
                             dev1.unidad_lectura = 'L'
                             dev1.ultima_lectura = timezone.now()
                             dev1.estado = 'ONLINE'
                             dev1.save(update_fields=['valor_lectura', 'unidad_lectura', 'ultima_lectura', 'estado'])
                             LecturaSensor.objects.create(dispositivo=dev1, valor=float(caudal_1), unidad='L', calidad='BUENA')
+                            self.stdout.write(self.style.SUCCESS(
+                                f"[Caudal SCADA] {tenant}/{gateway_id} | {disp_c1} [{scoped_c1}] -> {caudal_1} L/min | Tópico: '{topic}'"
+                            ))
                         except (ValueError, TypeError):
                             pass
                     if caudal_2 is not None:
                         try:
-                            dev2 = get_or_create_device('sensor_caudal_02', 'Sensor de Flujo Tubería B', 'SENSOR_FLUJO')
+                            scoped_c2 = get_scoped_id('sensor_caudal_02', tenant, system)
+                            disp_c2 = f"Sensor de Flujo Tubería B ({system})" if tenant.lower() not in ['rafaela_sa', 'rafaela'] else 'Sensor de Flujo Tubería B'
+                            dev2 = get_or_create_device(scoped_c2, disp_c2, 'SENSOR_FLUJO')
                             dev2.valor_lectura = float(caudal_2)
                             dev2.unidad_lectura = 'L'
                             dev2.ultima_lectura = timezone.now()
                             dev2.estado = 'ONLINE'
                             dev2.save(update_fields=['valor_lectura', 'unidad_lectura', 'ultima_lectura', 'estado'])
                             LecturaSensor.objects.create(dispositivo=dev2, valor=float(caudal_2), unidad='L', calidad='BUENA')
+                            self.stdout.write(self.style.SUCCESS(
+                                f"[Caudal SCADA] {tenant}/{gateway_id} | {disp_c2} [{scoped_c2}] -> {caudal_2} L/min | Tópico: '{topic}'"
+                            ))
                         except (ValueError, TypeError):
                             pass
-                    broadcast_ws_update({'topic': topic, 'device_id': device_id})
+                    broadcast_ws_update({'type': 'telemetry_update', 'topic': topic, 'device_id': device_id, 'tenant': tenant, 'sistema_id': sistema.id})
                     return
 
                 if device_id in ['sensor-3', 'caudal_1', 'sensor_caudal_01', 'flujo_a']:
                     val_c1 = payload_dict.get('caudal_1', payload_dict.get('valor', payload_dict.get('value', 0.0)))
+                    scoped_c1 = get_scoped_id('sensor-3', tenant, system)
+                    disp_c1 = f"Sensor de Flujo Tubería A ({system})" if tenant.lower() not in ['rafaela_sa', 'rafaela'] else 'Sensor de Flujo Tubería A'
                     try:
-                        dev1 = get_or_create_device('sensor-3', 'Sensor de Flujo Tubería A', 'SENSOR_FLUJO')
+                        dev1 = get_or_create_device(scoped_c1, disp_c1, 'SENSOR_FLUJO')
                         dev1.valor_lectura = float(val_c1)
                         dev1.unidad_lectura = 'L'
                         dev1.ultima_lectura = timezone.now()
                         dev1.estado = 'ONLINE'
                         dev1.save(update_fields=['valor_lectura', 'unidad_lectura', 'ultima_lectura', 'estado'])
                         LecturaSensor.objects.create(dispositivo=dev1, valor=float(val_c1), unidad='L', calidad='BUENA')
+                        self.stdout.write(self.style.SUCCESS(
+                            f"[Caudal SCADA] {tenant}/{gateway_id} | {disp_c1} [{scoped_c1}] -> {val_c1} L/min | Tópico: '{topic}'"
+                        ))
                     except (ValueError, TypeError):
                         pass
-                    broadcast_ws_update({'topic': topic, 'device_id': 'sensor-3'})
+                    broadcast_ws_update({'type': 'telemetry_update', 'topic': topic, 'device_id': 'sensor-3', 'tenant': tenant, 'sistema_id': sistema.id})
                     return
 
                 if device_id in ['sensor_caudal_02', 'caudal_2', 'flujo_b']:
                     val_c2 = payload_dict.get('caudal_2', payload_dict.get('valor', payload_dict.get('value', 0.0)))
+                    scoped_c2 = get_scoped_id('sensor_caudal_02', tenant, system)
+                    disp_c2 = f"Sensor de Flujo Tubería B ({system})" if tenant.lower() not in ['rafaela_sa', 'rafaela'] else 'Sensor de Flujo Tubería B'
                     try:
-                        dev2 = get_or_create_device('sensor_caudal_02', 'Sensor de Flujo Tubería B', 'SENSOR_FLUJO')
+                        dev2 = get_or_create_device(scoped_c2, disp_c2, 'SENSOR_FLUJO')
                         dev2.valor_lectura = float(val_c2)
                         dev2.unidad_lectura = 'L'
                         dev2.ultima_lectura = timezone.now()
                         dev2.estado = 'ONLINE'
                         dev2.save(update_fields=['valor_lectura', 'unidad_lectura', 'ultima_lectura', 'estado'])
                         LecturaSensor.objects.create(dispositivo=dev2, valor=float(val_c2), unidad='L', calidad='BUENA')
+                        self.stdout.write(self.style.SUCCESS(
+                            f"[Caudal SCADA] {tenant}/{gateway_id} | {disp_c2} [{scoped_c2}] -> {val_c2} L/min | Tópico: '{topic}'"
+                        ))
                     except (ValueError, TypeError):
                         pass
-                    broadcast_ws_update({'topic': topic, 'device_id': 'sensor_caudal_02'})
+                    broadcast_ws_update({'type': 'telemetry_update', 'topic': topic, 'device_id': 'sensor_caudal_02', 'tenant': tenant, 'sistema_id': sistema.id})
                     return
 
                 # -------------------------------------------------------------
@@ -577,7 +655,7 @@ class Command(BaseCommand):
                                 registrar_actuador(serie, name, cat, val)
                             except (ValueError, TypeError):
                                 pass
-                    broadcast_ws_update({'topic': topic, 'device_id': device_id})
+                    broadcast_ws_update({'type': 'telemetry_update', 'topic': topic, 'device_id': device_id, 'tenant': tenant, 'sistema_id': sistema.id})
                     return
 
                 if device_id in bombas_map:
@@ -587,7 +665,7 @@ class Command(BaseCommand):
                         registrar_actuador(serie, name, cat, val)
                     except (ValueError, TypeError):
                         pass
-                    broadcast_ws_update({'topic': topic, 'device_id': device_id})
+                    broadcast_ws_update({'type': 'telemetry_update', 'topic': topic, 'device_id': device_id, 'tenant': tenant, 'sistema_id': sistema.id})
                     return
 
                 valvulas_map = {
@@ -609,7 +687,7 @@ class Command(BaseCommand):
                                 registrar_actuador(serie, name, cat, val)
                             except (ValueError, TypeError):
                                 pass
-                    broadcast_ws_update({'topic': topic, 'device_id': device_id})
+                    broadcast_ws_update({'type': 'telemetry_update', 'topic': topic, 'device_id': device_id, 'tenant': tenant, 'sistema_id': sistema.id})
                     return
 
                 if device_id in valvulas_map:
@@ -619,7 +697,7 @@ class Command(BaseCommand):
                         registrar_actuador(serie, name, cat, val)
                     except (ValueError, TypeError):
                         pass
-                    broadcast_ws_update({'topic': topic, 'device_id': device_id})
+                    broadcast_ws_update({'type': 'telemetry_update', 'topic': topic, 'device_id': device_id, 'tenant': tenant, 'sistema_id': sistema.id})
                     return
 
                 if device_id in ['mezclador', 'mixer-1', 'mixer', 'mezclado'] or topic.endswith('/proceso/mezclado'):
@@ -631,7 +709,7 @@ class Command(BaseCommand):
                         registrar_actuador('mixer-1', 'Mezclador M1', 'MEZCLADORA', val)
                     except (ValueError, TypeError):
                         pass
-                    broadcast_ws_update({'topic': topic, 'device_id': 'mixer-1'})
+                    broadcast_ws_update({'type': 'telemetry_update', 'topic': topic, 'device_id': 'mixer-1', 'tenant': tenant, 'sistema_id': sistema.id})
                     return
 
                 # -------------------------------------------------------------
@@ -643,7 +721,9 @@ class Command(BaseCommand):
                         'type': 'process_status',
                         'topic': topic,
                         'event': 'reposicion_status',
-                        'estado': val_repo
+                        'estado': val_repo,
+                        'tenant': tenant,
+                        'sistema_id': sistema.id
                     })
                     return
 
@@ -663,11 +743,11 @@ class Command(BaseCommand):
                             active_orden.save(update_fields=['progreso_porcentaje'])
                         except Exception:
                             pass
-                    broadcast_ws_update({'topic': topic, 'device_id': 'tiempo_restante', 'tiempo_restante_min': total_minutos})
+                    broadcast_ws_update({'topic': topic, 'device_id': 'tiempo_restante', 'tiempo_restante_min': total_minutos, 'tenant': tenant, 'sistema_id': sistema.id})
                     return
 
                 if '/proceso' in topic or category == 'proceso':
-                    broadcast_ws_update({'type': 'process_status', 'topic': topic, 'data': payload_dict})
+                    broadcast_ws_update({'type': 'process_status', 'topic': topic, 'data': payload_dict, 'tenant': tenant, 'sistema_id': sistema.id})
                     return
 
                 # Ignorar comandos de control para no crear dispositivos SCADA fantasmas
@@ -681,10 +761,13 @@ class Command(BaseCommand):
                     # Tópicos informativos, de proceso o de diagnóstico no se dan de alta como dispositivos
                     return
 
+                scoped_gen_serie = get_scoped_id(device_id, tenant, system)
+                disp_gen_name = f"Auto-detected {device_id} ({system})" if tenant.lower() not in ['rafaela_sa', 'rafaela'] else f"Auto-detected {device_id}"
+                cat_gen = get_categoria_from_variable(device_id)
                 dispositivo = get_or_create_device(
-                    device_id,
-                    f"Auto-detected {device_id}",
-                    'MOTOR' if 'motor' in device_id else 'BOMBA' if 'bomba' in device_id else 'VALVULA' if 'valv' in device_id else 'OTRO'
+                    scoped_gen_serie,
+                    disp_gen_name,
+                    cat_gen
                 )
                 for var_name, var_value in payload_dict.items():
                     try:
@@ -704,9 +787,12 @@ class Command(BaseCommand):
                         unidad=get_unidad_from_variable(var_name),
                         calidad='BUENA'
                     )
-                self.stdout.write(f"[Telemetría SCADA] Tópico '{topic}' -> {payload_dict}")
-                broadcast_ws_update({'type': 'telemetry_update', 'topic': topic})
+                self.stdout.write(self.style.SUCCESS(
+                    f"[Telemetría SCADA] {tenant}/{gateway_id} | {dispositivo.nombre} [{scoped_gen_serie}] -> {payload_dict} | Tópico: '{topic}'"
+                ))
+                broadcast_ws_update({'type': 'telemetry_update', 'topic': topic, 'tenant': tenant, 'sistema_id': sistema.id})
 
         except Exception as e:
             logger.error(f"Error procesando mensaje MQTT en el worker: {e}", exc_info=True)
+
 

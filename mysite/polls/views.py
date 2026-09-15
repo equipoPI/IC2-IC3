@@ -219,13 +219,11 @@ class DispositivoSCADAViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly]
 
     def perform_destroy(self, instance):
-        # Limpiar lecturas y registros vinculados en lote con SQL directo para respuesta instantánea (<10ms)
-        from django.db import connection
-        with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM polls_lecturasensor WHERE dispositivo_id = %s", [instance.pk])
-            cursor.execute("DELETE FROM polls_variablesistema WHERE dispositivo_id = %s", [instance.pk])
-            cursor.execute("DELETE FROM polls_comunicacionmqtt WHERE dispositivo = %s", [instance.numero_serie])
-            cursor.execute("DELETE FROM polls_dispositivoscada WHERE id = %s", [instance.pk])
+        # Desvincular de unidades de almacenamiento y mantenimientos
+        models.UnidadAlmacenamiento.objects.filter(dispositivo_sensor=instance).update(dispositivo_sensor=None)
+        models.MantenimientoProgramado.objects.filter(dispositivo=instance).update(dispositivo=None)
+        models.ComunicacionMQTT.objects.filter(dispositivo=instance.numero_serie).delete()
+        instance.delete()
 
     def _get_dispositivo(self, pk):
         if not pk:

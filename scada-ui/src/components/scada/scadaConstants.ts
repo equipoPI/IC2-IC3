@@ -19,16 +19,17 @@ export const getCanonicalNodeId = (item: any): string => {
   if (s.includes('valvula-1') || s.includes('valvula_1') || s.includes('valvula 1') || s.includes('electrovalvula-1') || s.includes('electrovalvula1') || s.includes('rep. a')) return 'electrovalvula-1';
   if (s.includes('valvula-2') || s.includes('valvula_2') || s.includes('valvula 2') || s.includes('electrovalvula-2') || s.includes('electrovalvula2') || s.includes('rep. b')) return 'electrovalvula-2';
   if (s.includes('bomba_mezcla') || (s.includes('mezcla') && (item.categoria === 'BOMBA' || s.includes('bomba')))) return 'bomba_mezcla';
-  if (s === 'bomba1' || s === 'pump-1' || s.includes('bomba p1') || s.includes('bomba a')) return 'pump-1';
-  if (s === 'bomba2' || s === 'pump-2' || s.includes('bomba p2') || s.includes('bomba b')) return 'pump-2';
-  if (s === 'mixer-1' || s.includes('mezclador') || s.includes('mixer')) return 'mixer-1';
-  if (s === 'sensor-3' || s.includes('caudal_01') || s.includes('caudal 1') || s.includes('flujo tubería a') || s.includes('flujo a')) return 'sensor-3';
-  if (s === 'sensor_caudal_02' || s.includes('caudal_02') || s.includes('caudal 2') || s.includes('flujo tubería b') || s.includes('flujo b')) return 'sensor_caudal_02';
-  if (s.includes('sensor_nivel_bombo1') || s.includes('sensor nivel bombo 1')) return 'sensor_nivel_bombo1';
-  if (s.includes('sensor_nivel_bombo2') || s.includes('sensor nivel bombo 2')) return 'sensor_nivel_bombo2';
-  if (s.includes('sensor_nivel_mezcla') || s.includes('sensor nivel mezcla')) return 'sensor_nivel_mezcla';
-  if (s === 'tank-1' || s.includes('tanque a') || s.includes('bombo 1') || s === 'bombo1') return 'tank-1';
-  if (s === 'tank-2' || s.includes('tanque b') || s.includes('bombo 2') || s === 'bombo2') return 'tank-2';
-  if (s === 'tank-3' || s.includes('tanque salida') || s.includes('tanque mezcla') || s === 'mezcla') return 'tank-3';
+  if (s.endsWith('pump-1') || s.endsWith('bomba1') || s.includes('pump-1') || s.includes('bomba1') || s.includes('bomba p1') || s.includes('bomba a')) return 'pump-1';
+  if (s.endsWith('pump-2') || s.endsWith('bomba2') || s.includes('pump-2') || s.includes('bomba2') || s.includes('bomba p2') || s.includes('bomba b')) return 'pump-2';
+  if (s.endsWith('mixer-1') || s.includes('mixer-1') || s.includes('mezclador') || s.includes('mixer')) return 'mixer-1';
+  if (s.endsWith('sensor-3') || s.includes('sensor-3') || s.includes('caudal_01') || s.includes('caudal_1') || s.includes('caudal 1') || s.includes('flujo tubería a') || s.includes('flujo a')) return 'sensor-3';
+  if (s.endsWith('sensor_caudal_02') || s.includes('sensor_caudal_02') || s.includes('caudal_02') || s.includes('caudal_2') || s.includes('caudal 2') || s.includes('flujo tubería b') || s.includes('flujo b')) return 'sensor_caudal_02';
+  if (s.includes('sensor_nivel_bombo1') || s.includes('nivel_bombo1') || s.includes('sensor nivel bombo 1') || s.includes('nivel bombo 1')) return 'sensor_nivel_bombo1';
+  if (s.includes('sensor_nivel_bombo2') || s.includes('nivel_bombo2') || s.includes('sensor nivel bombo 2') || s.includes('nivel bombo 2')) return 'sensor_nivel_bombo2';
+  if (s.includes('sensor_nivel_mezcla') || s.includes('nivel_mezcla') || s.includes('sensor nivel mezcla') || s.includes('nivel mezcla')) return 'sensor_nivel_mezcla';
+  if (s.endsWith('tank-1') || s.includes('tank-1') || s.includes('tanque a') || s.includes('bombo 1') || s.includes('bombo1')) return 'tank-1';
+  if (s.endsWith('tank-2') || s.includes('tank-2') || s.includes('tanque b') || s.includes('bombo 2') || s.includes('bombo2')) return 'tank-2';
+  if (s.endsWith('tank-3') || s.includes('tank-3') || s.includes('tanque salida') || s.includes('tanque mezcla') || (s.includes('mezcla') && !s.includes('bomba'))) return 'tank-3';
   return item.node_id || item.numero_serie || `dev_${item.id}`;
 };
+

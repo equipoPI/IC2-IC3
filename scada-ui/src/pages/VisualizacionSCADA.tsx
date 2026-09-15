@@ -26,6 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useScadaWebSocket } from "@/hooks/useScadaWebSocket";
+import { getCanonicalNodeId } from "@/components/scada/scadaConstants";
 
 
 const VisualizacionSCADA = () => {
@@ -513,7 +514,12 @@ const VisualizacionSCADA = () => {
     ];
 
     const mappedControls = fallbacks.map(fb => {
-      const dev = dispositivos.find(d => d.numero_serie === fb.id);
+      const dev = dispositivos.find(d => {
+        if (selectedSistema !== 'seleccionar' && selectedSistema !== 'todas') {
+          if (d.sistema && String(d.sistema) !== selectedSistema) return false;
+        }
+        return getCanonicalNodeId(d) === fb.id || d.numero_serie === fb.id;
+      });
       if (!dev) return fb;
 
       const isActivo = dev.valor_lectura === 1 || dev.valor_lectura === "open" || dev.valor_lectura === "running" || String(dev.valor_lectura) === "1.0" || String(dev.valor_lectura) === "true";
@@ -541,8 +547,8 @@ const VisualizacionSCADA = () => {
       if (selectedSeccion === 'todas' && selectedSistema === 'todas') return true;
       const dev = dispositivos.find(d => d.numero_serie === control.id);
       if (!dev) return true;
-      if (selectedSeccion !== 'todas' && dev.seccion && String(dev.seccion) !== selectedSeccion) return false;
-      if (selectedSistema !== 'todas' && dev.sistema && String(dev.sistema) !== selectedSistema) return false;
+      if (selectedSeccion !== 'todas' && selectedSeccion !== 'seleccionar' && dev.seccion && String(dev.seccion) !== selectedSeccion) return false;
+      if (selectedSistema !== 'todas' && selectedSistema !== 'seleccionar' && dev.sistema && String(dev.sistema) !== selectedSistema) return false;
       return true;
     });
   }, [selectedSeccion, selectedSistema, dispositivos]);

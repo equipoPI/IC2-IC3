@@ -50,6 +50,7 @@ unsigned long tiempoMonitoreo = 0;
 unsigned long tiempoLecturaNivel = 0;
 const unsigned long INTERVALO_LECTURA_NIVEL = 100; // Leer sensores cada 100 ms para evitar acumulación de ecos
 unsigned long TInicioMezclado = 0;
+unsigned long tiempoMezcladoAcumulado = 0; // Tiempo de mezcla acumulado previamente (ms)
 unsigned long previousMillis = 0;
 unsigned long TiempoMotorOn = 3000;   // 3 segundos trabajando (para no sobreexigir el motor)
 unsigned long TiempoMotorOff = 5000;  // 5 segundos parado
@@ -282,7 +283,6 @@ void loop() {
   // ============================================================
 
   // ---> MODO 1: FUNCIONAL CON FILTRO (Normal) <---
-  /*
   if ((tiempoLecturaNivel + INTERVALO_LECTURA_NIVEL) <= millis()) {
     nivel();      // Lee los 3 sensores ultrasónicos con pausas entre ellos
     filtrado();   // Aplica filtrado estadístico y suavizado
@@ -291,11 +291,11 @@ void loop() {
   if ((tiempoEnvio + 1000) <= millis()) {
     enviarValores();
     tiempoEnvio = millis();
-  }*/
+  }
 
   // ---> MODO 2: CALIBRACIÓN DIRECTA SIN FILTRO (Pruebas) <---
   // Para usar: comenta el bloque MODO 1 de arriba y descomenta la siguiente línea:
-  calibracionNivelDirecto();
+  // calibracionNivelDirecto();
 
   // Control de procesos
   activacion();  // Control de bombas de reposición y mezcla
@@ -479,16 +479,19 @@ void calibracionNivelDirecto() {
       distancia2 = distCruda;
       average2 = distCruda;
       constrainedPorcentaje2 = constrain((28.0 - distCruda) * 100.0 / (28.0 - 4.0), 0.0, 100.0);
+      Fporcentaje2 = constrainedPorcentaje2;
     }
     if (idx == 1) {
       distancia3 = distCruda;
       average3 = distCruda;
       constrainedPorcentaje3 = constrain((28.0 - distCruda) * 100.0 / (28.0 - 4.0), 0.0, 100.0);
+      Fporcentaje3 = constrainedPorcentaje3;
     }
     if (idx == 2) {
       distancia1 = distCruda;
       average1 = distCruda;
       constrainedPorcentaje1 = constrain((28.0 - distCruda) * 100.0 / (28.0 - 4.0), 0.0, 100.0);
+      Fporcentaje1 = constrainedPorcentaje1;
     }
 
     trigCal += 2;
@@ -544,10 +547,12 @@ void frenadoReposicion() {
   EBombaR = 0;
   EValvula1 = 0;
   EValvula2 = 0;
+  bomboSeleccionado = 0;
+  valorMaxReposicion = 0;
+  convinacion = 0;
   
   // Apagar bomba de reposición
   digitalWrite(9, HIGH);
-  bomboSeleccionado = 0;
   
   // Apagar electroválvulas
   digitalWrite(10, HIGH);  // Electroválvula Bombo 1
@@ -576,11 +581,11 @@ void activacion() {
   if (flagParadaR == 0) {
     // REPOSICIÓN BOMBO 1
     if (bomboSeleccionado == 1) {
-      if (valorMaxReposicion <= Fporcentaje1 && EBombaR == 0) {
+      if (valorMaxReposicion <= constrainedPorcentaje1 && EBombaR == 0 && convinacion != 0) {
         error = 722;  // Error: nivel ya alcanzado
       }
 
-      if (valorMaxReposicion > Fporcentaje1 && Fporcentaje1 < 100) {
+      if (valorMaxReposicion > constrainedPorcentaje1 && constrainedPorcentaje1 < 100) {
         EBombaR = 1;
         EValvula1 = 1;
         EValvula2 = 0;
@@ -588,24 +593,25 @@ void activacion() {
         digitalWrite(9, LOW);   // Encender bomba reposición
       }
 
-      if (valorMaxReposicion <= Fporcentaje1) {
+      if (valorMaxReposicion <= constrainedPorcentaje1) {
         EBombaR = 0;
         EValvula1 = 0;
         flagParadaR = 1;
         valorMaxReposicion = 0;
+        convinacion = 0;
+        bomboSeleccionado = 0;
         digitalWrite(9, HIGH);   // Apagar bomba reposición
         digitalWrite(10, HIGH);  // Apagar electroválvula Bombo 1
-        bomboSeleccionado = 0;
       }
     }
 
     // REPOSICIÓN BOMBO 2
     if (bomboSeleccionado == 2) {
-      if (valorMaxReposicion <= Fporcentaje2 && EBombaR == 0) {
+      if (valorMaxReposicion <= constrainedPorcentaje2 && EBombaR == 0 && convinacion != 0) {
         error = 722;  // Error: nivel ya alcanzado
       }
 
-      if (valorMaxReposicion > Fporcentaje2 && Fporcentaje2 < 100) {
+      if (valorMaxReposicion > constrainedPorcentaje2 && constrainedPorcentaje2 < 100) {
         EBombaR = 1;
         EValvula1 = 0;
         EValvula2 = 1;
@@ -613,14 +619,15 @@ void activacion() {
         digitalWrite(8, LOW);  // Encender electroválvula Bombo 2
       }
 
-      if (valorMaxReposicion <= Fporcentaje2 || Fporcentaje2 == 100) {
+      if (valorMaxReposicion <= constrainedPorcentaje2 || constrainedPorcentaje2 >= 100.0) {
         EBombaR = 0;
         EValvula2 = 0;
         flagParadaR = 1;
         valorMaxReposicion = 0;
+        convinacion = 0;
+        bomboSeleccionado = 0;
         digitalWrite(9, HIGH);  // Apagar bomba reposición
         digitalWrite(8, HIGH);  // Apagar electroválvula Bombo 2
-        bomboSeleccionado = 0;
       }
     }
   }
@@ -644,45 +651,53 @@ void activacion() {
 
   // ========== CONTROL DE TRANSFERENCIA DE LÍQUIDOS ==========
   if (continuar == 1) {
-    // Inicio de transferencia de Bombo 1
-    if (liquido1 > cantidad1 && liquido1 > 0) {
+    // Si la receta no requiere liquido 1 (liquido1 <= 0), marcarlo completado directamente
+    if (liquido1 <= 0) {
+      terminoLlenadoLiquido1 = 1;
+      arranque2 = 1;
+    } else if (cantidad1 < liquido1) {
       digitalWrite(5, LOW);  // Encender bomba depósito 1
       EBomba1 = 1;
       EProceso = 1;
-    }
-
-    // Inicio de transferencia de Bombo 2
-    if (liquido2 > cantidad2 && liquido2 > 0 && arranque2 == 1) {
-      digitalWrite(6, LOW);  // Encender bomba depósito 2
-      EBomba2 = 1;
-      EProceso = 1;
-    }
-
-    // Finalización de transferencia de Bombo 1
-    if (liquido1 < cantidad1) {
+    } else { // cantidad1 >= liquido1
       terminoLlenadoLiquido1 = 1;
       digitalWrite(5, HIGH);  // Apagar bomba depósito 1
       EBomba1 = 0;
       arranque2 = 1;
     }
 
-    // Finalización de transferencia de Bombo 2
-    if (liquido2 < cantidad2 && terminoLlenadoLiquido1 == 1) {
-      terminoLlenadoLiquido2 = 1;
-      digitalWrite(6, HIGH);  // Apagar bomba depósito 2
-      EBomba2 = 0;
-      arranque2 = 0;
+    // Si la receta no requiere liquido 2 (liquido2 <= 0), marcarlo completado cuando Bombo 1 haya finalizado
+    if (liquido2 <= 0) {
+      if (terminoLlenadoLiquido1 == 1) {
+        terminoLlenadoLiquido2 = 1;
+      }
+    } else if (arranque2 == 1 && terminoLlenadoLiquido1 == 1) {
+      if (cantidad2 < liquido2) {
+        digitalWrite(6, LOW);  // Encender bomba depósito 2
+        EBomba2 = 1;
+        EProceso = 1;
+      } else { // cantidad2 >= liquido2
+        terminoLlenadoLiquido2 = 1;
+        digitalWrite(6, HIGH);  // Apagar bomba depósito 2
+        EBomba2 = 0;
+        arranque2 = 0;
+      }
     }
 
     // Activar mezcla cuando ambos líquidos están transferidos
     if (terminoLlenadoLiquido1 == 1 && terminoLlenadoLiquido2 == 1) {
       activarMezcla = 1;
+      continuar = 0;           // CRÍTICO: Detener ciclo de dosificación
       terminoLlenadoLiquido1 = 0;
       terminoLlenadoLiquido2 = 0;
+      arranque2 = 0;
       liquido1 = 0;
       liquido2 = 0;
+      tiempoMezcladoAcumulado = 0;
       TInicioMezclado = millis();
       previousMillis = millis();
+      digitalWrite(7, LOW);    // Encender motor mezclador inmediatamente (activo bajo)
+      EMezclador = 1;
       MotorOn = 1;
       MotorOff = 0;
     }
@@ -691,12 +706,14 @@ void activacion() {
   // ========== CONTROL DE MEZCLADO (ON/OFF INTERMITENTE) ==========
   if (activarMezcla == 1) {
     unsigned long currentMillis = millis();
-    unsigned long tiempoTranscurrido = currentMillis - TInicioMezclado;
+    unsigned long tiempoTranscurridoSesion = currentMillis - TInicioMezclado;
+    unsigned long tiempoTranscurridoTotal = tiempoMezcladoAcumulado + tiempoTranscurridoSesion;
     unsigned long tiempoTotalMezclado = TiempoHorUso + TiempoMinUso;
 
     // Verificar si el tiempo de mezcla ya finalizó
-    if (tiempoTotalMezclado > 0 && tiempoTranscurrido >= tiempoTotalMezclado) {
+    if (tiempoTotalMezclado > 0 && tiempoTranscurridoTotal >= tiempoTotalMezclado) {
       activarMezcla = 0;
+      tiempoMezcladoAcumulado = 0;
       digitalWrite(7, HIGH);  // Apagar motor mezclador
       EMezclador = 0;
       horaRest = 0;
@@ -706,8 +723,8 @@ void activacion() {
       EProceso = 1;
 
       // Cálculo de tiempo restante en tiempo real
-      if (tiempoTotalMezclado > tiempoTranscurrido) {
-        unsigned long tiempoRestanteMs = tiempoTotalMezclado - tiempoTranscurrido;
+      if (tiempoTotalMezclado > tiempoTranscurridoTotal) {
+        unsigned long tiempoRestanteMs = tiempoTotalMezclado - tiempoTranscurridoTotal;
         horaRest = tiempoRestanteMs / 3600000UL;
         minRest = (tiempoRestanteMs % 3600000UL) / 60000UL;
       } else {
@@ -735,15 +752,22 @@ void activacion() {
     }
   }
 
-  // ========== DETENCIÓN DE PROCESO ==========
+  // ========== DETENCIÓN / PAUSA DE PROCESO ==========
   if ((activarMezcla == 0 && continuar == 0 && vaciar == 0 && desechar == 0) || detener == 1) {
     if (detener == 1) {
+      // Si la mezcla estaba corriendo al pausar, acumular el tiempo transcurrido hasta ahora
+      if (activarMezcla == 1) {
+        tiempoMezcladoAcumulado += (millis() - TInicioMezclado);
+      }
       EProceso = 0;
       activarMezcla = 0;
       continuar = 0;
       vaciar = 0;
       desechar = 0;
       detener = 0;
+      convinacion = 0;
+      bomboSeleccionado = 0;
+      valorMaxReposicion = 0;
     }
     digitalWrite(7, HIGH);  // Apagar motor mezclador
     digitalWrite(5, HIGH);  // Apagar bomba Bombo 1
@@ -765,6 +789,11 @@ void activacion() {
     cantidad2 = 0;
     waterFlow1 = 0;
     waterFlow2 = 0;
+    tiempoMezcladoAcumulado = 0;
+    activarMezcla = 0;
+    continuar = 0;
+    digitalWrite(7, HIGH); // Apagar motor mezclador
+    EMezclador = 0;
 
     // Corte automático por porcentaje de nivel
     if (constrainedPorcentaje3 <= PORCENTAJE_CORTE_VACIADO) {
@@ -785,6 +814,11 @@ void activacion() {
     cantidad2 = 0;
     waterFlow1 = 0;
     waterFlow2 = 0;
+    tiempoMezcladoAcumulado = 0;
+    activarMezcla = 0;
+    continuar = 0;
+    digitalWrite(7, HIGH); // Apagar motor mezclador
+    EMezclador = 0;
 
     // Corte automático por porcentaje de nivel
     if (constrainedPorcentaje3 <= PORCENTAJE_CORTE_VACIADO) {
@@ -910,6 +944,13 @@ void lectura() {
     if (valor == 'V') {
       g = 7;
       vaciar = 1;
+      activarMezcla = 0;
+      continuar = 0;
+      terminoLlenadoLiquido1 = 0;
+      terminoLlenadoLiquido2 = 0;
+      arranque2 = 0;
+      liquido1 = 0;
+      liquido2 = 0;
       // No llama obtencionEntero() para evitar bloqueo
     }
 
@@ -923,9 +964,17 @@ void lectura() {
     if (valor == 'A') {
       g = 10;
       continuar = 1;
-      if (EProceso == 0 && (TiempoHorUso + TiempoMinUso) > 0 && activarMezcla == 0) {
-        activarMezcla = 1;
-        previousMillis = millis();
+      // Si la carga de líquidos ya finalizó (o no se requiere), reanudar la marcha del mezclador desde donde quedó
+      if ((terminoLlenadoLiquido1 == 1 && terminoLlenadoLiquido2 == 1) || (liquido1 <= 0 && liquido2 <= 0)) {
+        if ((TiempoHorUso + TiempoMinUso) > 0 && activarMezcla == 0) {
+          activarMezcla = 1;
+          TInicioMezclado = millis();
+          previousMillis = millis();
+          digitalWrite(7, LOW);   // Reanudar motor mezclador inmediatamente (activo bajo)
+          EMezclador = 1;
+          MotorOn = 1;
+          MotorOff = 0;
+        }
       }
     }
 
@@ -945,6 +994,13 @@ void lectura() {
 
     if (valor == 'X') {
       desechar = 1;
+      activarMezcla = 0;
+      continuar = 0;
+      terminoLlenadoLiquido1 = 0;
+      terminoLlenadoLiquido2 = 0;
+      arranque2 = 0;
+      liquido1 = 0;
+      liquido2 = 0;
     }
   }
 }
