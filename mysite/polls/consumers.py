@@ -10,9 +10,11 @@ from .models import RegistroAuditoria, DispositivoSCADA
 logger = logging.getLogger('scada')
 
 @database_sync_to_async
-def _save_audit_log(accion, modulo, objeto, descripcion, datos, ip='127.0.0.1'):
+def _save_audit_log(accion, modulo, objeto, descripcion, datos, ip='127.0.0.1', user=None):
     try:
+        usuario_obj = user if (user and getattr(user, 'is_authenticated', False)) else None
         RegistroAuditoria.objects.create(
+            usuario=usuario_obj,
             accion=accion,
             modulo=modulo,
             objeto=objeto,
@@ -182,7 +184,8 @@ class SCADAConsumer(AsyncWebsocketConsumer):
                     'topico': target_topic,
                     'payload': publish_data,
                     'input': payload
-                }
+                },
+                user=self.scope.get('user')
             )
 
     async def scada_update(self, event):
