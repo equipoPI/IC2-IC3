@@ -16,6 +16,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+<<<<<<< HEAD
+=======
+import apiFetch from '@/lib/api';
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 import { RolUsuario } from "@/contexts/AuthContext";
 
 export interface Empleado {
@@ -26,8 +30,17 @@ export interface Empleado {
   rango: string;
   fabricaAsignada: string;
   ultimoFichaje: string;
+<<<<<<< HEAD
   rol: RolUsuario;
   activo: boolean;
+=======
+  activo: boolean;
+  estado?: string;
+  email?: string;
+  contacto?: string;
+  fecha_contratacion?: string;
+  ultimo_inicio_sesion?: string;
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 }
 
 interface FormularioEmpleadoProps {
@@ -40,16 +53,42 @@ interface FormularioEmpleadoProps {
     rango: string;
     fabrica: string; // id
     seccion?: string; // id
+<<<<<<< HEAD
     rol: RolUsuario;
     activo: boolean;
     email?: string;
     contacto?: string;
+=======
+    estado: string;
+    email?: string;
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     fecha_contratacion?: string;
   }) => void;
   empleado?: Empleado | null;
 }
 
+<<<<<<< HEAD
 const rangos = ["Empleado", "Jefe", "Admin"];
+=======
+const RANGO_OPTIONS = [
+  { value: '1', label: 'Director' },
+  { value: '2', label: 'Gerente' },
+  { value: '3', label: 'Jefe de Sección' },
+  { value: '4', label: 'Coordinador' },
+  { value: '5', label: 'Especialista' },
+  { value: '6', label: 'Empleado' },
+  { value: '7', label: 'Pasante' },
+  { value: '8', label: 'Administrador' },
+];
+
+const ESTADO_OPTIONS = [
+  { value: 'ACTIVO', label: 'Activo' },
+  { value: 'DESPEDIDO', label: 'Despedido' },
+  { value: 'JUBILADO', label: 'Jubilado' },
+  { value: 'SUSPENDIDO', label: 'Suspendido' },
+  { value: 'OTRO', label: 'Otro' },
+];
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 const roles: RolUsuario[] = ["Operador", "Jefe de Sector", "Administrador"];
 
@@ -71,16 +110,23 @@ const FormularioEmpleado = ({
     rango: "",
     fabrica: "",
     seccion: "",
+<<<<<<< HEAD
     rol: "Operador" as RolUsuario,
     activo: true,
     email: "",
     contacto: "",
+=======
+    ultimo_fichaje: "",
+    estado: "ACTIVO",
+    email: "",
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     fecha_contratacion: "",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
+<<<<<<< HEAD
     if (empleado) {
       const [nombre, ...apellidoParts] = empleado.nombreCompleto.split(" ");
       setFormData((prev) => ({
@@ -109,6 +155,62 @@ const FormularioEmpleado = ({
         fecha_contratacion: "",
       }));
     }
+=======
+    const blank = {
+      documento: '',
+      nombre: '',
+      apellido: '',
+      rango: '',
+      fabrica: '',
+      seccion: '',
+      ultimo_fichaje: '',
+      estado: 'ACTIVO',
+      email: '',
+      fecha_contratacion: '',
+    };
+
+    if (!empleado) {
+      setFormData(blank);
+      setErrors({});
+      return;
+    }
+
+    // empleado exists - normalize multiple possible shapes
+    const e: any = empleado;
+    try { console.debug('FormularioEmpleado: poblando desde empleado', e); } catch (ex) {}
+
+    const documento = e.documento || e.id || e.username || '';
+    const nombre = e.nombre || e.first_name || (e.nombreCompleto ? String(e.nombreCompleto).split(' ')[0] : '');
+    const apellido = e.apellido || e.last_name || (e.nombreCompleto ? String(e.nombreCompleto).split(' ').slice(1).join(' ') : '');
+    let rango = e.rango || e.rango_codigo || '';
+    // Si el backend/otro componente nos pasó la etiqueta en lugar del código,
+    // intentar mapearla al código correspondiente.
+    if (rango && isNaN(Number(rango))) {
+      const found = RANGO_OPTIONS.find(opt => String(opt.label).toLowerCase() === String(rango).toLowerCase());
+      if (found) rango = found.value;
+    }
+    // rol se deriva en runtime desde `rango`, no se captura en el formulario
+    const email = e.email || (e.profile && e.profile.email) || '';
+    const contacto = '';
+    const fabricaVal = (e.fabrica !== undefined && e.fabrica !== null) ? String(e.fabrica) : (e.fabrica_nombre || e.fabricaAsignada || '');
+    const seccionVal = (e.seccion !== undefined && e.seccion !== null) ? String(e.seccion) : (e.seccion_nombre || '');
+    const ultimo = e.ultimo_fichaje || e.ultimoFichaje || '';
+    const estadoVal = e.estado || (e.activo ? 'ACTIVO' : 'SUSPENDIDO');
+
+    setFormData({
+      documento: documento || '',
+      nombre: nombre || '',
+      apellido: apellido || '',
+      rango: rango || '',
+      fabrica: fabricaVal || '',
+      seccion: seccionVal || '',
+      ultimo_fichaje: ultimo || '',
+      estado: estadoVal || 'ACTIVO',
+      email: email || '',
+      fecha_contratacion: e.fecha_contratacion || e.fechaContratacion || '',
+    });
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     setErrors({});
   }, [empleado, open]);
 
@@ -118,6 +220,7 @@ const FormularioEmpleado = ({
   useEffect(() => {
     const load = async () => {
       try {
+<<<<<<< HEAD
         const resp1 = await (await import('@/lib/api')).default('/api/v1/fabricas/');
         if (resp1.ok) {
           const data = await resp1.json();
@@ -134,6 +237,28 @@ const FormularioEmpleado = ({
     };
     load();
   }, []);
+=======
+        const resp1 = await apiFetch('/api/v1/fabricas/?page_size=200');
+        if (resp1.ok) {
+          const data = await resp1.json();
+          const items = data.results || data || [];
+          setFabricas(items.map((f: any) => ({ id: f.id, nombre: f.nombre || f.nombre_fabrica || String(f.id) })));
+        }
+
+        const resp2 = await apiFetch('/api/v1/secciones/?page_size=500');
+        if (resp2.ok) {
+          const sdata = await resp2.json();
+          const sitems = sdata.results || sdata || [];
+          setSecciones(sitems.map((s: any) => ({ id: s.id, nombre: s.nombre || String(s.id), fabrica: s.fabrica })));
+        }
+      } catch (err) {
+        console.warn('FormularioEmpleado: fallo cargando fabricas/secciones', err);
+      }
+    };
+    // Cargar cada vez que se abra el formulario para reflejar cambios recientes
+    if (open) load();
+  }, [open]);
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -142,6 +267,10 @@ const FormularioEmpleado = ({
     if (!formData.apellido.trim()) newErrors.apellido = "El apellido es obligatorio";
     if (!formData.rango) newErrors.rango = "Seleccione un rango";
     if (!formData.fabrica) newErrors.fabrica = "Seleccione una fábrica";
+<<<<<<< HEAD
+=======
+    // No se valida teléfono: no se captura en el sistema
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -156,7 +285,11 @@ const FormularioEmpleado = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
+<<<<<<< HEAD
       <DialogContent className="sm:max-w-md bg-card border-border">
+=======
+      <DialogContent className="w-full max-w-full sm:max-w-md bg-card border-border max-h-[90vh] overflow-hidden">
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         <DialogHeader>
           <DialogTitle className="text-foreground">
             {empleado ? "Editar Empleado" : "Añadir Nuevo Empleado"}
@@ -164,6 +297,10 @@ const FormularioEmpleado = ({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+<<<<<<< HEAD
+=======
+          <div className="overflow-auto max-h-[70vh] pr-2">
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
           <div className="grid gap-4">
             <div className="space-y-2">
               <Label htmlFor="documento" className="text-foreground">Documento</Label>
@@ -202,8 +339,13 @@ const FormularioEmpleado = ({
                   <SelectValue placeholder="Seleccione un rango" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border-border">
+<<<<<<< HEAD
                   {rangos.map((rango) => (
                     <SelectItem key={rango} value={rango}>{rango}</SelectItem>
+=======
+                  {RANGO_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                   ))}
                 </SelectContent>
               </Select>
@@ -240,14 +382,26 @@ const FormularioEmpleado = ({
             </div>
 
             <div className="space-y-2">
+<<<<<<< HEAD
+=======
+              <Label className="text-foreground">Último fichaje</Label>
+              <Input readOnly value={formData.ultimo_fichaje || ''} />
+            </div>
+
+            <div className="space-y-2">
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
               <Label htmlFor="email" className="text-foreground">Email</Label>
               <Input id="email" placeholder="correo@ejemplo.com" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
             </div>
 
+<<<<<<< HEAD
             <div className="space-y-2">
               <Label htmlFor="contacto" className="text-foreground">Contacto</Label>
               <Input id="contacto" placeholder="+54 9 11 1234 5678" value={formData.contacto} onChange={(e) => setFormData({ ...formData, contacto: e.target.value })} />
             </div>
+=======
+            {/* Eliminado campo de teléfono por política: no se captura ni expone */}
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
             <div className="space-y-2">
               <Label htmlFor="fecha_contratacion" className="text-foreground">Fecha de contratación</Label>
@@ -255,6 +409,7 @@ const FormularioEmpleado = ({
             </div>
 
             <div className="space-y-2">
+<<<<<<< HEAD
               <Label htmlFor="rol" className="text-foreground">Rol del Sistema</Label>
               <Select value={formData.rol} onValueChange={(value) => setFormData({ ...formData, rol: value as RolUsuario })}>
                 <SelectTrigger id="rol">
@@ -263,10 +418,26 @@ const FormularioEmpleado = ({
                 <SelectContent className="bg-popover border-border">
                   {roles.map((rol) => (
                     <SelectItem key={rol} value={rol}>{rol}</SelectItem>
+=======
+              <Label htmlFor="estado" className="text-foreground">Estado</Label>
+              <Select value={formData.estado} onValueChange={(value) => setFormData({ ...formData, estado: value })}>
+                <SelectTrigger id="estado">
+                  <SelectValue placeholder="Seleccione un estado" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border-border">
+                  {ESTADO_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                   ))}
                 </SelectContent>
               </Select>
             </div>
+<<<<<<< HEAD
+=======
+
+            {/* `rol` persistente eliminado: se deriva desde `rango`. No mostrar campo editable. */}
+            </div>
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">

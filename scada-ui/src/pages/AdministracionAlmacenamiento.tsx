@@ -1,5 +1,12 @@
+<<<<<<< HEAD
 import { useState } from "react";
 import { Database, Plus, Edit, Trash2, Search, Droplets, Thermometer } from "lucide-react";
+=======
+import { useState, useEffect } from "react";
+import apiFetch from "@/lib/api";
+import { Database, Plus, Edit, Trash2, Search, Droplets, Thermometer, ArrowUp, ArrowDown, ArrowUpDown, RefreshCw } from "lucide-react";
+import { ControlReposicionModal } from "@/components/scada/ControlReposicionModal";
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +23,11 @@ import {
 import {
   Dialog,
   DialogContent,
+<<<<<<< HEAD
+=======
+  DialogDescription,
+  DialogFooter,
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -29,7 +41,11 @@ import {
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { useStorage, StorageUnit } from "@/contexts/StorageContext";
+<<<<<<< HEAD
 import { machineDefinitions } from "@/components/scada/ScadaFlowDiagram";
+=======
+import { machineDefinitions } from "@/components/scada/scadaConstants";
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 const statusConfig = {
   active: { label: "Activo", className: "bg-success/20 text-success border-success/30" },
@@ -44,12 +60,53 @@ const typeLabels = {
   deposit: "Depósito",
 };
 
+<<<<<<< HEAD
 const AdministracionAlmacenamiento = () => {
   const { storageUnits, updateStorageUnit, addStorageUnit, deleteStorageUnit } = useStorage();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<StorageUnit | null>(null);
 
+=======
+
+
+const AdministracionAlmacenamiento = () => {
+  const { storageUnits, updateStorageUnit, addStorageUnit, deleteStorageUnit } = useStorage();
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<string>("");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [filterType, setFilterType] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [isReposicionOpen, setIsReposicionOpen] = useState(false);
+  const [editingUnit, setEditingUnit] = useState<StorageUnit | null>(null);
+
+  const [secciones, setSecciones] = useState<any[]>([]);
+  const [sistemas, setSistemas] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [rSec, rSys] = await Promise.all([
+          apiFetch("/api/v1/secciones/"),
+          apiFetch("/api/v1/sistemas/")
+        ]);
+        if (rSec.ok) {
+          const dSec = await rSec.json();
+          setSecciones(Array.isArray(dSec) ? dSec : dSec.results || []);
+        }
+        if (rSys.ok) {
+          const dSys = await rSys.json();
+          setSistemas(Array.isArray(dSys) ? dSys : dSys.results || []);
+        }
+      } catch (e) {
+        console.warn("Error cargando secciones/sistemas:", e);
+      }
+    };
+    fetchData();
+  }, []);
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   // Form state
   const [formData, setFormData] = useState<Omit<StorageUnit, 'id'>>({
     nodeId: '',
@@ -61,12 +118,83 @@ const AdministracionAlmacenamiento = () => {
     unit: 'L',
     temperature: 25,
     status: 'active',
+<<<<<<< HEAD
   });
 
   const filteredUnits = storageUnits.filter((unit) =>
     unit.name.toLowerCase().includes(search.toLowerCase()) ||
     unit.content.toLowerCase().includes(search.toLowerCase())
   );
+=======
+    seccion: '',
+    sistema: '',
+  });
+
+  const handleHeaderClick = (key: string) => {
+    if (sortKey === key) {
+      if (sortOrder === "asc") {
+        setSortOrder("desc");
+      } else {
+        setSortKey("");
+      }
+    } else {
+      setSortKey(key);
+      setSortOrder("asc");
+    }
+  };
+
+  const renderSortIcon = (key: string) => {
+    if (sortKey !== key) {
+      return <ArrowUpDown className="h-3.5 w-3.5 ml-1 text-muted-foreground/30 hover:text-muted-foreground/80 transition-colors" />;
+    }
+    return sortOrder === "asc" ? (
+      <ArrowUp className="h-3.5 w-3.5 ml-1 text-primary" />
+    ) : (
+      <ArrowDown className="h-3.5 w-3.5 ml-1 text-primary" />
+    );
+  };
+
+  // Filter and sort logic
+  let processedUnits = [...storageUnits];
+
+  if (search) {
+    processedUnits = processedUnits.filter((unit) =>
+      unit.name.toLowerCase().includes(search.toLowerCase()) ||
+      unit.content.toLowerCase().includes(search.toLowerCase())
+    );
+  }
+
+  if (filterType !== "all") {
+    processedUnits = processedUnits.filter((unit) => unit.type === filterType);
+  }
+
+  if (filterStatus !== "all") {
+    processedUnits = processedUnits.filter((unit) => unit.status === filterStatus);
+  }
+
+  if (sortKey) {
+    processedUnits.sort((a, b) => {
+      let valA = a[sortKey as keyof StorageUnit];
+      let valB = b[sortKey as keyof StorageUnit];
+
+      if (sortKey === "volume") {
+        valA = a.currentVolume;
+        valB = b.currentVolume;
+      }
+
+      if (valA === null || valA === undefined) return sortOrder === "asc" ? 1 : -1;
+      if (valB === null || valB === undefined) return sortOrder === "asc" ? -1 : 1;
+
+      if (typeof valA === "number" && typeof valB === "number") {
+        return sortOrder === "asc" ? valA - valB : valB - valA;
+      }
+
+      const strA = String(valA).toLowerCase();
+      const strB = String(valB).toLowerCase();
+      return sortOrder === "asc" ? strA.localeCompare(strB) : strB.localeCompare(strA);
+    });
+  }
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
   const availableNodes = Object.entries(machineDefinitions)
     .filter(([id]) => id.startsWith('tank'))
@@ -85,6 +213,11 @@ const AdministracionAlmacenamiento = () => {
         unit: unit.unit,
         temperature: unit.temperature,
         status: unit.status,
+<<<<<<< HEAD
+=======
+        seccion: unit.seccion ? String(unit.seccion) : '',
+        sistema: unit.sistema ? String(unit.sistema) : '',
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       });
     } else {
       setEditingUnit(null);
@@ -98,12 +231,21 @@ const AdministracionAlmacenamiento = () => {
         unit: 'L',
         temperature: 25,
         status: 'active',
+<<<<<<< HEAD
+=======
+        seccion: '',
+        sistema: '',
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       });
     }
     setDialogOpen(true);
   };
 
+<<<<<<< HEAD
   const handleSave = () => {
+=======
+  const handleSave = async () => {
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     if (!formData.name || !formData.content || !formData.nodeId) {
       toast({
         title: "Error",
@@ -114,6 +256,7 @@ const AdministracionAlmacenamiento = () => {
     }
 
     if (editingUnit) {
+<<<<<<< HEAD
       updateStorageUnit({ ...formData, id: editingUnit.id });
       toast({ title: "Actualizado", description: "Unidad de almacenamiento actualizada correctamente" });
     } else {
@@ -126,6 +269,42 @@ const AdministracionAlmacenamiento = () => {
   const handleDelete = (id: string) => {
     deleteStorageUnit(id);
     toast({ title: "Eliminado", description: "Unidad de almacenamiento eliminada" });
+=======
+      const res = await updateStorageUnit({ ...editingUnit, ...formData, id: editingUnit.id });
+      if (res.success) {
+
+        toast({ title: "Actualizado", description: "Unidad de almacenamiento actualizada correctamente" });
+        setDialogOpen(false);
+      } else {
+        toast({ title: "❌ Error al actualizar", description: res.error || "No se pudo guardar la unidad", variant: "destructive" });
+      }
+    } else {
+      const res = await addStorageUnit(formData);
+      if (res.success) {
+        toast({ title: "Creado", description: "Nueva unidad de almacenamiento registrada" });
+        setDialogOpen(false);
+      } else {
+        toast({ title: "❌ Error al crear", description: res.error || "No se pudo registrar la unidad", variant: "destructive" });
+      }
+    }
+  };
+
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const confirmDelete = (id: string) => {
+    setDeleteConfirmId(id);
+  };
+
+  const executeDelete = async () => {
+    if (!deleteConfirmId) return;
+    const res = await deleteStorageUnit(deleteConfirmId);
+    if (res.success) {
+      toast({ title: "Eliminado", description: "Unidad de almacenamiento eliminada de la base de datos" });
+    } else {
+      toast({ title: "❌ Error al eliminar", description: res.error || "No se pudo eliminar la unidad", variant: "destructive" });
+    }
+    setDeleteConfirmId(null);
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   };
 
   const totalCapacity = storageUnits.reduce((acc, unit) => acc + unit.capacity, 0);
@@ -134,11 +313,27 @@ const AdministracionAlmacenamiento = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
+<<<<<<< HEAD
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Administración de Almacenamiento</h1>
         <p className="text-muted-foreground mt-1">
           Gestione los tanques, silos y depósitos del sistema SCADA
         </p>
+=======
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Administración de Almacenamiento</h1>
+          <p className="text-muted-foreground mt-1">
+            Gestione los tanques, silos y depósitos del sistema SCADA
+          </p>
+        </div>
+        <Button 
+          onClick={() => setIsReposicionOpen(true)} 
+          className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-md"
+        >
+          <RefreshCw className="h-4 w-4" /> Llenado / Reposición (Bombos)
+        </Button>
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       </div>
 
       {/* Stats */}
@@ -209,8 +404,13 @@ const AdministracionAlmacenamiento = () => {
           </Button>
         </CardHeader>
         <CardContent>
+<<<<<<< HEAD
           <div className="flex gap-4 mb-4">
             <div className="relative flex-1 max-w-xs">
+=======
+          <div className="flex flex-col sm:flex-row gap-2 mb-4 flex-wrap items-center">
+            <div className="relative w-full sm:w-60">
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar por nombre o contenido..."
@@ -219,12 +419,47 @@ const AdministracionAlmacenamiento = () => {
                 className="pl-9 bg-background border-border"
               />
             </div>
+<<<<<<< HEAD
+=======
+
+            {/* Type Filter */}
+            <div className="w-full sm:w-40">
+              <Select value={filterType} onValueChange={(value) => setFilterType(value)}>
+                <SelectTrigger className="bg-background border-border">
+                  <SelectValue placeholder="Tipo..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los Tipos</SelectItem>
+                  <SelectItem value="tank">Tanque</SelectItem>
+                  <SelectItem value="silo">Silo</SelectItem>
+                  <SelectItem value="deposit">Depósito</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Status Filter */}
+            <div className="w-full sm:w-40">
+              <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value)}>
+                <SelectTrigger className="bg-background border-border">
+                  <SelectValue placeholder="Estado..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los Estados</SelectItem>
+                  <SelectItem value="active">Activo</SelectItem>
+                  <SelectItem value="inactive">Inactivo</SelectItem>
+                  <SelectItem value="warning">Advertencia</SelectItem>
+                  <SelectItem value="error">Error</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
           </div>
 
           <div className="rounded-lg border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
+<<<<<<< HEAD
                   <TableHead className="text-muted-foreground">Nombre</TableHead>
                   <TableHead className="text-muted-foreground">Tipo</TableHead>
                   <TableHead className="text-muted-foreground">Contenido</TableHead>
@@ -233,16 +468,98 @@ const AdministracionAlmacenamiento = () => {
                   <TableHead className="text-muted-foreground">Temp.</TableHead>
                   <TableHead className="text-muted-foreground">Estado</TableHead>
                   <TableHead className="text-muted-foreground">Nodo SCADA</TableHead>
+=======
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('name')}
+                  >
+                    <div className="flex items-center">
+                      Nombre {renderSortIcon('name')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('type')}
+                  >
+                    <div className="flex items-center">
+                      Tipo {renderSortIcon('type')}
+                    </div>
+                  </TableHead>
+                  <TableHead className="text-muted-foreground select-none">Sección</TableHead>
+                  <TableHead className="text-muted-foreground select-none">Sistema</TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('content')}
+                  >
+                    <div className="flex items-center">
+                      Contenido {renderSortIcon('content')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('capacity')}
+                  >
+                    <div className="flex items-center">
+                      Volumen / Capacidad {renderSortIcon('capacity')}
+                    </div>
+                  </TableHead>
+                  <TableHead className="text-muted-foreground select-none">Nivel</TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('temperature')}
+                  >
+                    <div className="flex items-center">
+                      Temp. {renderSortIcon('temperature')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('status')}
+                  >
+                    <div className="flex items-center">
+                      Estado {renderSortIcon('status')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('nodeId')}
+                  >
+                    <div className="flex items-center">
+                      Nodo SCADA {renderSortIcon('nodeId')}
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+                    onClick={() => handleHeaderClick('creado_el')}
+                  >
+                    <div className="flex items-center">
+                      Fecha de Creación {renderSortIcon('creado_el')}
+                    </div>
+                  </TableHead>
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                   <TableHead className="text-muted-foreground">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
+<<<<<<< HEAD
                 {filteredUnits.map((unit) => {
+=======
+                {processedUnits.map((unit) => {
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                   const levelPercent = (unit.currentVolume / unit.capacity) * 100;
                   return (
                     <TableRow key={unit.id}>
                       <TableCell className="font-medium text-foreground">{unit.name}</TableCell>
                       <TableCell className="text-foreground">{typeLabels[unit.type]}</TableCell>
+<<<<<<< HEAD
+=======
+                      <TableCell className="text-foreground text-xs font-semibold text-cyan-300">
+                        {unit.seccion_nombre || 'General'}
+                      </TableCell>
+                      <TableCell className="text-foreground text-xs font-semibold text-indigo-300">
+                        {unit.sistema_nombre || 'General'}
+                      </TableCell>
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                       <TableCell className="text-foreground">{unit.content}</TableCell>
                       <TableCell className="text-foreground font-mono">
                         {unit.currentVolume.toLocaleString()} / {unit.capacity.toLocaleString()} {unit.unit}
@@ -266,12 +583,28 @@ const AdministracionAlmacenamiento = () => {
                       <TableCell className="text-muted-foreground font-mono text-xs">
                         {unit.nodeId}
                       </TableCell>
+<<<<<<< HEAD
+=======
+                      <TableCell className="text-muted-foreground font-mono text-xs">
+                        {unit.creado_el ? new Date(unit.creado_el).toLocaleString('es-AR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        }) : 'N/A'}
+                      </TableCell>
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                       <TableCell>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(unit)}>
                             <Edit className="h-4 w-4" />
                           </Button>
+<<<<<<< HEAD
                           <Button variant="ghost" size="icon" onClick={() => handleDelete(unit.id)}>
+=======
+                          <Button variant="ghost" size="icon" onClick={() => confirmDelete(unit.id)}>
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
@@ -285,6 +618,27 @@ const AdministracionAlmacenamiento = () => {
         </CardContent>
       </Card>
 
+<<<<<<< HEAD
+=======
+      {/* Confirmation Dialog for Deletion */}
+      <Dialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-destructive font-bold flex items-center gap-2">
+              <Trash2 className="h-5 w-5" /> Confirmar Eliminación de Unidad de Almacenamiento
+            </DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas eliminar permanentemente esta unidad de almacenamiento (tanque/silo) de la base de datos? Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={executeDelete}>Eliminar Unidad</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[500px] bg-card border-border">
@@ -306,6 +660,7 @@ const AdministracionAlmacenamiento = () => {
                 />
               </div>
               <div className="space-y-2">
+<<<<<<< HEAD
                 <Label htmlFor="nodeId">Nodo SCADA *</Label>
                 <Select
                   value={formData.nodeId}
@@ -322,6 +677,16 @@ const AdministracionAlmacenamiento = () => {
                     ))}
                   </SelectContent>
                 </Select>
+=======
+                <Label htmlFor="nodeId">Nodo SCADA / Identificador *</Label>
+                <Input
+                  id="nodeId"
+                  value={formData.nodeId}
+                  onChange={(e) => setFormData({ ...formData, nodeId: e.target.value })}
+                  placeholder="Ej: tank-1, tank-4, silo-1"
+                  className="bg-background border-border font-mono text-xs"
+                />
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
               </div>
             </div>
 
@@ -398,6 +763,7 @@ const AdministracionAlmacenamiento = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
+<<<<<<< HEAD
                 <Label htmlFor="temperature">Temperatura (°C)</Label>
                 <Input
                   id="temperature"
@@ -426,6 +792,66 @@ const AdministracionAlmacenamiento = () => {
                   </SelectContent>
                 </Select>
               </div>
+=======
+                <Label htmlFor="seccion">Sección Perteneciente</Label>
+                <Select
+                  value={formData.seccion ? String(formData.seccion) : "ninguna"}
+                  onValueChange={(value) => setFormData({ ...formData, seccion: value === "ninguna" ? "" : value })}
+                >
+                  <SelectTrigger className="bg-background border-border">
+                    <SelectValue placeholder="Seleccionar sección" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ninguna">Sin sección (General)</SelectItem>
+                    {secciones.map((sec) => (
+                      <SelectItem key={sec.id} value={String(sec.id)}>
+                        📂 {sec.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sistema">Sistema Perteneciente</Label>
+                <Select
+                  value={formData.sistema ? String(formData.sistema) : "ninguno"}
+                  onValueChange={(value) => setFormData({ ...formData, sistema: value === "ninguno" ? "" : value })}
+                >
+                  <SelectTrigger className="bg-background border-border">
+                    <SelectValue placeholder="Seleccionar sistema" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ninguno">Sin sistema (General)</SelectItem>
+                    {sistemas.map((sys) => (
+                      <SelectItem key={sys.id} value={String(sys.id)}>
+                        ⚙️ {sys.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="status">Estado</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(value: 'active' | 'inactive' | 'warning' | 'error') =>
+                  setFormData({ ...formData, status: value })
+                }
+              >
+                <SelectTrigger className="bg-background border-border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Activo</SelectItem>
+                  <SelectItem value="inactive">Inactivo</SelectItem>
+                  <SelectItem value="warning">Advertencia</SelectItem>
+                  <SelectItem value="error">Error</SelectItem>
+                </SelectContent>
+              </Select>
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             </div>
 
             <div className="flex justify-end gap-2 pt-4">
@@ -439,6 +865,12 @@ const AdministracionAlmacenamiento = () => {
           </div>
         </DialogContent>
       </Dialog>
+<<<<<<< HEAD
+=======
+
+      {/* Modal Control de Reposición (Bombos) */}
+      <ControlReposicionModal open={isReposicionOpen} onOpenChange={setIsReposicionOpen} />
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     </div>
   );
 };

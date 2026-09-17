@@ -4,12 +4,32 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+<<<<<<< HEAD
 import { useToast } from "@/hooks/use-toast";
+=======
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { useEffect } from "react";
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 const Register = () => {
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+<<<<<<< HEAD
+=======
+  const [documento, setDocumento] = useState("");
+  const [direccion, setDireccion] = useState("");
+  const [fabrica, setFabrica] = useState("");
+  const [seccion, setSeccion] = useState("");
+  const [fechaContratacion, setFechaContratacion] = useState("");
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   const [password1, setPassword1] = useState("");
   const [password2, setPassword2] = useState("");
   const [registrationKey, setRegistrationKey] = useState("");
@@ -24,6 +44,13 @@ const Register = () => {
       return;
     }
     // Validación cliente: campos obligatorios
+<<<<<<< HEAD
+=======
+    if (!documento.trim()) {
+      toast({ title: "Error", description: "El documento (DNI/CUIT) es obligatorio", variant: "destructive" });
+      return;
+    }
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     if (!firstName.trim()) {
       toast({ title: "Error", description: "El nombre es obligatorio", variant: "destructive" });
       return;
@@ -42,7 +69,11 @@ const Register = () => {
     }
     setIsLoading(true);
     try {
+<<<<<<< HEAD
       const username = email ? email.split('@')[0] : '';
+=======
+      const username = documento.trim();
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
       // Obtener cookie CSRF
       const getCookie = (name: string) => {
@@ -54,11 +85,39 @@ const Register = () => {
       const headers: any = { 'Content-Type': 'application/json' };
       if (csrftoken) headers['X-CSRFToken'] = csrftoken;
 
+<<<<<<< HEAD
+=======
+      // El payload contiene los datos de usuario y los campos adicionales de Empleado para que el backend los guarde atómicamente
+      const regPayload: any = {
+        username,
+        email,
+        password1,
+        password2,
+        first_name: firstName,
+        last_name: lastName,
+        registration_key: registrationKey,
+        documento: username,
+        direccion: direccion.trim() || undefined,
+        fecha_contratacion: fechaContratacion || undefined,
+        fabrica: fabrica || undefined,
+        seccion: seccion || undefined,
+      };
+
+      // Limpiar campos undefined
+      Object.keys(regPayload).forEach((k) => {
+        if (regPayload[k] === undefined) delete regPayload[k];
+      });
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       const res = await fetch(`/api/v1/auth/registration/`, {
         method: 'POST',
         credentials: 'include',
         headers,
+<<<<<<< HEAD
         body: JSON.stringify({ username, email, password1, password2, first_name: firstName, last_name: lastName, registration_key: registrationKey }),
+=======
+        body: JSON.stringify(regPayload),
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       });
       if (res.ok) {
         toast({ title: "Registro enviado", description: "Revise su correo para confirmar la cuenta" });
@@ -72,6 +131,10 @@ const Register = () => {
           password1: 'Contraseña',
           password2: 'Confirmación de contraseña',
           registration_key: 'Clave de registro',
+<<<<<<< HEAD
+=======
+          documento: 'Documento',
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
           non_field_errors: '',
           detail: '',
         };
@@ -85,6 +148,12 @@ const Register = () => {
           'Passwords do not match.': 'Las contraseñas no coinciden.',
           'This password is too short.': 'La contraseña es demasiado corta.',
           'user with this email already exists.': 'Ya existe un usuario con este correo.',
+<<<<<<< HEAD
+=======
+          'Este documento ya está registrado.': 'Este documento ya está registrado.',
+          'Este documento ya está registrado como usuario.': 'Este documento ya está registrado como usuario.',
+          'El documento debe contener solo números.': 'El documento debe contener solo números.',
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         };
 
         const translate = (msg: string) => {
@@ -121,6 +190,36 @@ const Register = () => {
     }
   };
 
+<<<<<<< HEAD
+=======
+  // Cargar fabricas y secciones para permitir asignarlas durante el registro
+  const [fabricas, setFabricas] = useState<any[]>([]);
+  const [secciones, setSecciones] = useState<any[]>([]);
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const r1 = await fetch('/api/v1/fabricas/?page_size=200');
+        if (r1.ok) {
+          const d = await r1.json();
+          const items = d.results || d || [];
+          setFabricas(items);
+        }
+        const r2 = await fetch('/api/v1/secciones/?page_size=500');
+        if (r2.ok) {
+          const s = await r2.json();
+          const items = s.results || s || [];
+          setSecciones(items);
+        }
+      } catch (err) {
+        console.warn('Register: fallo cargando fabricas/secciones', err);
+      }
+    };
+    load();
+  }, []);
+
+  // Nota: no se captura número de teléfono por política de privacidad
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
@@ -131,9 +230,54 @@ const Register = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
+<<<<<<< HEAD
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
+=======
+              <Label htmlFor="documento">Documento (DNI/CUIT) *</Label>
+              <Input id="documento" type="text" value={documento} onChange={(e) => setDocumento(e.target.value)} required />
+            </div>
+            <div>
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+            {/* Teléfono eliminado del formulario por política: no se captura ni se envía */}
+            <div className="space-y-2">
+              <Label htmlFor="fabrica">Fábrica (opcional)</Label>
+              <Select value={fabrica} onValueChange={(v) => setFabrica(v)}>
+                <SelectTrigger id="fabrica">
+                  <SelectValue placeholder="Seleccionar fábrica (opcional)" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border-border">
+                  {fabricas.map((f: any) => (
+                    <SelectItem key={f.id} value={String(f.id)}>{f.nombre || f.nombre_fabrica || String(f.id)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="seccion">Sección (opcional)</Label>
+              <Select value={seccion} onValueChange={(v) => setSeccion(v)}>
+                <SelectTrigger id="seccion">
+                  <SelectValue placeholder="Seleccionar sección (opcional)" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border-border">
+                  {secciones.filter((s: any) => !fabrica || String(s.fabrica) === String(fabrica)).map((s: any) => (
+                    <SelectItem key={s.id} value={String(s.id)}>{s.nombre || String(s.id)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="direccion">Dirección</Label>
+              <Input id="direccion" type="text" value={direccion} onChange={(e) => setDireccion(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="fechaContratacion">Fecha de contratación</Label>
+              <Input id="fechaContratacion" type="date" value={fechaContratacion} onChange={(e) => setFechaContratacion(e.target.value)} />
+            </div>
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             <div>
               <Label htmlFor="firstName">Nombre</Label>
               <Input id="firstName" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} />

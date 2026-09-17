@@ -4,7 +4,10 @@
 @tailwind components;
 @tailwind utilities;
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 @layer base {
   :root {
     /* Industrial SCADA Dark Theme */

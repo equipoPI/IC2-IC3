@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Activity, Lock, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+<<<<<<< HEAD
 import { useAuth, RolUsuario } from "@/contexts/AuthContext";
+=======
+import { useAuth, buildUsuarioAutenticado } from "@/contexts/AuthContext";
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 import {
   Select,
   SelectContent,
@@ -18,8 +22,11 @@ import {
 const Login = () => {
   const [usuario, setUsuario] = useState("");
   const [contrasena, setContrasena] = useState("");
+<<<<<<< HEAD
   // El rol es interno y lo asigna el admin; por defecto local usamos 'Operador'
   const [rol] = useState<RolUsuario>("Operador");
+=======
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -83,10 +90,18 @@ const Login = () => {
       // Obtener datos del usuario autenticado
       const userResp = await fetch('/api/v1/auth/user/', { credentials: 'include' });
       const userData = userResp.ok ? await userResp.json() : null;
+<<<<<<< HEAD
       const nombre = userData ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.username : usuario;
 
       login({ id: String(userData?.id || Date.now()), nombre, rol });
       toast({ title: 'Bienvenido', description: `Sesión iniciada como ${rol}` });
+=======
+
+      // Derivar objeto completo con rango y rol asegurados
+      const userObj = buildUsuarioAutenticado(userData || { username: usuario, email: usuario });
+      login(userObj);
+      toast({ title: 'Bienvenido', description: `Sesión iniciada como ${userObj.rol}` });
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       navigate('/dashboard');
     } catch (err) {
       toast({ title: 'Error', description: String(err), variant: 'destructive' });
@@ -103,9 +118,17 @@ const Login = () => {
       <Card className="w-full max-w-md relative z-10 border-border/50 bg-card/95 backdrop-blur-sm shadow-2xl">
         <CardHeader className="text-center space-y-4 pb-2">
           <div className="flex flex-col items-center gap-3">
+<<<<<<< HEAD
             <div className="p-3 rounded-xl bg-primary/10 border border-primary/20">
               <Activity className="h-10 w-10 text-primary" />
             </div>
+=======
+            <img 
+              src="/favicon.svg" 
+              alt="SCADA Logo" 
+              className="h-14 w-14 rounded-xl p-1 bg-slate-900 border border-cyan-500/40 shadow-[0_0_16px_rgba(0,229,255,0.4)] object-contain" 
+            />
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             <div>
               <CardTitle className="text-2xl font-bold text-foreground">
                 Sistema de Gestión SCADA

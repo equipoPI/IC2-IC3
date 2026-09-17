@@ -14,19 +14,31 @@ arduino_protocol:
     type: float
   - index: 1
     name: porcentaje_bombo1
+<<<<<<< HEAD
     type: int
+=======
+    type: float
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   - index: 2
     name: nivel_bombo2
     type: float
   - index: 3
     name: porcentaje_bombo2
+<<<<<<< HEAD
     type: int
+=======
+    type: float
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   - index: 4
     name: nivel_mezcla
     type: float
   - index: 5
     name: porcentaje_mezcla
+<<<<<<< HEAD
     type: int
+=======
+    type: float
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   - index: 6
     name: caudal_1
     type: float
@@ -60,14 +72,31 @@ arduino_protocol:
   - index: 16
     name: estado_proceso
     type: int
+<<<<<<< HEAD
   send_commands:
     continuar: A
     detener: D
+=======
+  - index: 17
+    name: estado_electrovalvula1
+    type: bool
+  - index: 18
+    name: estado_electrovalvula2
+    type: bool
+  send_commands:
+    continuar: A
+    descartar: X
+    desechar: X
+    desechar_mezcla: X
+    detener: D
+    detener_mezcla: D
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     frenar: F
     hora: H{valor}
     liquido_1: L1{valor}
     liquido_2: L2{valor}
     minuto: M{valor}
+<<<<<<< HEAD
     reposicion: R{bombo}{valor}
     vaciar: V
 database:
@@ -81,6 +110,30 @@ database:
     keep_critical_events: 30
   path: ./control/raspberry_gateway/data/scada_local.db
   retention_days: 7
+=======
+    reanudar: A
+    reanudar_mezcla: A
+    reposicion: R{valor}
+    vaciar: V
+    vaciar_mezcla: V
+database:
+  auto_vacuum: true
+  backup_enabled: false
+  backup_interval_hours: 24
+  backup_max_files: 3
+  backup_path: ./backups
+  cleanup:
+    enabled: true
+    interval_hours: 2
+    keep_critical_events: 7
+  measurement_interval_seconds: 5
+  save_measurements: false  # Solo guarda configuración y eventos críticos; no gasta la microSD con lecturas periódicas
+  save_raw_data: false
+  max_measurements: 25000
+  path: ./control/raspberry_gateway/data/scada_local.db
+  retention_days: 2
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 development:
   enabled: false
   mock_data_interval: 2
@@ -121,16 +174,28 @@ logging:
       file: ./logs/serial.log
       level: DEBUG
 mqtt:
+<<<<<<< HEAD
   broker: 192.168.137.1
   client_id: ''
   default_sector: ala_este
   default_system: linea_mezclado_1
   gateway_id: ''
+=======
+  broker: 100.69.41.46
+  client_id: ''
+  default_sector: a1
+  default_system: linea_mezclado_1
+  gateway_id: d83add60dbb0
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   keepalive: 60
   password: admin
   port: 1883
   qos: 1
+<<<<<<< HEAD
   tenant: rafaela
+=======
+  tenant: rafaela_sa
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   tls:
     ca_certs: /etc/ssl/certs/ca-certificates.crt
     certfile: null
@@ -138,7 +203,11 @@ mqtt:
     keyfile: null
   topics:
     base: scada/planta1
+<<<<<<< HEAD
     enable_legacy_topics: true
+=======
+    enable_legacy_topics: false
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     publish:
       alarmas: alarmas
       bomba1: actuadores/bomba1
@@ -160,8 +229,14 @@ mqtt:
       comandos_repo: comandos/reposicion
       configuracion: configuracion
       consultas: consultas/historico
+<<<<<<< HEAD
     subscribe_filters:
     - '{tenant}/{gateway_id}/cmd/#'
+=======
+    subscribe_filters: []
+    # Nota: Los filtros se construyen dinámicamente desde la sección 'subscribe' arriba.
+    # Esto permite suscribirse SOLO a topics específicos sin wildcard.
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   username: admin
 planta:
   capacidades:

@@ -1,6 +1,10 @@
 Hola,
 
+<<<<<<< HEAD
 Para activar tu cuenta en el Sistema SCADA, haz clic en el siguiente enlace:
+=======
+Para activar tu cuenta en el Sistema SCADA IoT, haz clic en el siguiente enlace:
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 {{ activate_url }}
 
@@ -11,4 +15,8 @@ Código: {{ key }}
 Si no solicitaste este correo, ignóralo.
 
 Saludos,
+<<<<<<< HEAD
 Equipo SCADA
+=======
+Equipo Sistema SCADA IoT
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385

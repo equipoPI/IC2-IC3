@@ -7,6 +7,7 @@ services:
     container_name: scada_postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data/
+<<<<<<< HEAD
     environment:
       - POSTGRES_DB=ic3_db
       - POSTGRES_USER=postgres
@@ -15,6 +16,14 @@ services:
       - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
+=======
+    env_file:
+      - key.env
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres}" ]
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,10 +36,18 @@ services:
       context: ./mysite
       dockerfile: Dockerfile
     container_name: scada_backend
+<<<<<<< HEAD
     entrypoint: ["/app/entrypoint.sh"]
     command: ["python","manage.py","runserver","0.0.0.0:8000"]
     volumes:
       - ./mysite:/app
+=======
+    entrypoint: [ "/app/entrypoint.sh" ]
+    command: [ "daphne", "-b", "0.0.0.0", "-p", "8000", "mysite.asgi:application" ]
+    volumes:
+      - ./mysite:/app
+      - ./mosquitto/config:/mosquitto/config
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     ports:
       - "8000:8000"
     env_file:
@@ -38,6 +55,7 @@ services:
       - .env.smtp
     environment:
       - DEBUG=1
+<<<<<<< HEAD
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/ic3_db
       - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,backend,host.docker.internal
       - DB_HOST=db
@@ -46,24 +64,71 @@ services:
       - DJANGO_SUPERUSER_USERNAME=admin
       - DJANGO_SUPERUSER_EMAIL=admin@example.com
       - DJANGO_SUPERUSER_PASSWORD=admin
+=======
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,backend,host.docker.internal,100.69.41.46,100.125.119.27,scada-system.duckdns.org,remarry-anyplace-appraiser.ngrok-free.dev,*.ngrok-free.dev,*.ngrok-free.app,*.ngrok.io
+      - FRONTEND_URL=${FRONTEND_URL:-https://remarry-anyplace-appraiser.ngrok-free.dev}
+      - DB_HOST=db
+      - DB_PORT=5432
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     depends_on:
       db:
         condition: service_healthy
     networks:
       - scada_network
 
+<<<<<<< HEAD
+=======
+  # Worker de MQTT en segundo plano
+  mqtt_worker:
+    image: ic2-ic3-backend
+    build:
+      context: ./mysite
+      dockerfile: Dockerfile
+    container_name: scada_mqtt_worker
+    entrypoint: [ "/app/entrypoint.sh" ]
+    command: [ "python", "manage.py", "mqtt_worker" ]
+    volumes:
+      - ./mysite:/app
+    env_file:
+      - key.env
+      - .env.smtp
+    environment:
+      - DEBUG=1
+      - DB_HOST=db
+      - DB_PORT=5432
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_started
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - scada_network
+    restart: unless-stopped
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   # Frontend React + Vite
   frontend:
     build:
       context: ./scada-ui
       dockerfile: Dockerfile
     container_name: scada_frontend
+<<<<<<< HEAD
     command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+=======
+    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0 --port 5173"
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     volumes:
       - ./scada-ui:/app:delegated
       - scada_ui_node_modules:/app/node_modules
     ports:
+<<<<<<< HEAD
       - "5173:8080"
+=======
+      - "5173:5173"
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     environment:
       - VITE_API_URL=
       - WATCHPACK_POLLING=true
@@ -77,26 +142,62 @@ services:
     image: eclipse-mosquitto:2
     container_name: scada_mqtt_broker
     ports:
+<<<<<<< HEAD
       - "1883:1883"      # Puerto MQTT
       - "9001:9001"      # Puerto WebSocket (opcional para MQTT sobre WS)
+=======
+      - "1883:1883" # Puerto MQTT
+      - "9001:9001" # Puerto WebSocket (opcional para MQTT sobre WS)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     volumes:
       - ./mosquitto/config:/mosquitto/config
       - ./mosquitto/data:/mosquitto/data
       - ./mosquitto/log:/mosquitto/log
       # Se elimina el volumen nombrado para evitar conflicto con el bind mount local
+<<<<<<< HEAD
     # Run the init script via shell so it doesn't require the executable bit on the file
     command: ["sh", "-c", "/mosquitto/config/init_mosquitto.sh"]
+=======
+      # Run the init script via shell so it doesn't require the executable bit on the file
+    command: [ "sh", "-c", "/mosquitto/config/init_mosquitto.sh" ]
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     networks:
       - scada_network
     restart: unless-stopped
     healthcheck:
       # Evita usar mosquitto_sub sin credenciales (falla con allow_anonymous false).
       # Comprobamos que el proceso mosquitto esté en ejecución dentro del contenedor.
+<<<<<<< HEAD
       test: ["CMD-SHELL", "pgrep mosquitto || exit 1"]
+=======
+      test: [ "CMD-SHELL", "pgrep mosquitto || exit 1" ]
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       interval: 30s
       timeout: 10s
       retries: 3
 
+<<<<<<< HEAD
+=======
+  # Ngrok Tunnel para Acceso Web Remoto Seguro HTTPS Cero-Puertos
+  tunnel:
+    image: ngrok/ngrok:latest
+    container_name: scada_ngrok_tunnel
+    restart: unless-stopped
+    env_file:
+      - key.env
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN:-3IncvdxAuEPGiTH5cGnf2iIBoNE_89xvMAzxy9U2VQcD2XFCJ}
+    command:
+      - "http"
+      - "--url=${NGROK_DOMAIN:-https://remarry-anyplace-appraiser.ngrok-free.dev}"
+      - "--log=stdout"
+      - "frontend:5173"
+    networks:
+      - scada_network
+    depends_on:
+      - frontend
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 volumes:
   postgres_data:
   mosquitto_data:

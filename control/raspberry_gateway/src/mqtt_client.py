@@ -44,12 +44,27 @@ class MQTTClient:
         self.keepalive = self.mqtt_config.get("keepalive", 60)
         self.qos = self.mqtt_config.get("qos", 1)
 
+<<<<<<< HEAD
         # Identidad estándar (el usuario usará `tenant` para indicar la fábrica)
         self.tenant = self._sanitize_token(self.mqtt_config.get("tenant", "planta"))
         self.gateway_id = self._resolve_gateway_id()
         self.client_id = self.mqtt_config.get("client_id") or f"rpi_{self.gateway_id}"
 
         # Defaults para publicar telemetría estructurada
+=======
+        # Identidad estándar - SIEMPRE minúsculas para topics MQTT
+        raw_tenant = self.mqtt_config.get("tenant", "planta").strip()
+        self.tenant = self._sanitize_token(raw_tenant)  # → minúsculas
+        
+        raw_gateway = self._resolve_gateway_id()
+        self.gateway_id = self._sanitize_token(raw_gateway)  # → minúsculas
+        
+        # Generar un sufijo aleatorio para evitar conflictos de client_id en el broker
+        random_suffix = f"_{uuid.uuid4().hex[:6]}"
+        self.client_id = self.mqtt_config.get("client_id") or f"rpi_{self.gateway_id}{random_suffix}"
+
+        # Defaults para publicar telemetría estructurada - SIEMPRE minúsculas
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         self.default_sector = self._sanitize_token(self.mqtt_config.get("default_sector", "sector_general"))
         self.default_system = self._sanitize_token(self.mqtt_config.get("default_system", "sistema_general"))
 
@@ -96,18 +111,114 @@ class MQTTClient:
 
     @property
     def topic_prefix(self) -> str:
+<<<<<<< HEAD
         return f"{self.tenant}/{self.gateway_id}"
 
     def _sanitize_token(self, value: str) -> str:
         token = str(value).strip().lower().replace(" ", "_")
+=======
+        """Retorna el prefijo de topic en minúsculas: tenant/gateway_id"""
+        return f"{self.tenant}/{self.gateway_id}"
+    
+    def get_subscribe_topics_info(self) -> List[Dict[str, str]]:
+        """Retorna información sobre los topics a los que se suscribe"""
+        topics_info = []
+        for name, path in self.subscribe_topics.items():
+            full_topic = f"{self.topic_prefix}/{self.default_sector}/{self.default_system}/{path}"
+            topics_info.append({
+                "nombre": name,
+                "topic": full_topic,
+                "tipo": "comando"
+            })
+        return topics_info
+    
+    def get_publish_topics_info(self) -> List[Dict[str, str]]:
+        """Retorna información sobre los topics que publica"""
+        topics_info = []
+        for name, path in self.publish_topics.items():
+            full_topic = f"{self.topic_prefix}/{self.default_sector}/{self.default_system}/{path}"
+            topics_info.append({
+                "nombre": name,
+                "topic": full_topic,
+                "tipo": "telemetría"
+            })
+        return topics_info
+
+    def update_topic_context(
+        self,
+        tenant: Optional[str] = None,
+        sector: Optional[str] = None,
+        system: Optional[str] = None,
+    ) -> bool:
+        """
+        Actualiza dinámicamente el contexto de topics (tenant, sector, sistema).
+        Desuscribe los topics anteriores y se suscribe a los nuevos topics en caliente.
+        
+        Args:
+            tenant: Nuevo tenant opcional
+            sector: Nuevo sector/sección opcional
+            system: Nuevo sistema/línea opcional
+            
+        Returns:
+            True si se actualizó correctamente
+        """
+        with self.data_lock:
+            old_filters = list(self.subscribe_filters)
+            
+            if tenant:
+                self.tenant = self._sanitize_token(tenant)
+            if sector:
+                self.default_sector = self._sanitize_token(sector)
+            if system:
+                self.default_system = self._sanitize_token(system)
+                
+            self.subscribe_filters = self._build_subscribe_filters([])
+            
+            if self.connected and self.client:
+                # Desuscribir topics viejos
+                for f in old_filters:
+                    try:
+                        self.client.unsubscribe(f)
+                        logger.debug(f"Desuscrito de topic anterior: {f}")
+                    except Exception as e:
+                        logger.warning(f"Error al desuscribir {f}: {e}")
+                
+                # Suscribir a los nuevos topics
+                for f in self.subscribe_filters:
+                    try:
+                        self.client.subscribe(f, qos=self.qos)
+                        logger.info(f"Suscrito a nuevo topic: {f}")
+                    except Exception as e:
+                        logger.error(f"Error al suscribir nuevo topic {f}: {e}")
+                        
+            logger.info(
+                f"Contexto MQTT actualizado dinámicamente: "
+                f"prefix={self.topic_prefix}, sector={self.default_sector}, sistema={self.default_system}"
+            )
+            return True
+
+    def _sanitize_token(self, value: str) -> str:
+        """Convierte a minúsculas y remueve caracteres no permitidos en MQTT topics"""
+        token = str(value).strip().lower().replace(" ", "_")
+        # Solo permitir: a-z, 0-9, guión bajo (_), guión (-)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         token = re.sub(r"[^a-z0-9_\-]", "", token)
         return token or "na"
 
     def _resolve_gateway_id(self) -> str:
+<<<<<<< HEAD
         forced_id = self.mqtt_config.get("gateway_id")
         if forced_id:
             return self._sanitize_token(forced_id)
 
+=======
+        """Obtiene el ID del gateway (será sanitizado a minúsculas después)"""
+        forced_id = self.mqtt_config.get("gateway_id")
+        if forced_id:
+            return forced_id.strip()  # Será sanitizado en __init__
+
+        # Si no hay ID forzado, generar desde MAC
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         mac_int = uuid.getnode()
         return f"{mac_int:012x}"
 
@@ -119,6 +230,7 @@ class MQTTClient:
         )
 
     def _build_subscribe_filters(self, configured_filters: List[str]) -> List[str]:
+<<<<<<< HEAD
         filters: List[str] = [f"{self.topic_prefix}/cmd/#"]
 
         for f in configured_filters:
@@ -128,10 +240,53 @@ class MQTTClient:
             for _, topic_path in self.subscribe_topics.items():
                 filters.append(f"{self.legacy_base_topic}/{topic_path}")
 
+=======
+        """
+        Construye la lista de topics a los que se suscribe.
+        ✅ IMPORTANTE: Se suscribe SOLO a los comandos que necesita procesar,
+        NO a todo con wildcard (#). Esto evita recibir datos que el gateway mismo publica.
+        """
+        filters: List[str] = []
+        
+        # ✅ Construir topics específicos para COMANDOS configurados
+        for cmd_name, cmd_path in self.subscribe_topics.items():
+            # Construir topic completo: tenant/gateway_id/sector/sistema/comando
+            full_topic = f"{self.topic_prefix}/{self.default_sector}/{self.default_system}/{cmd_path}"
+            filters.append(full_topic)
+            logger.debug(f"📥 Se suscribe a comando: {full_topic}")
+
+        # ✅ Suscribirse a comandos estándar directos (sin prefijo comandos/)
+        comandos_directos = [
+            "reposicion", "freno_reposicion", "detener", "reanudar",
+            "vaciar", "desechar", "descartar", "mezcla", "control",
+            "configuracion", "consultas"
+        ]
+        for cmd in comandos_directos:
+            direct_topic = f"{self.topic_prefix}/{self.default_sector}/{self.default_system}/{cmd}"
+            if direct_topic not in filters:
+                filters.append(direct_topic)
+                logger.debug(f"📥 Se suscribe a comando directo: {direct_topic}")
+        
+        # Agregar filtros configurados (si los hay)
+        for f in configured_filters:
+            applied = self._apply_topic_tokens(f)
+            if applied not in filters:
+                filters.append(applied)
+        
+        # Legacy topics (si están habilitados)
+        if self.enable_legacy_topics:
+            for _, topic_path in self.subscribe_topics.items():
+                legacy = f"{self.legacy_base_topic}/{topic_path}"
+                if legacy not in filters:
+                    filters.append(legacy)
+        
+        # Remover duplicados y retornar
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         unique_filters = []
         for f in filters:
             if f and f not in unique_filters:
                 unique_filters.append(f)
+<<<<<<< HEAD
 
         return unique_filters
 
@@ -147,6 +302,68 @@ class MQTTClient:
 
         action = parts[-1]
         context = parts[:-1]
+=======
+        
+        logger.info(f"✅ Filtros de suscripción construidos ({len(unique_filters)} topics específicos)")
+        return unique_filters
+
+    def rebuild_subscribe_filters(self):
+        """
+        Reconstruye los filtros de suscripción cuando cambian tenant o gateway_id.
+        Esto es necesario cuando se actualizan los parámetros en tiempo de ejecución.
+        """
+        try:
+            self.subscribe_filters = self._build_subscribe_filters(
+                self.mqtt_config.get("topics", {}).get("subscribe_filters", [])
+            )
+            logger.info(f"Filtros de suscripción actualizados. Topic prefix: {self.topic_prefix}")
+            
+            # Si ya está conectado, re-suscribirse con los nuevos filtros
+            if self.connected and self.client:
+                # Desuscribirse de los antiguos tópicos
+                try:
+                    self.client.unsubscribe("#")
+                except Exception as e:
+                    logger.warning(f"Error desuscribiendo de tópicos antiguos: {e}")
+                
+                # Suscribirse a los nuevos
+                for topic_filter in self.subscribe_filters:
+                    try:
+                        self.client.subscribe(topic_filter, qos=self.qos)
+                        logger.debug(f"Suscrito a: {topic_filter}")
+                    except Exception as e:
+                        logger.error(f"Error suscribiendo a {topic_filter}: {e}")
+                        self.stats["errors"] += 1
+        except Exception as e:
+            logger.error(f"Error reconstruyendo filtros de suscripción: {e}")
+            self.stats["errors"] += 1
+
+    def _extract_command_meta(self, topic: str) -> Optional[Dict[str, str]]:
+        # Estructura estándar: {tenant}/{gateway_id}/{sector}/{sistema}/{accion}
+        prefix = f"{self.topic_prefix}/"
+        if not topic.startswith(prefix):
+            return None
+        
+        path = topic[len(prefix):].strip("/")
+        parts = [p for p in path.split("/") if p]
+        
+        # Necesitamos al menos: sector/sistema/accion (3 partes)
+        if len(parts) < 3:
+            return None
+
+        action = parts[-1]
+        
+        # Verificar que la última parte sea una acción conocida
+        known_actions = [
+            "reposicion", "freno_reposicion", "detener", "reanudar", 
+            "vaciar", "desechar", "mezcla", "configuracion", "consultas", 
+            "control", "accion", "continuar", "frenar", "parar", "pausar",
+            "descartar"
+        ]
+        
+        if action.lower() not in known_actions:
+            return None
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
         meta = {
             "action": action,
@@ -154,12 +371,21 @@ class MQTTClient:
             "scope": "standard",
         }
 
+<<<<<<< HEAD
         if len(context) >= 1:
             meta["sector"] = self._sanitize_token(context[0])
         if len(context) >= 2:
             meta["system"] = self._sanitize_token(context[1])
         if len(context) >= 3:
             meta["device"] = self._sanitize_token(context[2])
+=======
+        if len(parts) >= 1:
+            meta["sector"] = self._sanitize_token(parts[0])
+        if len(parts) >= 2:
+            meta["system"] = self._sanitize_token(parts[1])
+        if len(parts) >= 4:
+            meta["device"] = self._sanitize_token(parts[3])
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
         return meta
 
@@ -215,7 +441,11 @@ class MQTTClient:
             logger.warning(f"Desconexión inesperada del broker MQTT (rc={rc})")
         else:
             logger.info("Desconectado del broker MQTT")
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     def _on_message(self, client, userdata, msg):
         """
         Callback cuando se recibe un mensaje MQTT
@@ -254,12 +484,37 @@ class MQTTClient:
             data["_topic_meta"] = command_meta
 
             action = command_meta.get("action")
+<<<<<<< HEAD
             callback = self.command_callbacks.get(action)
             if callback:
                 callback(data, topic)
                 return
 
             logger.warning(f"No hay callback registrado para acción: {action}")
+=======
+            logger.info(f"🔔 Comando MQTT recibido: acción='{action}' | topic='{topic}'")
+            
+            # Resolver la acción específica desde el campo 'accion' del payload si la ruta fue /control o /accion
+            if action in ['control', 'accion'] and isinstance(data, dict) and data.get('accion'):
+                payload_action = str(data.get('accion')).lower()
+                if payload_action in self.command_callbacks:
+                    action = payload_action
+                elif payload_action in ['freno_reposicion', 'parar_reposicion', 'frenar']:
+                    action = 'reposicion' if 'reposicion' in self.command_callbacks else 'control'
+            elif action in ['detener', 'reanudar', 'continuar', 'parar', 'pausar', 'vaciar', 'desechar', 'descartar', 'frenar', 'freno_reposicion']:
+                if action not in self.command_callbacks and 'control' in self.command_callbacks:
+                    action = 'control'
+            elif action in ['reposicion'] and action not in self.command_callbacks and 'control' in self.command_callbacks:
+                action = 'control'
+
+            callback = self.command_callbacks.get(action)
+            if callback:
+                logger.info(f"✓ Invocando callback para: {action}")
+                callback(data, topic)
+                return
+
+            logger.warning(f"❌ No hay callback registrado para acción: {action}")
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             
         except Exception as e:
             logger.error(f"Error procesando mensaje MQTT: {e}")
@@ -275,9 +530,21 @@ class MQTTClient:
         """
         Suscribe a todos los topics configurados
         """
+<<<<<<< HEAD
         for topic_filter in self.subscribe_filters:
             self.client.subscribe(topic_filter, qos=self.qos)
             logger.info(f"Suscrito a topic: {topic_filter}")
+=======
+        logger.info("="*70)
+        logger.info("📡 SUSCRIPCIÓN A TOPICS MQTT")
+        logger.info("="*70)
+        logger.info(f"Topic Prefix: {self.topic_prefix}")
+        logger.info(f"Filtros de suscripción:")
+        for i, topic_filter in enumerate(self.subscribe_filters, 1):
+            logger.info(f"  {i}. {topic_filter}")
+            self.client.subscribe(topic_filter, qos=self.qos)
+        logger.info("="*70)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     
     def connect(self) -> bool:
         """
@@ -312,12 +579,18 @@ class MQTTClient:
                 )
             
             # Configurar will (mensaje de última voluntad) en estándar
+<<<<<<< HEAD
+=======
+            # NOTA: Solo se puede tener UN will_set() por cliente en paho-mqtt
+            # El topic estándar es el que Django worker espera para actualizar estado
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             self.client.will_set(
                 f"{self.topic_prefix}/status",
                 payload="offline",
                 qos=self.qos,
                 retain=True,
             )
+<<<<<<< HEAD
 
             # Will legacy opcional
             if self.enable_legacy_topics:
@@ -327,6 +600,8 @@ class MQTTClient:
                     qos=self.qos,
                     retain=True,
                 )
+=======
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             
             # Conectar
             self.client.connect(self.broker, self.port, self.keepalive)
@@ -438,6 +713,12 @@ class MQTTClient:
             else:
                 payload = str(data)
             
+<<<<<<< HEAD
+=======
+            # Debug: log el topic que se va a publicar
+            logger.debug(f"Publicando en: {full_topic}")
+            
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             # Publicar
             result = self.client.publish(
                 full_topic,
@@ -456,15 +737,26 @@ class MQTTClient:
                         "timestamp": time.time(),
                         "retain": retain
                     }
+<<<<<<< HEAD
                 logger.debug(f"Publicado en {full_topic}: {payload[:100]}")
                 return True
             else:
                 logger.error(f"Error publicando en {full_topic}: {result.rc}")
+=======
+                logger.debug(f"Publicado OK en {full_topic}: {payload[:100]}")
+                return True
+            else:
+                logger.error(f"Error publicando en {full_topic}: rc={result.rc}, payload_size={len(payload)}")
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                 self.stats["errors"] += 1
                 return False
         
         except Exception as e:
+<<<<<<< HEAD
             logger.error(f"Error en publish: {e}")
+=======
+            logger.error(f"Error en publish de {topic_name}: {e}")
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             self.stats["errors"] += 1
             return False
 
@@ -519,11 +811,26 @@ class MQTTClient:
         else:
             response_topic = f"resp/{action}"
 
+<<<<<<< HEAD
+=======
+        logger.debug(f"Construyendo respuesta de comando:")
+        logger.debug(f"  - Acción: {action}")
+        logger.debug(f"  - Sector: {sector}")
+        logger.debug(f"  - System: {system}")
+        logger.debug(f"  - Device: {device}")
+        logger.debug(f"  - Topic de respuesta (sin prefijo): {response_topic}")
+        logger.info(f"✉️  Publicando respuesta: topic='resp/{action}' status='{status}' code={code}")
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         return self.publish(response_topic, payload, retain=False, qos=self.qos)
     
     def publish_sensor_data(self, sensor_data: Dict[str, Any]):
         """
+<<<<<<< HEAD
         Publica datos de sensores en los topics correspondientes
+=======
+        Publica datos de sensores agrupados en formato JSON en los topics correspondientes
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         
         Args:
             sensor_data: Diccionario con datos del Arduino parseados
@@ -531,6 +838,7 @@ class MQTTClient:
         try:
             sector = self.default_sector
             system = self.default_system
+<<<<<<< HEAD
 
             # Telemetría estándar con payload simple
             self.publish_structured(sector, system, "sensor_nivel_01", "valor_cm", sensor_data.get("nivel_bombo1", ""))
@@ -553,10 +861,74 @@ class MQTTClient:
             self.publish_structured(sector, system, "proceso", "min_restante", sensor_data.get("min_restante", ""))
             self.publish_structured(sector, system, "proceso", "estado", sensor_data.get("estado_proceso", ""))
             self.publish_structured(sector, system, "proceso", "error", sensor_data.get("error", 0))
+=======
+            ts = sensor_data.get("timestamp") or time.time()
+
+            logger.debug(f"Publishing sensor data to: {self.topic_prefix}/{sector}/{system}/...")
+
+            # 1. Sensores de Nivel (Bombos)
+            self.publish_structured(sector, system, "sensores", "bombo1", {
+                "nivel": sensor_data.get("nivel_bombo1", 0.0),
+                "porcentaje": sensor_data.get("porcentaje_bombo1", 0),
+                "timestamp": ts
+            })
+            self.publish_structured(sector, system, "sensores", "bombo2", {
+                "nivel": sensor_data.get("nivel_bombo2", 0.0),
+                "porcentaje": sensor_data.get("porcentaje_bombo2", 0),
+                "timestamp": ts
+            })
+            self.publish_structured(sector, system, "sensores", "mezcla", {
+                "nivel": sensor_data.get("nivel_mezcla", 0.0),
+                "porcentaje": sensor_data.get("porcentaje_mezcla", 0),
+                "timestamp": ts
+            })
+
+            # 2. Caudalímetros
+            self.publish_structured(sector, system, "sensores", "caudal", {
+                "caudal_1": sensor_data.get("caudal_1", 0.0),
+                "caudal_2": sensor_data.get("caudal_2", 0.0),
+                "timestamp": ts
+            })
+
+            # 3. Actuadores (Bombas y Mezclador)
+            self.publish_structured(sector, system, "actuadores", "bombas", {
+                "bomba1": int(bool(sensor_data.get("estado_bomba1", False))),
+                "bomba2": int(bool(sensor_data.get("estado_bomba2", False))),
+                "bomba_mezcla": int(bool(sensor_data.get("estado_bomba_mezcla", False))),
+                "bomba_reposicion": int(bool(sensor_data.get("estado_bomba_repo", False))),
+                "timestamp": ts
+            })
+            self.publish_structured(sector, system, "actuadores", "mezclador", {
+                "estado": int(bool(sensor_data.get("estado_mezclador", False))),
+                "timestamp": ts
+            })
+            self.publish_structured(sector, system, "actuadores", "electrovalvulas", {
+                "electrovalvula1": int(bool(sensor_data.get("estado_electrovalvula1", False))),
+                "electrovalvula2": int(bool(sensor_data.get("estado_electrovalvula2", False))),
+                "timestamp": ts
+            })
+
+            # 4. Proceso (Estado y tiempo restante)
+            self.publish_structured(sector, system, "proceso", "mezclado", {
+                "estado": sensor_data.get("estado_proceso", 0),
+                "error": sensor_data.get("error", 0),
+                "timestamp": ts
+            })
+            self.publish_structured(sector, system, "proceso", "tiempo_restante", {
+                "horas": sensor_data.get("hora_restante", 0),
+                "minutos": sensor_data.get("min_restante", 0),
+                "timestamp": ts
+            })
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
             # Compatibilidad legacy opcional
             if self.enable_legacy_topics:
                 self._publish_legacy_sensor_data(sensor_data)
+<<<<<<< HEAD
+=======
+            
+            logger.debug(f"Sensor data published successfully")
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         
         except Exception as e:
             logger.error(f"Error publicando datos de sensores: {e}")

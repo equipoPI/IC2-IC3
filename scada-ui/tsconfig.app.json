@@ -5,7 +5,10 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
+<<<<<<< HEAD
     "ignoreDeprecations": "6.0",
+=======
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -23,7 +26,11 @@
     "noFallthroughCasesInSwitch": false,
 
     "baseUrl": ".",
+<<<<<<< HEAD
     "ignoreDeprecations": "6.0",
+=======
+    "ignoreDeprecations": "5.0",
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     "paths": {
       "@/*": ["./src/*"]
     }

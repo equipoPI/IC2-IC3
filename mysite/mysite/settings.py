@@ -34,10 +34,24 @@ DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
 # Hosts allowed to serve the app. Can be overridden via env: DJANGO_ALLOWED_HOSTS
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,host.docker.internal').split(',')
 
+<<<<<<< HEAD
+=======
+# Configuracion de cabeceras para Reverse Proxy / Tunnels (Ngrok, Cloudflare, etc.)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 # Application definition
 
 INSTALLED_APPS = [
+<<<<<<< HEAD
+=======
+    'daphne',
+    'channels',
+    'django_extensions',
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     'polls.apps.PollsConfig',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -68,6 +82,10 @@ MIDDLEWARE = [
     'allauth.account.middleware.AccountMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+<<<<<<< HEAD
+=======
+    'polls.middleware.AuditMiddleware',
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 ]
 
 ROOT_URLCONF = 'mysite.urls'
@@ -89,6 +107,17 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'mysite.wsgi.application'
+<<<<<<< HEAD
+=======
+ASGI_APPLICATION = 'mysite.asgi.application'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    },
+}
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 
 # Database
@@ -134,7 +163,11 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'es'
 
+<<<<<<< HEAD
 TIME_ZONE = 'UTC'
+=======
+TIME_ZONE = 'America/Argentina/Buenos_Aires'
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 USE_I18N = True
 
@@ -154,6 +187,10 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # - To use real SMTP configure the environment variables below.
 # -----------------------------------------------------------------------------
 DEFAULT_FROM_EMAIL = os.environ.get('DJANGO_DEFAULT_FROM', 'no-reply@localhost')
+<<<<<<< HEAD
+=======
+ACCOUNT_EMAIL_SUBJECT_PREFIX = "[Sistema SCADA IoT] "
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 # Frontend URL (used to build redirects in emails)
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
@@ -225,8 +262,24 @@ REST_FRAMEWORK['EXCEPTION_HANDLER'] = 'mysite.utils.exception_handler.custom_exc
 # CONFIGURACIÓN DE CORS - Para permitir peticiones desde React frontend
 # =============================================================================
 
+<<<<<<< HEAD
 # En desarrollo, permite todas las origins
 CORS_ALLOW_ALL_ORIGINS = True  # Cambiar en producción
+=======
+# En desarrollo preferimos listar orígenes permitidos para permitir credenciales
+# Evitar '*' cuando `CORS_ALLOW_CREDENTIALS = True` para no bloquear cookies.
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    origin.strip() for origin in os.environ.get(
+        'CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173'
+    ).split(',') if origin.strip()
+]
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.ngrok-free\.dev$",
+    r"^https://.*\.ngrok-free\.app$",
+    r"^https://.*\.ngrok\.io$",
+]
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 # En producción, usar CORS_ALLOWED_ORIGINS específicas:
 # CORS_ALLOWED_ORIGINS = [
@@ -260,9 +313,23 @@ CSRF_TRUSTED_ORIGINS = os.environ.get(
 ).split(',')
 
 # Ajustes de cookies CSRF/Session para desarrollo local (ajustar en producción)
+<<<<<<< HEAD
 CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'Lax')
 CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', 'False') == 'True'
 SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
+=======
+def _env_samesite(var_name: str, default: str):
+    v = os.environ.get(var_name, default)
+    if v is None:
+        return None
+    if isinstance(v, str) and v.lower() in ['none', 'null', '']:
+        return None
+    return v
+
+CSRF_COOKIE_SAMESITE = _env_samesite('CSRF_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', 'False') == 'True'
+SESSION_COOKIE_SAMESITE = _env_samesite('SESSION_COOKIE_SAMESITE', 'Lax')
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False') == 'True'
 
 # Personalizar la vista de fallo CSRF para devolver mensajes en español
@@ -284,6 +351,13 @@ ACCOUNT_UNIQUE_EMAIL = True
 # Use custom serializer for registration to enforce registration_key
 REST_AUTH_REGISTER_SERIALIZER = 'polls.serializers.CustomRegisterSerializer'
 
+<<<<<<< HEAD
+=======
+REST_AUTH = {
+    'USER_DETAILS_SERIALIZER': 'polls.serializers.UserSerializer',
+}
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 # Usar adaptador personalizado para construir correctamente el enlace de
 # confirmación (apunta al frontend SPA con ?key=...)
 ACCOUNT_ADAPTER = 'polls.adapters.CustomAccountAdapter'
@@ -365,8 +439,14 @@ LOGGING = {
         },
     },
 }
+<<<<<<< HEAD
 # Habilita el acceso desde cualquier puerto/dominio (Ideal para desarrollo)
 CORS_ALLOW_ALL_ORIGINS = True
+=======
+# Asegurarse de no permitir '*' cuando se requieren credenciales
+# (ya configurado arriba)
+CORS_ALLOW_ALL_ORIGINS = False
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 # Para usar en el código:
 # import logging
 # logger = logging.getLogger('scada')

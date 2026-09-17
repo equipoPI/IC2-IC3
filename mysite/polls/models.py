@@ -3,7 +3,11 @@ import random
 from datetime import datetime, timedelta
 from django.db import models
 from django.contrib.auth.models import User
+<<<<<<< HEAD
 from django.utils.timezone import now
+=======
+from django.utils.timezone import now, localdate
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 from django.core.exceptions import ValidationError
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -25,7 +29,11 @@ class Fabrica(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
     ubicacion = models.CharField(max_length=255, blank=True, null=True)
     pais = models.CharField(max_length=100)
+<<<<<<< HEAD
     fecha_creacion = models.DateField(default=now)
+=======
+    fecha_creacion = models.DateField(default=localdate)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
     # Campos SCADA
     estado = models.CharField(max_length=20, choices=ESTADOS_PLANTA, default='OPERATIVO')
@@ -56,6 +64,10 @@ class Seccion(models.Model):
     capacidad_trabajadores = models.PositiveIntegerField()
     tamano_seccion = models.FloatField()  # Tamaño en m²
     agenda = models.TextField(blank=True, null=True)  # Cronograma o agenda de actividades
+<<<<<<< HEAD
+=======
+    creado_el = models.DateTimeField(auto_now_add=True)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
     class Meta:
         unique_together = ('nombre', 'fabrica')
@@ -80,6 +92,10 @@ class Empleado(models.Model):
         ('ACTIVO', 'Activo'),
         ('DESPEDIDO', 'Despedido'),
         ('JUBILADO', 'Jubilado'),
+<<<<<<< HEAD
+=======
+        ('SUSPENDIDO', 'Suspendido'),
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         ('OTRO', 'Otro'),
     ]
 
@@ -98,7 +114,11 @@ class Empleado(models.Model):
         ('5', 'Especialista'),
         ('6', 'Empleado'),
         ('7', 'Pasante'),
+<<<<<<< HEAD
         ('8', 'Contratista'),
+=======
+        ('8', 'Administrador'),
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     ]
 
     rango = models.CharField(max_length=50, choices=RANGO_OPCIONES)
@@ -111,6 +131,7 @@ class Empleado(models.Model):
     email = models.EmailField(unique=True)
     estado = models.CharField(max_length=20, choices=ESTADOS_EMPLEADO, default='ACTIVO')
 
+<<<<<<< HEAD
     tipo_empleado = models.CharField(
         max_length=50,
         choices=[
@@ -125,6 +146,10 @@ class Empleado(models.Model):
     )
 
     rol_actual = models.CharField(max_length=100, blank=True, null=True, help_text="Rol o cargo actual")
+=======
+    # `tipo_empleado` removido: usar `rango` como fuente canónica de autorización.
+    # Si se desea conservar valores históricos, backfill previo es necesario.
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
     def save(self, *args, **kwargs):
         # Evitar intentar obtener el objeto original cuando el PK ya fue asignado
@@ -141,12 +166,48 @@ class Empleado(models.Model):
                 )
         super().save(*args, **kwargs)
 
+<<<<<<< HEAD
     def calcular_antiguedad(self):
         hoy = now().date()
         self.antiguedad = hoy.year - self.fecha_contratacion.year
         if (hoy.month, hoy.day) < (self.fecha_contratacion.month, self.fecha_contratacion.day):
             self.antiguedad -= 1
         self.save()
+=======
+        # Sincronizar estado laboral con el acceso al sistema (User.is_active e is_staff)
+        if self.user:
+            is_active = (self.estado == 'ACTIVO')
+            is_admin_rango = (str(self.rango) == '8')
+            changed = False
+
+            if self.user.is_active != is_active:
+                self.user.is_active = is_active
+                changed = True
+
+            if not self.user.is_superuser:
+                if is_admin_rango and not self.user.is_staff:
+                    self.user.is_staff = True
+                    changed = True
+                elif not is_admin_rango and self.user.is_staff:
+                    self.user.is_staff = False
+                    changed = True
+
+            if changed:
+                self.user.save()
+
+    @property
+    def antiguedad(self):
+        if not self.fecha_contratacion:
+            return 0
+        hoy = now().date()
+        ant = hoy.year - self.fecha_contratacion.year
+        if (hoy.month, hoy.day) < (self.fecha_contratacion.month, self.fecha_contratacion.day):
+            ant -= 1
+        return max(0, ant)
+
+    def calcular_antiguedad(self):
+        return self.antiguedad
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
     def __str__(self):
         uname = self.user.username if self.user else ''
@@ -156,7 +217,11 @@ class Empleado(models.Model):
 class EmpleadoSeccion(models.Model):
     empleado = models.ForeignKey(Empleado, on_delete=models.CASCADE, related_name="secciones")
     seccion = models.ForeignKey('Seccion', on_delete=models.CASCADE, related_name="empleados_historial")
+<<<<<<< HEAD
     fecha_union = models.DateField(default=now)
+=======
+    fecha_union = models.DateField(default=localdate)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     fecha_salida = models.DateField(blank=True, null=True)
 
     class Meta:
@@ -166,6 +231,7 @@ class EmpleadoSeccion(models.Model):
         return f"{self.empleado} en {self.seccion} desde {self.fecha_union}"
 
 
+<<<<<<< HEAD
 # Perfil/Role para usuarios del sistema
 ROLE_CHOICES = [
     ('operator', 'Empleado'),
@@ -182,6 +248,19 @@ class Profile(models.Model):
     """
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='operator')
+=======
+# Perfil para usuarios del sistema: rol derivado desde `Empleado.rango`
+
+class Profile(models.Model):
+    """Perfil extendido para `User` con metadatos adicionales.
+
+    Nota: el campo `role` fue eliminado como columna persistente. El rol
+    efectivo se deriva de la relación `user.empleado.rango`. Se exponen
+    utilidades `role` (propiedad) y `get_role_display()` para compatibilidad
+    con código que previamente consumía esas llamadas.
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     telefono = models.CharField(max_length=30, blank=True, null=True)
     email_confirmed = models.BooleanField(default=False)
     last_seen = models.DateTimeField(null=True, blank=True)
@@ -194,6 +273,44 @@ class Profile(models.Model):
     def __str__(self):
         return f"{self.user.username} ({self.get_role_display()})"
 
+<<<<<<< HEAD
+=======
+    @property
+    def role(self):
+        """Código de rol interno derivado desde `Empleado.rango`.
+
+        Devuelve uno de: 'admin', 'manager', 'operator'. Si no existe
+        un `Empleado` asociado, retorna 'operator' por defecto.
+        """
+        try:
+            emp = getattr(self.user, 'empleado', None)
+            if emp and getattr(emp, 'rango', None):
+                r = str(emp.rango)
+                if r == '8':
+                    return 'admin'
+                if r in ['1', '2', '3']:
+                    return 'manager'
+                return 'operator'
+        except Exception:
+            pass
+        return 'operator'
+
+    def get_role_display(self):
+        """Etiqueta legible del rol derivada desde `Empleado.rango`.
+
+        Mantiene la compatibilidad con llamadas existentes a
+        `perfil.get_role_display()`.
+        """
+        try:
+            emp = getattr(self.user, 'empleado', None)
+            if emp and getattr(emp, 'rango', None):
+                mapping = dict(getattr(models.Empleado, 'RANGO_OPCIONES', []))
+                return mapping.get(str(emp.rango), 'Empleado')
+        except Exception:
+            pass
+        return 'Empleado'
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 class RegistrationConfig(models.Model):
     """Configuración editable por admin para la clave de registro.
@@ -227,6 +344,7 @@ def create_or_update_user_profile(sender, instance, created, **kwargs):
         # Intento crear un registro `Empleado` básico si existen fábricas y secciones.
         try:
             # Evitar crear si ya existe un Empleado vinculado
+<<<<<<< HEAD
             if not models.Empleado.objects.filter(user=instance).exists():
                 if models.Fabrica.objects.exists():
                     fab = models.Fabrica.objects.first()
@@ -236,6 +354,17 @@ def create_or_update_user_profile(sender, instance, created, **kwargs):
                         # Evitar duplicados por documento o email
                         if not models.Empleado.objects.filter(documento=doc).exists() and not models.Empleado.objects.filter(email=instance.email).exists():
                             emp = models.Empleado(
+=======
+            if not Empleado.objects.filter(user=instance).exists():
+                if Fabrica.objects.exists():
+                    fab = Fabrica.objects.first()
+                    sec = Seccion.objects.filter(fabrica=fab).first()
+                    if sec:
+                        doc = instance.username
+                        # Evitar duplicados por documento o email
+                        if not Empleado.objects.filter(documento=doc).exists() and not Empleado.objects.filter(email=instance.email).exists():
+                            emp = Empleado(
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                                 user=instance,
                                 documento=doc,
                                 nombre=instance.first_name or instance.username,
@@ -358,6 +487,35 @@ class EjecucionReceta(models.Model):
         return f"Ejecución de {self.receta.nombre} en {self.seccion.nombre} ({self.tiempo_inicio})"
 
 
+<<<<<<< HEAD
+=======
+class RegistroAuditoria(models.Model):
+    """Registro de auditoría para acciones del sistema.
+
+    Guarda la máxima información posible sobre la acción: usuario (si hay),
+    tipo de acción, módulo, objeto afectado, descripción libre, datos
+    adicionales en JSON, IP y timestamp.
+    """
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    accion = models.CharField(max_length=200)
+    modulo = models.CharField(max_length=200, blank=True, null=True)
+    objeto = models.CharField(max_length=500, blank=True, null=True)
+    descripcion = models.TextField(blank=True, null=True)
+    datos = models.JSONField(blank=True, null=True)
+    ip_origen = models.CharField(max_length=50, blank=True, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = 'Registro de Auditoría'
+        verbose_name_plural = 'Registros de Auditoría'
+
+    def __str__(self):
+        user = self.usuario.username if self.usuario else 'Anon'
+        return f"[{self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}] {user} - {self.accion} ({self.modulo})"
+
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 class Produccion(models.Model):
     receta = models.ForeignKey(Receta, on_delete=models.CASCADE, related_name='producciones')
     seccion = models.ForeignKey(Seccion, on_delete=models.CASCADE, related_name='producciones')
@@ -404,9 +562,25 @@ class RegistroMantenimiento(models.Model):
 
 
 class Sistema(models.Model):
+<<<<<<< HEAD
     nombre = models.CharField(max_length=100)
     fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='sistemas')
     descripcion = models.TextField(blank=True, null=True)
+=======
+    TIPOS_SISTEMA = [
+        ('FLUIDOS', 'Fluidos / Líquidos'),
+        ('SOLIDOS', 'Procesamiento de Sólidos'),
+        ('EMPAQUE', 'Empaquetado y Envasado'),
+        ('TEMPERATURA', 'Control de Temperatura'),
+        ('GENERAL', 'Sistema General'),
+    ]
+
+    nombre = models.CharField(max_length=100)
+    fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='sistemas')
+    tipo_sistema = models.CharField(max_length=30, choices=TIPOS_SISTEMA, default='FLUIDOS')
+    descripcion = models.TextField(blank=True, null=True)
+    diagrama_layout_json = models.TextField(blank=True, null=True, help_text="Distribucion de nodos y conexiones de ReactFlow en JSON")
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     activo = models.BooleanField(default=True)
 
     class Meta:
@@ -451,14 +625,30 @@ class DispositivoSCADA(models.Model):
     inventario = models.ForeignKey(Inventario, on_delete=models.SET_NULL, null=True, blank=True, related_name='dispositivos')
     estado = models.CharField(max_length=20, choices=ESTADOS, default='OFFLINE')
     topic_mqtt = models.CharField(max_length=255, blank=True, null=True, help_text="Topic MQTT para este dispositivo")
+<<<<<<< HEAD
     fecha_instalacion = models.DateField(default=now)
     ultima_lectura = models.DateTimeField(null=True, blank=True)
+=======
+    gateway_id = models.CharField(max_length=100, blank=True, null=True, help_text="ID del gateway/Raspberry asignado")
+    fecha_instalacion = models.DateField(default=localdate)
+    creado_el = models.DateTimeField(auto_now_add=True)
+    ultima_lectura = models.DateTimeField(null=True, blank=True)
+    valor_lectura = models.FloatField(null=True, blank=True, help_text="Último valor medido")
+    unidad_lectura = models.CharField(max_length=20, default="N/A", blank=True, help_text="Unidad de medida")
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     descripcion = models.TextField(blank=True, null=True)
 
     class Meta:
         verbose_name = "Dispositivo SCADA"
         verbose_name_plural = "Dispositivos SCADA"
 
+<<<<<<< HEAD
+=======
+    @property
+    def id(self):
+        return self.numero_serie
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     def __str__(self):
         return f"{self.numero_serie} - {self.nombre}"
 
@@ -498,6 +688,10 @@ class OrdenProduccion(models.Model):
     hora_inicio = models.TimeField(default='08:00')
     fecha_fin = models.DateField()
     hora_fin = models.TimeField(default='17:00')
+<<<<<<< HEAD
+=======
+    
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='ordenes_produccion')
     sistema = models.ForeignKey(Sistema, on_delete=models.SET_NULL, null=True, blank=True, related_name='ordenes')
     dispositivo = models.ForeignKey(DispositivoSCADA, on_delete=models.SET_NULL, null=True, blank=True, related_name='ordenes')
@@ -700,6 +894,11 @@ class UnidadAlmacenamiento(models.Model):
     ]
 
     inventario = models.ForeignKey(Inventario, on_delete=models.CASCADE, related_name='unidades_almacenamiento')
+<<<<<<< HEAD
+=======
+    seccion = models.ForeignKey(Seccion, on_delete=models.SET_NULL, null=True, blank=True, related_name='unidades_almacenamiento')
+    sistema = models.ForeignKey(Sistema, on_delete=models.SET_NULL, null=True, blank=True, related_name='unidades_almacenamiento')
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     nombre = models.CharField(max_length=100)
     tipo = models.CharField(max_length=20, choices=TIPOS)
     contenido = models.CharField(max_length=200)
@@ -817,4 +1016,108 @@ class ComunicacionMQTT(models.Model):
         ]
 
     def __str__(self):
+<<<<<<< HEAD
         return f"{self.direccion} - {self.topic} ({self.timestamp.strftime('%Y-%m-%d %H:%M:%S')})"
+=======
+        return f"{self.direccion} - {self.topic} ({self.timestamp.strftime('%Y-%m-%d %H:%M:%S')})"
+
+
+class MetricaConfiguracion(models.Model):
+    nombre = models.CharField(max_length=100, unique=True)
+    unidad_medida = models.CharField(max_length=20)
+    icono = models.CharField(max_length=50, help_text="Nombre de icono Lucide (e.g. thermometer, gauge, zap, droplet)")
+    rango_minimo = models.FloatField(default=0.0)
+    rango_maximo = models.FloatField(default=100.0)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Configuración de Métrica"
+        verbose_name_plural = "Configuraciones de Métricas"
+
+    def __str__(self):
+        return f"{self.nombre} ({self.unidad_medida})"
+
+
+class VariableVinculada(models.Model):
+    fabrica = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='variables_vinculadas')
+    metrica_config = models.ForeignKey(MetricaConfiguracion, on_delete=models.CASCADE, related_name='vinculos')
+    sensor = models.ForeignKey(DispositivoSCADA, on_delete=models.SET_NULL, null=True, blank=True, related_name='variables_vinculadas')
+    umbral_advertencia = models.FloatField(blank=True, null=True)
+    umbral_critico = models.FloatField(blank=True, null=True)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('fabrica', 'metrica_config')
+        verbose_name = "Variable Vinculada"
+        verbose_name_plural = "Variables Vinculadas"
+
+    def __str__(self):
+        sensor_str = self.sensor.numero_serie if self.sensor else "Sin sensor"
+        return f"{self.fabrica.nombre} - {self.metrica_config.nombre} ({sensor_str})"
+
+
+class Alarma(models.Model):
+    SEVERIDADES = [
+        ('alta', 'Alta'),
+        ('media', 'Media'),
+        ('baja', 'Baja'),
+    ]
+    ESTADOS = [
+        ('abierta', 'Abierta'),
+        ('cerrada', 'Cerrada'),
+    ]
+    planta = models.ForeignKey(Fabrica, on_delete=models.CASCADE, related_name='alarmas_sistema')
+    seccion = models.ForeignKey(Seccion, on_delete=models.SET_NULL, null=True, blank=True, related_name='alarmas_sistema')
+    sensor_maquina = models.CharField(max_length=255)
+    descripcion = models.TextField()
+    severidad = models.CharField(max_length=20, choices=SEVERIDADES, default='media')
+    fecha_hora = models.DateTimeField(auto_now_add=True)
+    estado = models.CharField(max_length=20, choices=ESTADOS, default='abierta')
+
+    class Meta:
+        ordering = ['-fecha_hora']
+        verbose_name = "Alarma"
+        verbose_name_plural = "Alarmas"
+
+    def __str__(self):
+        return f"ALM - {self.descripcion} ({self.planta.nombre})"
+
+
+class MapeoAccionMQTT(models.Model):
+    TIPOS_SISTEMA = [
+        ('FLUIDOS', 'Fluidos / Líquidos'),
+        ('SOLIDOS', 'Procesamiento de Sólidos'),
+        ('EMPAQUE', 'Empaquetado y Envasado'),
+        ('TEMPERATURA', 'Control de Temperatura'),
+        ('GENERAL', 'Sistema General'),
+    ]
+
+    TIPOS_CONTROL = [
+        ('BOTON', 'Botón de Acción MQTT'),
+        ('SLIDER', 'Barra Deslizante (Slider)'),
+        ('NUMERICO', 'Campo Numérico (Input)'),
+        ('PARAMETRIZADO', 'Control Parametrizado (Campos Dinámicos)'),
+        ('RECETA', 'Panel de Receta (Manual / Plantilla)'),
+    ]
+
+    nombre = models.CharField(max_length=100)
+    sistema = models.ForeignKey(Sistema, on_delete=models.CASCADE, null=True, blank=True, related_name='mapeos_acciones')
+    tipo_sistema = models.CharField(max_length=30, choices=TIPOS_SISTEMA, default='FLUIDOS')
+    tipo_control = models.CharField(max_length=30, choices=TIPOS_CONTROL, default='BOTON')
+    categoria_panel = models.CharField(max_length=100, default='Controles del Proceso', help_text="Sección o tarjeta contenedora")
+    nombre_accion = models.CharField(max_length=50, help_text="Ej: reposicion, mezcla, receta, emergencia")
+    plantilla_topico = models.CharField(max_length=255, default="scada/{tenant}/{gateway}/{seccion}/{sistema}/accion")
+    plantilla_payload_json = models.TextField(default='{"accion": "{accion}", "parametros": {}}')
+    min_val = models.FloatField(default=0.0, null=True, blank=True)
+    max_val = models.FloatField(default=100.0, null=True, blank=True)
+    unidad = models.CharField(max_length=20, default='', blank=True)
+    activo = models.BooleanField(default=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Mapeo de Acción MQTT"
+        verbose_name_plural = "Mapeos de Acciones MQTT"
+
+    def __str__(self):
+        return f"{self.nombre} ({self.tipo_control}) - {self.nombre_accion}"
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385

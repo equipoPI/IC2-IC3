@@ -1,15 +1,27 @@
 from django.urls import path, include
 from . import views
+<<<<<<< HEAD
+=======
+from . import views_analisis
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 from rest_framework import routers
 
 # Router DRF para viewsets — rutas relativas al include en project urls
 router = routers.DefaultRouter()
 router.register(r'configuraciones-mqtt', views.ConfiguracionMQTTViewSet, basename='configuracionmqtt')
 router.register(r'dispositivos', views.DispositivoSCADAViewSet, basename='dispositivo')
+<<<<<<< HEAD
+=======
+router.register(r'dispositivos-scada', views.DispositivoSCADAViewSet, basename='dispositivos_scada_alias')
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 router.register(r'lecturas', views.LecturaSensorViewSet, basename='lectura')
 router.register(r'mqtt-topics', views.TopicMQTTViewSet, basename='mqtttopic')
 router.register(r'fabricas', views.FabricaViewSet, basename='fabrica')
 router.register(r'ordenes', views.OrdenProduccionViewSet, basename='ordenproduccion')
+<<<<<<< HEAD
+=======
+router.register(r'ordenes-produccion', views.OrdenProduccionViewSet, basename='ordenes_produccion_alias')
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 router.register(r'secciones', views.SeccionViewSet, basename='seccion')
 router.register(r'empleados', views.EmpleadoViewSet, basename='empleado')
 router.register(r'inventarios', views.InventarioViewSet, basename='inventario')
@@ -20,6 +32,10 @@ router.register(r'producciones', views.ProduccionViewSet, basename='producciones
 router.register(r'registros-mantenimiento', views.RegistroMantenimientoViewSet, basename='registros_mantenimiento')
 router.register(r'sistemas', views.SistemaViewSet, basename='sistema')
 router.register(r'plantillas', views.PlantillaProduccionViewSet, basename='plantillas')
+<<<<<<< HEAD
+=======
+router.register(r'plantillas-produccion', views.PlantillaProduccionViewSet, basename='plantillas_produccion_alias')
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 router.register(r'ingredientes', views.IngredienteAlmacenamientoViewSet, basename='ingredientes')
 router.register(r'mantenimientos-programados', views.MantenimientoProgramadoViewSet, basename='mantenimientos')
 router.register(r'unidades-almacenamiento', views.UnidadAlmacenamientoViewSet, basename='unidades')
@@ -27,6 +43,7 @@ router.register(r'historial-produccion', views.HistorialProduccionViewSet, basen
 router.register(r'comunicaciones-mqtt', views.ComunicacionMQTTViewSet, basename='comunicaciones_mqtt')
 router.register(r'users', views.UserViewSet, basename='user')
 router.register(r'profiles', views.ProfileViewSet, basename='profile')
+<<<<<<< HEAD
 
 urlpatterns = [
     # La vista web clásica por defecto
@@ -37,6 +54,17 @@ urlpatterns = [
     path('api/fabricas/<int:pk>/', views.api_detalle_fabrica, name='api_detalle_fabrica'),
     path('api/ordenes/', views.api_lista_ordenes, name='api_lista_ordenes'),
     path('api/ordenes/<int:pk>/', views.api_detalle_orden, name='api_detalle_orden'),
+=======
+router.register(r'auditoria', views.RegistroAuditoriaViewSet, basename='auditoria')
+router.register(r'metricas-config', views.MetricaConfiguracionViewSet, basename='metricasconfig')
+router.register(r'variables-vinculadas', views.VariableVinculadaViewSet, basename='variablesvinculadas')
+router.register(r'alarmas', views.AlarmaViewSet, basename='alarma')
+router.register(r'mapeos-acciones-mqtt', views.MapeoAccionMQTTViewSet, basename='mapeos_acciones_mqtt')
+router.register(r'registration-keys', views.RegistrationConfigViewSet, basename='registration_keys')
+router.register(r'mqtt-users', views.MqttUserViewSet, basename='mqtt_users')
+
+urlpatterns = [
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     # Rutas automáticas de DRF (registradas en router) — raíz de la API de la app
     # API root personalizado: mostrar un índice ampliado en la raíz /api/v1/
     # Colocado antes del include para que `/api/v1/` muestre `api_root`.
@@ -51,4 +79,9 @@ urlpatterns = [
     path('auth/register/', views.RegisterAPIView.as_view(), name='auth_register'),
     # Fallback para confirmación de email desde SPA (GET, sin CSRF)
     path('auth/registration/verify-email-get/', views.verify_email_get, name='auth_verify_email_get'),
+<<<<<<< HEAD
+=======
+    # Endpoint de analítica y estadísticas agregadas
+    path('analisis/estadisticas/', views_analisis.obtener_estadisticas, name='analisis_estadisticas'),
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 ]

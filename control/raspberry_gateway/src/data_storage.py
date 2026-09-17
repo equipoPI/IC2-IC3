@@ -36,9 +36,24 @@ class DataStorage:
         
         # Configuración de base de datos
         self.db_path = self.db_config['path']
+<<<<<<< HEAD
         self.retention_days = self.db_config['retention_days']
         self.backup_enabled = self.db_config['backup_enabled']
         self.backup_path = self.db_config.get('backup_path', './backups')
+=======
+        self.retention_days = self.db_config.get('retention_days', 2)
+        self.measurement_interval = self.db_config.get('measurement_interval_seconds', 5)
+        self.save_measurements = self.db_config.get('save_measurements', False)
+        self.save_raw_data = self.db_config.get('save_raw_data', False)
+        self.max_measurements = self.db_config.get('max_measurements', 25000)
+        self.backup_enabled = self.db_config.get('backup_enabled', True)
+        self.backup_path = self.db_config.get('backup_path', './backups')
+        self.backup_max_files = self.db_config.get('backup_max_files', 3)
+        
+        # Control de frecuencia de guardado en memoria
+        self._last_saved_measurement_time = 0.0
+        self._last_saved_state = ()
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         
         # Asegurar que existan los directorios
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
@@ -52,7 +67,11 @@ class DataStorage:
         # Inicializar base de datos
         self._init_database()
         
+<<<<<<< HEAD
         logger.info(f"DataStorage inicializado en {self.db_path}")
+=======
+        logger.info(f"DataStorage inicializado en {self.db_path} (muestreo: cada {self.measurement_interval}s, retención: {self.retention_days}d)")
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     
     @contextmanager
     def get_connection(self):
@@ -73,11 +92,36 @@ class DataStorage:
     
     def _init_database(self):
         """
+<<<<<<< HEAD
         Crea las tablas de la base de datos si no existen
+=======
+        Crea las tablas de la base de datos si no existen y aplica pragmas de rendimiento
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         """
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
+<<<<<<< HEAD
+=======
+            # Pragmas para minimizar escrituras continuas y acelerar SQLite en Raspberry Pi
+            try:
+                cursor.execute("PRAGMA journal_mode = WAL;")
+                cursor.execute("PRAGMA synchronous = NORMAL;")
+                if self.db_config.get('auto_vacuum', True):
+                    cursor.execute("PRAGMA auto_vacuum = INCREMENTAL;")
+            except Exception as e:
+                logger.warning(f"No se pudieron aplicar pragmas SQLite: {e}")
+
+            # Tabla de configuración persistente del sistema en la Raspberry Pi
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS configuracion_sistema (
+                    clave TEXT PRIMARY KEY,
+                    valor TEXT NOT NULL,
+                    actualizado_el TEXT NOT NULL
+                )
+            ''')
+            
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             # Tabla de mediciones de sensores
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS mediciones (
@@ -206,19 +250,117 @@ class DataStorage:
             
             logger.success("Base de datos inicializada correctamente")
     
+<<<<<<< HEAD
     def save_measurement(self, data: Dict[str, Any]) -> bool:
         """
         Guarda una medición de sensores
         
         Args:
             data: Diccionario con datos parseados del Arduino
+=======
+    def save_system_config(self, clave: str, valor: Any) -> bool:
+        """
+        Guarda o actualiza un parámetro de configuración en la base de datos local
+        
+        Args:
+            clave: Nombre de la sección o parámetro (ej. 'mqtt', 'serial', 'general')
+            valor: Diccionario, lista o valor escalar de configuración
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             
         Returns:
             True si se guardó correctamente
         """
         try:
+<<<<<<< HEAD
             timestamp = data.get('timestamp', time.time())
             fecha_hora = datetime.fromtimestamp(timestamp).isoformat()
+=======
+            ahora = datetime.now().isoformat()
+            valor_str = json.dumps(valor) if not isinstance(valor, str) else valor
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO configuracion_sistema (clave, valor, actualizado_el)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(clave) DO UPDATE SET
+                        valor = excluded.valor,
+                        actualizado_el = excluded.actualizado_el
+                ''', (clave, valor_str, ahora))
+            logger.info(f"Configuración guardada en base de datos local: [{clave}]")
+            return True
+        except Exception as e:
+            logger.error(f"Error guardando configuración en base de datos local: {e}")
+            return False
+
+    def get_system_config(self, clave: str) -> Optional[Any]:
+        """
+        Recupera un parámetro de configuración de la base de datos local
+        
+        Args:
+            clave: Nombre de la clave de configuración
+            
+        Returns:
+            Valor parseado o None
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT valor FROM configuracion_sistema WHERE clave = ?', (clave,))
+                row = cursor.fetchone()
+                if row:
+                    try:
+                        return json.loads(row['valor'])
+                    except Exception:
+                        return row['valor']
+                return None
+        except Exception as e:
+            logger.error(f"Error leyendo configuración de base de datos local: {e}")
+            return None
+
+    def save_measurement(self, data: Dict[str, Any], force: bool = False) -> bool:
+        """
+        Guarda una medición de sensores con filtrado por intervalo de muestreo.
+        Evita saturar el almacenamiento de la tarjeta microSD en la Raspberry Pi.
+        
+        Args:
+            data: Diccionario con datos parseados del Arduino
+            force: Forzar guardado ignorando el intervalo de muestreo
+            
+        Returns:
+            True si se procesó correctamente
+        """
+        try:
+            # Si no se desea persistir mediciones periódicas para cuidar la microSD
+            if not self.save_measurements and not force:
+                return True
+            
+            now = time.time()
+            
+            # Detectar cambios de estado en actuadores o errores para guardado prioritario
+            current_state = (
+                data.get('estado_bomba1'),
+                data.get('estado_bomba2'),
+                data.get('estado_bomba_mezcla'),
+                data.get('estado_mezclador'),
+                data.get('estado_bomba_repo'),
+                data.get('estado_proceso'),
+                data.get('error', 0),
+            )
+            state_changed = (current_state != self._last_saved_state)
+            has_error = (data.get('error', 0) != 0)
+            
+            # Si no está forzado, no cambiaron actuadores ni hay error, verificar intervalo
+            if not force and not state_changed and not has_error:
+                if (now - self._last_saved_measurement_time) < self.measurement_interval:
+                    return True  # Omitido para mantener la base de datos liviana
+            
+            self._last_saved_measurement_time = now
+            self._last_saved_state = current_state
+            
+            timestamp = data.get('timestamp', now)
+            fecha_hora = datetime.fromtimestamp(timestamp).isoformat()
+            raw_data = data.get('raw') if self.save_raw_data else None
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             
             with self.get_connection() as conn:
                 cursor = conn.cursor()
@@ -247,7 +389,11 @@ class DataStorage:
                     int(data.get('estado_bomba_repo', False)),
                     data.get('hora_restante'), data.get('min_restante'),
                     data.get('estado_proceso'), data.get('error'),
+<<<<<<< HEAD
                     data.get('raw')
+=======
+                    raw_data
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                 ))
             
             return True
@@ -479,9 +625,94 @@ class DataStorage:
             logger.error(f"Error obteniendo alarmas: {e}")
             return []
     
+<<<<<<< HEAD
     def cleanup_old_data(self):
         """
         Limpia datos más antiguos que el período de retención
+=======
+    def get_latest_measurement(self) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene la última medición registrada
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT * FROM mediciones
+                    ORDER BY id DESC
+                    LIMIT 1
+                ''')
+                row = cursor.fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error obteniendo última medición: {e}")
+            return None
+
+    def get_recent_commands(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Obtiene los comandos más recientes
+        
+        Args:
+            limit: Cantidad de comandos a retornar
+            
+        Returns:
+            Lista de comandos
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, timestamp, fecha_hora, comando, parametros_json, origen, ejecutado
+                    FROM comandos
+                    ORDER BY id DESC
+                    LIMIT ?
+                ''', (limit,))
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error obteniendo comandos recientes: {e}")
+            return []
+
+    def get_recent_events(self, limit: int = 10, tipo: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Obtiene los eventos más recientes
+        
+        Args:
+            limit: Cantidad de eventos a retornar
+            tipo: Filtrar por tipo (opcional)
+            
+        Returns:
+            Lista de eventos
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                if tipo:
+                    cursor.execute('''
+                        SELECT id, timestamp, fecha_hora, tipo, descripcion, datos_json, origen
+                        FROM eventos
+                        WHERE tipo = ?
+                        ORDER BY id DESC
+                        LIMIT ?
+                    ''', (tipo, limit))
+                else:
+                    cursor.execute('''
+                        SELECT id, timestamp, fecha_hora, tipo, descripcion, datos_json, origen
+                        FROM eventos
+                        ORDER BY id DESC
+                        LIMIT ?
+                    ''', (limit,))
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error obteniendo eventos recientes: {e}")
+            return []
+
+    def cleanup_old_data(self):
+        """
+        Limpia datos más antiguos que el período de retención y limita la cantidad máxima de filas
+        para no desbordar el almacenamiento de la Raspberry Pi.
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         """
         try:
             cutoff_time = datetime.now() - timedelta(days=self.retention_days)
@@ -490,6 +721,7 @@ class DataStorage:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
+<<<<<<< HEAD
                 # Limpiar mediciones
                 cursor.execute('DELETE FROM mediciones WHERE timestamp < ?', (cutoff_timestamp,))
                 deleted_measurements = cursor.rowcount
@@ -502,6 +734,28 @@ class DataStorage:
                     DELETE FROM eventos 
                     WHERE timestamp < ? AND tipo NOT IN ('alarma_critica', 'fallo_sistema')
                 ''', (cutoff_timestamp,))
+=======
+                # Limpiar mediciones por tiempo
+                cursor.execute('DELETE FROM mediciones WHERE timestamp < ?', (cutoff_timestamp,))
+                deleted_measurements = cursor.rowcount
+                
+                # Limpiar mediciones por cuota máxima (mantener solo las N más recientes)
+                if self.max_measurements > 0:
+                    cursor.execute('''
+                        DELETE FROM mediciones WHERE id NOT IN (
+                            SELECT id FROM mediciones ORDER BY id DESC LIMIT ?
+                        )
+                    ''', (self.max_measurements,))
+                    deleted_measurements += cursor.rowcount
+                
+                # Limpiar eventos (mantener críticos por más tiempo)
+                keep_crit_days = self.db_config.get('cleanup', {}).get('keep_critical_events', 7)
+                critical_cutoff = (datetime.now() - timedelta(days=keep_crit_days)).timestamp()
+                cursor.execute('''
+                    DELETE FROM eventos 
+                    WHERE timestamp < ? AND tipo NOT IN ('alarma_critica', 'fallo_sistema')
+                ''', (critical_cutoff,))
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                 deleted_events = cursor.rowcount
                 
                 # Limpiar diagnósticos
@@ -515,6 +769,7 @@ class DataStorage:
                 ''', (cutoff_timestamp,))
                 deleted_commands = cursor.rowcount
                 
+<<<<<<< HEAD
                 # VACUUM para recuperar espacio
                 if self.db_config.get('auto_vacuum', True):
                     cursor.execute('VACUUM')
@@ -522,6 +777,21 @@ class DataStorage:
                 logger.info(f"Limpieza completada: {deleted_measurements} mediciones, "
                           f"{deleted_events} eventos, {deleted_diagnostics} diagnósticos, "
                           f"{deleted_commands} comandos eliminados")
+=======
+                logger.info(f"Limpieza completada: {deleted_measurements} mediciones, "
+                          f"{deleted_events} eventos, {deleted_diagnostics} diagnósticos, "
+                          f"{deleted_commands} comandos eliminados")
+            
+            # VACUUM fuera de la transacción para recuperar efectivamente espacio en disco
+            if self.db_config.get('auto_vacuum', True):
+                try:
+                    vac_conn = sqlite3.connect(self.db_path, isolation_level=None)
+                    vac_conn.execute("VACUUM")
+                    vac_conn.close()
+                    logger.info("VACUUM completado: espacio de archivo SQLite recuperado")
+                except Exception as ve:
+                    logger.warning(f"Aviso al ejecutar VACUUM: {ve}")
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         
         except Exception as e:
             logger.error(f"Error en limpieza de datos: {e}")
@@ -549,7 +819,11 @@ class DataStorage:
         """
         Loop de limpieza automática
         """
+<<<<<<< HEAD
         interval_hours = self.db_config.get('cleanup', {}).get('interval_hours', 6)
+=======
+        interval_hours = self.db_config.get('cleanup', {}).get('interval_hours', 2)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         interval_seconds = interval_hours * 3600
         
         while self.running:
@@ -563,7 +837,11 @@ class DataStorage:
     
     def create_backup(self) -> Optional[str]:
         """
+<<<<<<< HEAD
         Crea un backup de la base de datos
+=======
+        Crea un backup de la base de datos y rota los backups viejos para controlar espacio
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         
         Returns:
             Ruta del archivo de backup o None si hay error
@@ -578,12 +856,45 @@ class DataStorage:
                 backup_conn.close()
             
             logger.success(f"Backup creado: {backup_file}")
+<<<<<<< HEAD
+=======
+            
+            # Rotar backups para mantener solo los más recientes
+            self._rotate_backups()
+            
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             return backup_file
         
         except Exception as e:
             logger.error(f"Error creando backup: {e}")
             return None
 
+<<<<<<< HEAD
+=======
+    def _rotate_backups(self):
+        """
+        Mantiene solo la cantidad de backups indicada en backup_max_files
+        """
+        try:
+            if not os.path.exists(self.backup_path):
+                return
+            archivos = [
+                os.path.join(self.backup_path, f)
+                for f in os.listdir(self.backup_path)
+                if f.startswith("scada_backup_") and f.endswith(".db")
+            ]
+            archivos.sort(key=os.path.getmtime, reverse=True)
+            if len(archivos) > self.backup_max_files:
+                for backup_viejo in archivos[self.backup_max_files:]:
+                    try:
+                        os.remove(backup_viejo)
+                        logger.info(f"Backup antiguo eliminado para liberar espacio: {backup_viejo}")
+                    except Exception as e:
+                        logger.warning(f"No se pudo eliminar backup antiguo {backup_viejo}: {e}")
+        except Exception as e:
+            logger.error(f"Error rotando backups: {e}")
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 # Ejemplo de uso
 if __name__ == "__main__":

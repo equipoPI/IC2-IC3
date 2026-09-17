@@ -15,12 +15,25 @@ import {
   Wifi,
   Database,
   ShieldCheck,
+<<<<<<< HEAD
+=======
+  BarChart3,
+  BookOpen,
+  KeyRound,
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+<<<<<<< HEAD
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+=======
+import { useState, useEffect, useCallback } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { apiFetch } from "@/lib/api";
+import { useScadaWebSocket } from "@/hooks/useScadaWebSocket";
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 interface SidebarProps {
   isOpen: boolean;
@@ -29,6 +42,7 @@ interface SidebarProps {
 
 const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
   const [openGroups, setOpenGroups] = useState<string[]>(["Producción y Control"]);
+<<<<<<< HEAD
   const { isAdmin } = useAuth();
 
   const menuGroups = [
@@ -36,6 +50,98 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       title: "Principal",
       items: [
         { title: "Dashboard", icon: LayoutDashboard, path: "/" },
+=======
+  const { usuario, isAdmin } = useAuth();
+
+  const [stats, setStats] = useState<{ total: number; online: number; lastTime: string }>({
+    total: 0,
+    online: 0,
+    lastTime: "Conectando..."
+  });
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const resp = await apiFetch("/api/v1/dispositivos/");
+      if (resp.ok) {
+        const data = await resp.json();
+        const list = Array.isArray(data) ? data : data.results || [];
+        const now = Date.now();
+        let onlineCount = 0;
+        let latestTimestamp = 0;
+
+        list.forEach((d: any) => {
+          const st = String(d.estado || '').toUpperCase();
+          const isOnline = st === 'ONLINE' || st === 'ACTIVO' || st === 'OPERATIVO';
+
+          if (d.ultima_lectura) {
+            const ms = new Date(d.ultima_lectura).getTime();
+            if (!isNaN(ms) && ms > latestTimestamp) {
+              latestTimestamp = ms;
+            }
+          }
+
+          if (isOnline) {
+            onlineCount++;
+          }
+        });
+
+        const totalCount = list.length;
+
+        setStats({
+          total: totalCount,
+          online: onlineCount,
+          lastTime: latestTimestamp > 0
+            ? new Date(latestTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            : "Sin señal"
+        });
+      }
+    } catch (e) {
+      // silent
+    }
+  }, []);
+
+  useScadaWebSocket({
+    onMessage: () => {
+      if (document.visibilityState === 'visible') {
+        fetchStatus();
+      }
+    }
+  });
+
+  useEffect(() => {
+    fetchStatus();
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchStatus();
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [fetchStatus]);
+
+  const rangoNum = Number(usuario?.rango || (isAdmin ? 8 : 1));
+
+  const isPathAllowed = (path: string) => {
+    if (rangoNum === 8 || isAdmin) return true; // Administrador - Acceso total
+    if ([1, 2, 3, 4].includes(rangoNum)) { // Director, Gerente, Jefe de Sección, Coordinador
+      const blocked = ['/plantas', '/secciones', '/sensores', '/almacenamiento', '/credenciales', '/comunicacion'];
+      return !blocked.includes(path);
+    }
+    if (rangoNum === 5) { // Especialista
+      const blocked = ['/empleados', '/plantas', '/secciones', '/sensores', '/almacenamiento', '/auditoria', '/credenciales', '/comunicacion'];
+      return !blocked.includes(path);
+    }
+    // Rangos 6 y 7 (Empleado, Pasante)
+    const blocked = ['/empleados', '/plantas', '/secciones', '/sensores', '/almacenamiento', '/plantillas', '/auditoria', '/credenciales', '/comunicacion'];
+    return !blocked.includes(path);
+  };
+
+  const rawMenuGroups = [
+    {
+      title: "Principal",
+      items: [
+        { title: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
+        { title: "Guía del Sistema", icon: BookOpen, path: "/guia-sistema" },
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       ],
     },
     {
@@ -43,6 +149,10 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       items: [
         { title: "Gestión de Empleados", icon: Users, path: "/empleados" },
         { title: "Gestión de Plantas y Fábricas", icon: Factory, path: "/plantas" },
+<<<<<<< HEAD
+=======
+        { title: "Gestión de Secciones", icon: ClipboardList, path: "/secciones" },
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         { title: "Gestión de Sensores y Máquinas", icon: Cpu, path: "/sensores" },
         { title: "Administración de Almacenamiento", icon: Database, path: "/almacenamiento" },
       ],
@@ -59,12 +169,17 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       title: "Monitoreo y Auditoría",
       items: [
         { title: "Monitorización de Plantas", icon: Monitor, path: "/monitorizacion" },
+<<<<<<< HEAD
+=======
+        { title: "Estadísticas y Análisis", icon: BarChart3, path: "/analisis" },
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         { title: "Visualización SCADA", icon: Activity, path: "/scada" },
         { title: "Gestión de Alarmas y Notificaciones", icon: Bell, path: "/alarmas" },
         { title: "Auditoría y Registro de Actividades", icon: ClipboardList, path: "/auditoria" },
       ],
     },
     {
+<<<<<<< HEAD
       title: "Comunicación",
       items: [
         { title: "Configuración MQTT", icon: Wifi, path: "/comunicacion" },
@@ -82,6 +197,23 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       : []),
   ];
 
+=======
+      title: "Comunicación y Accesos",
+      items: [
+        { title: "Gestión de Credenciales", icon: KeyRound, path: "/credenciales" },
+        { title: "Configuración MQTT", icon: Wifi, path: "/comunicacion" },
+      ],
+    },
+  ];
+
+  const menuGroups = rawMenuGroups
+    .map(g => ({
+      ...g,
+      items: g.items.filter(item => isPathAllowed(item.path))
+    }))
+    .filter(g => g.items.length > 0);
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   const toggleGroup = (title: string) => {
     setOpenGroups((prev) =>
       prev.includes(title) ? prev.filter((t) => t !== title) : [...prev, title]
@@ -99,8 +231,13 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
 
       <aside
         className={cn(
+<<<<<<< HEAD
           "fixed top-16 left-0 z-40 h-[calc(100vh-4rem)] w-72 bg-sidebar border-r border-sidebar-border transition-transform duration-300 ease-in-out lg:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full"
+=======
+          "fixed top-16 left-0 z-40 h-[calc(100vh-4rem)] w-72 bg-sidebar border-r border-sidebar-border transition-transform duration-300 ease-in-out",
+          isOpen ? "translate-x-0 lg:translate-x-0" : "-translate-x-full lg:-translate-x-full"
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         )}
       >
         <div className="flex flex-col h-full">
@@ -185,6 +322,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
           </nav>
 
           <div className="p-4 border-t border-sidebar-border">
+<<<<<<< HEAD
             <div className="scada-panel p-3">
               <div className="flex items-center gap-2 mb-2">
                 <div className="status-dot status-dot-operational" />
@@ -193,6 +331,31 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
               <div className="text-xs text-muted-foreground">
                 <p>Última sincronización: 14:32:05</p>
                 <p>Conexiones activas: 47</p>
+=======
+            <div className="scada-panel p-3 bg-muted/20 border border-sidebar-border/60 rounded-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={cn(
+                    "status-dot",
+                    stats.online > 0 ? "status-dot-operational bg-success" : "bg-warning"
+                  )} />
+                  <span className="text-xs font-semibold text-foreground">Red SCADA / MQTT</span>
+                </div>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                  {stats.online > 0 ? "ACTIVO" : "STANDBY"}
+                </span>
+              </div>
+
+              <div className="text-xs space-y-1 text-muted-foreground pt-1 border-t border-sidebar-border/50">
+                <div className="flex justify-between items-center">
+                  <span>Dispositivos Online:</span>
+                  <span className="font-mono font-bold text-foreground">{stats.online} / {stats.total}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Última Actividad:</span>
+                  <span className="font-mono font-medium text-foreground">{stats.lastTime}</span>
+                </div>
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
               </div>
             </div>
           </div>

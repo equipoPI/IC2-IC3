@@ -69,6 +69,10 @@ class ArduinoSerial:
         # Historial de últimos datos
         self.last_sent_command: Optional[Dict[str, Any]] = None
         self.last_received_data: Optional[Dict[str, Any]] = None
+<<<<<<< HEAD
+=======
+        self.last_raw_line: Optional[str] = None
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         
         logger.info(f"ArduinoSerial inicializado para puerto {self.port} @ {self.baudrate}")
     
@@ -95,6 +99,7 @@ class ArduinoSerial:
             self.serial_conn.reset_output_buffer()
             
             self.connected = True
+<<<<<<< HEAD
             logger.success(f"Conectado a Arduino en {self.port}")
             return True
             
@@ -103,6 +108,38 @@ class ArduinoSerial:
             self.connected = False
             if self.error_callback:
                 self.error_callback({'type': 'connection_error', 'error': str(e)})
+=======
+            logger.success(f"Conectado a Arduino en {self.port} @ {self.baudrate} bps")
+            return True
+            
+        except FileNotFoundError:
+            error_msg = f"Puerto {self.port} no encontrado. Verifica que el Arduino esté conectado."
+            logger.error(error_msg)
+            self.connected = False
+            if self.error_callback:
+                self.error_callback({'type': 'port_not_found', 'error': error_msg})
+            return False
+        except PermissionError:
+            error_msg = f"Permiso denegado en puerto {self.port}. Intenta: sudo chmod 666 {self.port}"
+            logger.error(error_msg)
+            self.connected = False
+            if self.error_callback:
+                self.error_callback({'type': 'permission_denied', 'error': error_msg})
+            return False
+        except serial.SerialException as e:
+            error_msg = f"Error al conectar con Arduino: {str(e)}"
+            logger.error(error_msg)
+            self.connected = False
+            if self.error_callback:
+                self.error_callback({'type': 'connection_error', 'error': error_msg})
+            return False
+        except Exception as e:
+            error_msg = f"Error inesperado al conectar: {str(e)}"
+            logger.error(error_msg)
+            self.connected = False
+            if self.error_callback:
+                self.error_callback({'type': 'unknown_error', 'error': error_msg})
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             return False
     
     def disconnect(self):
@@ -117,6 +154,7 @@ class ArduinoSerial:
     def start(self):
         """
         Inicia los hilos de lectura y escritura
+<<<<<<< HEAD
         """
         if not self.connected:
             if not self.connect():
@@ -134,6 +172,40 @@ class ArduinoSerial:
         
         logger.info("Hilos de comunicación serial iniciados")
         return True
+=======
+        
+        Returns:
+            True si los threads se iniciaron correctamente
+        """
+        try:
+            if not self.connected:
+                if not self.connect():
+                    logger.error("No se pudo conectar al Arduino en start()")
+                    return False
+            
+            # Verificar que el puerto está abierto
+            if not self.serial_conn or not self.serial_conn.is_open:
+                logger.error("Puerto serial no está abierto")
+                return False
+            
+            self.running = True
+            
+            # Iniciar hilo de lectura
+            self.read_thread = threading.Thread(target=self._read_loop, daemon=True, name="Arduino-Read")
+            self.read_thread.start()
+            
+            # Iniciar hilo de escritura
+            self.write_thread = threading.Thread(target=self._write_loop, daemon=True, name="Arduino-Write")
+            self.write_thread.start()
+            
+            logger.success("Hilos de comunicación serial iniciados exitosamente")
+            return True
+        
+        except Exception as e:
+            logger.error(f"Error iniciando threads de Arduino: {e}")
+            self.running = False
+            return False
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     
     def stop(self):
         """
@@ -180,6 +252,11 @@ class ArduinoSerial:
                         line = self.serial_conn.readline().decode('utf-8').strip()
                         
                         if line:
+<<<<<<< HEAD
+=======
+                            with self.data_lock:
+                                self.last_raw_line = line
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                             # Parsear datos
                             data = self._parse_arduino_data(line)
                             
@@ -232,6 +309,12 @@ class ArduinoSerial:
                         self.serial_conn.write(f"{command}\n".encode('utf-8'))
                         self.serial_conn.flush()
                         
+<<<<<<< HEAD
+=======
+                        # Pausa de seguridad de 50ms para que el microcontrolador procese antes de recibir otro comando
+                        time.sleep(0.05)
+                        
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                         self.stats['messages_sent'] += 1
                         with self.data_lock:
                             self.last_sent_command = {

@@ -24,7 +24,11 @@ class SeccionAdmin(admin.ModelAdmin):
 class EmpleadoAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'apellido', 'documento', 'fabrica', 'seccion', 'estado', 'email')
     search_fields = ('nombre', 'apellido', 'documento', 'email')
+<<<<<<< HEAD
     list_filter = ('estado', 'rango', 'tipo_empleado')
+=======
+    list_filter = ('estado', 'rango')
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 
 @admin.register(DispositivoSCADA)
@@ -62,4 +66,8 @@ class RegistrationConfigAdmin(admin.ModelAdmin):
     search_fields = ('clave',)
 
 if RegistrationConfig not in admin.site._registry:
+<<<<<<< HEAD
     admin.site.register(RegistrationConfig, RegistrationConfigAdmin)
+=======
+    admin.site.register(RegistrationConfig, RegistrationConfigAdmin)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385

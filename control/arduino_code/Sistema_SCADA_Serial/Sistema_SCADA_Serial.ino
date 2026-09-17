@@ -30,15 +30,40 @@
 #define BAUD_RATE 115200  // Mayor velocidad que Bluetooth (antes 9600)
 
 // ============================================================
+<<<<<<< HEAD
+=======
+// PARÁMETROS GLOBALES EDITABLES
+// ============================================================
+
+// Factor de conversión de caudalímetros (pulsos por litro)
+// Calibrado experimentalmente: 1 Litro = 1003.5 pulsos (1.0035 pulsos por ml)
+float pulsosnecesarios = 1003.5;
+
+// Porcentaje de corte de nivel para vaciado y desecho (%)
+// El bombo queda suspendido en el líquido y nunca se vacía completamente
+float PORCENTAJE_CORTE_VACIADO = 5.0;
+
+// ============================================================
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 // VARIABLES GLOBALES - TEMPORIZACIÓN
 // ============================================================
 
 unsigned long tiempoEnvio = 0;
 unsigned long tiempoMonitoreo = 0;
+<<<<<<< HEAD
 unsigned long TInicioMezclado = 0;
 unsigned long previousMillis = 0;
 unsigned long TiempoMotorOn = 5000;
 unsigned long TiempoMotorOff = 2000;
+=======
+unsigned long tiempoLecturaNivel = 0;
+const unsigned long INTERVALO_LECTURA_NIVEL = 100; // Leer sensores cada 100 ms para evitar acumulación de ecos
+unsigned long TInicioMezclado = 0;
+unsigned long tiempoMezcladoAcumulado = 0; // Tiempo de mezcla acumulado previamente (ms)
+unsigned long previousMillis = 0;
+unsigned long TiempoMotorOn = 3000;   // 3 segundos trabajando (para no sobreexigir el motor)
+unsigned long TiempoMotorOff = 5000;  // 5 segundos parado
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 // ============================================================
 // VARIABLES GLOBALES - COMUNICACIÓN
@@ -98,6 +123,7 @@ float distancia;
 float distancia1;
 float distancia2;
 float distancia3;
+<<<<<<< HEAD
 byte constrainedPorcentaje1 = 0;
 byte constrainedPorcentaje2 = 0;
 byte constrainedPorcentaje3 = 0;
@@ -106,13 +132,30 @@ byte constrainedPorcentaje3 = 0;
 byte Fporcentaje1 = 0;
 byte Fporcentaje2 = 0;
 byte Fporcentaje3 = 0;
+=======
+float ultimaDistanciaValida1 = 28.0; // Valor por defecto (tanque vacío)
+float ultimaDistanciaValida2 = 28.0;
+float ultimaDistanciaValida3 = 28.0;
+float constrainedPorcentaje1 = 0.0;
+float constrainedPorcentaje2 = 0.0;
+float constrainedPorcentaje3 = 0.0;
+
+// Mediciones filtradas
+float Fporcentaje1 = 0.0;
+float Fporcentaje2 = 0.0;
+float Fporcentaje3 = 0.0;
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 // ============================================================
 // VARIABLES GLOBALES - ESTADÍSTICA/FILTRADO
 // ============================================================
 
 #define NUM_READINGS 10  // Número de lecturas a promediar
+<<<<<<< HEAD
 #define ALPHA 0.35       // Factor suavizado exponencial (0-1: menor=más suave, más latencia)
+=======
+#define ALPHA 0.8      // Factor suavizado exponencial (0-1: menor=más suave, más latencia)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 float readings1[NUM_READINGS];
 float readings2[NUM_READINGS];
@@ -174,12 +217,21 @@ void setup() {
   // CONFIGURACIÓN PINES SENSORES ULTRASÓNICOS (NIVEL)
   // ============================================================
   
+<<<<<<< HEAD
   pinMode(17, INPUT);   // Echo
   pinMode(19, INPUT);
   pinMode(21, INPUT);
   pinMode(16, OUTPUT);  // Trigger
   pinMode(18, OUTPUT);
   pinMode(20, OUTPUT);
+=======
+  pinMode(17, INPUT);   // Echo Bombo 2
+  pinMode(19, INPUT);   // Echo Bombo Mezcla (3)
+  pinMode(21, INPUT);   // Echo Bombo 1
+  pinMode(16, OUTPUT);  // Trigger Bombo 2
+  pinMode(18, OUTPUT);  // Trigger Bombo Mezcla (3)
+  pinMode(20, OUTPUT);  // Trigger Bombo 1
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
   // ============================================================
   // CONFIGURACIÓN PINES ACTUADORES
@@ -222,6 +274,7 @@ void setup() {
   // ============================================================
   
   for (int K = 0; K < NUM_READINGS; K++) {
+<<<<<<< HEAD
     readings1[K] = 0;
     readings2[K] = 0;
     readings3[K] = 0;
@@ -234,6 +287,23 @@ void setup() {
   initialized1 = false;
   initialized2 = false;
   initialized3 = false;
+=======
+    readings1[K] = 28.0;
+    readings2[K] = 28.0;
+    readings3[K] = 28.0;
+  }
+  total1 = 28.0 * NUM_READINGS;
+  total2 = 28.0 * NUM_READINGS;
+  total3 = 28.0 * NUM_READINGS;
+
+  // Inicializar valores suavizados
+  smoothed1 = 28.0;
+  smoothed2 = 28.0;
+  smoothed3 = 28.0;
+  initialized1 = true;
+  initialized2 = true;
+  initialized3 = true;
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
   // ============================================================
   // CONFIGURACIÓN TIMER PARA LECTURA DE COMANDOS
@@ -257,16 +327,36 @@ void loop() {
     tiempoMonitoreo = millis();
   }
 
+<<<<<<< HEAD
   // Control de nivel de depósitos
   nivel();      // Lee los 3 sensores ultrasónicos
   filtrado();   // Aplica filtrado estadístico
 
   // Envío de datos a Raspberry Pi cada 1 segundo
+=======
+  // ============================================================
+  // SELECCIÓN DE MODO DE MEDICIÓN DE NIVEL:
+  // ============================================================
+
+  // ---> MODO 1: FUNCIONAL CON FILTRO (Normal) <---
+  if ((tiempoLecturaNivel + INTERVALO_LECTURA_NIVEL) <= millis()) {
+    nivel();      // Lee los 3 sensores ultrasónicos con pausas entre ellos
+    filtrado();   // Aplica filtrado estadístico y suavizado
+    tiempoLecturaNivel = millis();
+  }
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   if ((tiempoEnvio + 1000) <= millis()) {
     enviarValores();
     tiempoEnvio = millis();
   }
 
+<<<<<<< HEAD
+=======
+  // ---> MODO 2: CALIBRACIÓN DIRECTA SIN FILTRO (Pruebas) <---
+  // Para usar: comenta el bloque MODO 1 de arriba y descomenta la siguiente línea:
+  // calibracionNivelDirecto();
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   // Control de procesos
   activacion();  // Control de bombas de reposición y mezcla
   caudal();      // Actualiza variables de caudal
@@ -275,6 +365,7 @@ void loop() {
 
 // ============================================================
 // FUNCIÓN: nivel()
+<<<<<<< HEAD
 // Descripción: Lee los 3 sensores ultrasónicos de nivel
 // ============================================================
 
@@ -286,15 +377,45 @@ void nivel() {
     
     // pulseIn con timeout de 23200 microsegundos (~4 metros máximo)
     duracion = pulseIn(eco, HIGH, 23200);
+=======
+// Descripción: Lee los 3 sensores ultrasónicos de nivel con retardo entre lecturas
+// ============================================================
+
+void nivel() {
+  while (i < 3) {
+    // Asegurar LOW antes de emitir pulso
+    digitalWrite(trig, LOW);
+    delayMicroseconds(2);
+
+    // Pulso de disparo de 10 microsegundos según datasheet HC-SR04
+    digitalWrite(trig, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trig, LOW);
+    
+    // pulseIn con timeout de 5000 microsegundos (~86 cm máximo para evitar bloqueos)
+    duracion = pulseIn(eco, HIGH, 5000);
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     
     // Validar que la medición sea válida (2-30 cm = rango de operación)
     distancia = duracion / 58.2;  // Conversión a cm
     
+<<<<<<< HEAD
     // Si la medición es inválida (< 1cm o > 40cm), no actualizar
     if (distancia < 1 || distancia > 40) {
       distancia = 999;  // Valor inválido que será ignorado por el filtro
     }
     
+=======
+    // Si la medición es inválida (< 1cm o > 40cm), marcar como 999
+    if (distancia < 1.0 || distancia > 40.0) {
+      distancia = 999.0;  // Valor inválido que será sustituido por la última medición válida
+    }
+    
+    // Mapeo ordenado con el conexionado físico documentado:
+    // i = 0 -> Pines 16 (Trig) y 17 (Echo) = Bombo 2
+    // i = 1 -> Pines 18 (Trig) y 19 (Echo) = Bombo mezcla (3)
+    // i = 2 -> Pines 20 (Trig) y 21 (Echo) = Bombo 1
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     if (i == 0) {
       distancia2 = distancia;
     }
@@ -308,9 +429,19 @@ void nivel() {
     trig = trig + 2;
     eco = eco + 2;
     i = i + 1;
+<<<<<<< HEAD
   }
   
   // Resetear variables para próxima lectura
+=======
+
+    // Pausa de 30 ms entre sensores para permitir la extinción de rebotes acústicos residuales
+    delay(30);
+  }
+  
+  // Resetear variables para próxima lectura
+  distancia = 0;
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   i = 0;
   trig = 16;
   eco = 17;
@@ -328,11 +459,29 @@ void filtrado() {
   total2 = total2 - readings2[readIndex];
   total3 = total3 - readings3[readIndex];
 
+<<<<<<< HEAD
   // Guardar los valores de distancia (solo si son válidos)
   // Si son inválidos (999), usar la última lectura válida para mantener estabilidad
   if (distancia1 != 999) readings1[readIndex] = distancia1;
   if (distancia2 != 999) readings2[readIndex] = distancia2;
   if (distancia3 != 999) readings3[readIndex] = distancia3;
+=======
+  // Si la medición es válida, actualizar última válida; si es 999, reutilizar la última válida
+  if (distancia1 != 999.0) {
+    ultimaDistanciaValida1 = distancia1;
+  }
+  readings1[readIndex] = ultimaDistanciaValida1;
+
+  if (distancia2 != 999.0) {
+    ultimaDistanciaValida2 = distancia2;
+  }
+  readings2[readIndex] = ultimaDistanciaValida2;
+
+  if (distancia3 != 999.0) {
+    ultimaDistanciaValida3 = distancia3;
+  }
+  readings3[readIndex] = ultimaDistanciaValida3;
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
   // Añadir la nueva lectura a la suma total
   total1 = total1 + readings1[readIndex];
@@ -356,7 +505,10 @@ void filtrado() {
   // Aplica filtro exponencial al promedio para reducir oscilaciones residuales
   // Formula: smoothed = smoothed_anterior + ALPHA * (average - smoothed_anterior)
   
+<<<<<<< HEAD
   // Inicialización robusta con bandera
+=======
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   if (!initialized1) {
     smoothed1 = average1;
     initialized1 = true;
@@ -378,6 +530,7 @@ void filtrado() {
     smoothed3 = smoothed3 + ALPHA * (average3 - smoothed3);
   }
 
+<<<<<<< HEAD
   // Mapear distancia suavizada a porcentaje (30cm = vacío, 4cm = lleno)
   // Rango ampliado: 2cm más arriba y 3cm más abajo para margen
   Fporcentaje1 = map(smoothed1, 30, 4, 0, 100);
@@ -388,6 +541,79 @@ void filtrado() {
   constrainedPorcentaje1 = constrain(Fporcentaje1, 0, 100);
   constrainedPorcentaje2 = constrain(Fporcentaje2, 0, 100);
   constrainedPorcentaje3 = constrain(Fporcentaje3, 0, 100);
+=======
+  // Mapear distancia suavizada a porcentaje continuo con flotantes (28.0cm = vacío, 4.0cm = lleno)
+  Fporcentaje1 = (28.0 - smoothed1) * 100.0 / (28.0 - 4.0);
+  Fporcentaje2 = (28.0 - smoothed2) * 100.0 / (28.0 - 4.0);
+  Fporcentaje3 = (28.0 - smoothed3) * 100.0 / (28.0 - 4.0);
+
+  // Limitar el valor para que no se pase de 0.0-100.0
+  constrainedPorcentaje1 = constrain(Fporcentaje1, 0.0, 100.0);
+  constrainedPorcentaje2 = constrain(Fporcentaje2, 0.0, 100.0);
+  constrainedPorcentaje3 = constrain(Fporcentaje3, 0.0, 100.0);
+}
+
+
+// ============================================================
+// FUNCIÓN: calibracionNivelDirecto()
+// Descripción: MODO DE PRUEBA Y CALIBRACIÓN DIRECTA (SIN FILTRO)
+// Lee los 3 sensores ultrasónicos y envía inmediatamente el dato
+// crudo (RAW) a la Raspberry Pi tal como lo mide el sensor,
+// sin promedios, sin filtro exponencial ALPHA y sin retención de última válida.
+// Si un sensor da timeout, se verá 0.0 cm de inmediato para diagnosticar fallas.
+// ============================================================
+
+void calibracionNivelDirecto() {
+  static unsigned long tiempoEnvioCal = 0;
+  if ((tiempoEnvioCal + 300) > millis()) {
+    return; // Envío cada 300 ms (tiempo real ágil sin saturar el puerto serial)
+  }
+  tiempoEnvioCal = millis();
+
+  int trigCal = 16;
+  int ecoCal = 17;
+
+  for (int idx = 0; idx < 3; idx++) {
+    digitalWrite(trigCal, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigCal, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigCal, LOW);
+
+    duracion = pulseIn(ecoCal, HIGH, 5000);
+    float distCruda = duracion / 58.2;
+
+    // Mapeo ordenado con el conexionado físico documentado:
+    // idx = 0 -> Pines 16 (Trig) y 17 (Echo) = Bombo 2
+    // idx = 1 -> Pines 18 (Trig) y 19 (Echo) = Bombo mezcla (3)
+    // idx = 2 -> Pines 20 (Trig) y 21 (Echo) = Bombo 1
+    if (idx == 0) {
+      distancia2 = distCruda;
+      average2 = distCruda;
+      constrainedPorcentaje2 = constrain((28.0 - distCruda) * 100.0 / (28.0 - 4.0), 0.0, 100.0);
+      Fporcentaje2 = constrainedPorcentaje2;
+    }
+    if (idx == 1) {
+      distancia3 = distCruda;
+      average3 = distCruda;
+      constrainedPorcentaje3 = constrain((28.0 - distCruda) * 100.0 / (28.0 - 4.0), 0.0, 100.0);
+      Fporcentaje3 = constrainedPorcentaje3;
+    }
+    if (idx == 2) {
+      distancia1 = distCruda;
+      average1 = distCruda;
+      constrainedPorcentaje1 = constrain((28.0 - distCruda) * 100.0 / (28.0 - 4.0), 0.0, 100.0);
+      Fporcentaje1 = constrainedPorcentaje1;
+    }
+
+    trigCal += 2;
+    ecoCal += 2;
+    delay(30); // Pausa de 30 ms para disipar rebotes acústicos entre sensores
+  }
+
+  // Envío INMEDIATO del paquete CSV completo tal como lo espera la Raspberry Pi
+  enviarValores();
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 }
 
 
@@ -397,7 +623,11 @@ void filtrado() {
 // ============================================================
 
 void pulse1() {
+<<<<<<< HEAD
   waterFlow1 += 1.0 / 450;  // 450 para caudalímetro 1/2 pulgada
+=======
+  waterFlow1 += 1000.0 / pulsosnecesarios;  // Acumulador en mililitros (ml)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 }
 
 
@@ -408,7 +638,11 @@ void pulse1() {
 
 void pulse2() {
   if (terminoLlenadoLiquido1 == 1) {
+<<<<<<< HEAD
     waterFlow2 += 1.0 / 450;
+=======
+    waterFlow2 += 1000.0 / pulsosnecesarios;  // Acumulador en mililitros (ml)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   }
 }
 
@@ -432,10 +666,21 @@ void caudal() {
 void frenadoReposicion() {
   flagParadaR = 1;
   EBombaR = 0;
+<<<<<<< HEAD
   
   // Apagar bomba de reposición
   digitalWrite(9, HIGH);
   bomboSeleccionado = 0;
+=======
+  EValvula1 = 0;
+  EValvula2 = 0;
+  bomboSeleccionado = 0;
+  valorMaxReposicion = 0;
+  convinacion = 0;
+  
+  // Apagar bomba de reposición
+  digitalWrite(9, HIGH);
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   
   // Apagar electroválvulas
   digitalWrite(10, HIGH);  // Electroválvula Bombo 1
@@ -464,16 +709,28 @@ void activacion() {
   if (flagParadaR == 0) {
     // REPOSICIÓN BOMBO 1
     if (bomboSeleccionado == 1) {
+<<<<<<< HEAD
       if (valorMaxReposicion <= Fporcentaje1 && EBombaR == 0) {
         error = 722;  // Error: nivel ya alcanzado
       }
 
       if (valorMaxReposicion > Fporcentaje1 && Fporcentaje1 < 100) {
         EBombaR = 1;
+=======
+      if (valorMaxReposicion <= constrainedPorcentaje1 && EBombaR == 0 && convinacion != 0) {
+        error = 722;  // Error: nivel ya alcanzado
+      }
+
+      if (valorMaxReposicion > constrainedPorcentaje1 && constrainedPorcentaje1 < 100) {
+        EBombaR = 1;
+        EValvula1 = 1;
+        EValvula2 = 0;
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         digitalWrite(10, LOW);  // Encender electroválvula Bombo 1
         digitalWrite(9, LOW);   // Encender bomba reposición
       }
 
+<<<<<<< HEAD
       if (valorMaxReposicion <= Fporcentaje1) {
         EBombaR = 0;
         flagParadaR = 1;
@@ -481,21 +738,44 @@ void activacion() {
         digitalWrite(9, HIGH);   // Apagar bomba reposición
         digitalWrite(10, HIGH);  // Apagar electroválvula Bombo 1
         bomboSeleccionado = 0;
+=======
+      if (valorMaxReposicion <= constrainedPorcentaje1) {
+        EBombaR = 0;
+        EValvula1 = 0;
+        flagParadaR = 1;
+        valorMaxReposicion = 0;
+        convinacion = 0;
+        bomboSeleccionado = 0;
+        digitalWrite(9, HIGH);   // Apagar bomba reposición
+        digitalWrite(10, HIGH);  // Apagar electroválvula Bombo 1
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       }
     }
 
     // REPOSICIÓN BOMBO 2
     if (bomboSeleccionado == 2) {
+<<<<<<< HEAD
       if (valorMaxReposicion <= Fporcentaje2 && EBombaR == 0) {
         error = 722;  // Error: nivel ya alcanzado
       }
 
       if (valorMaxReposicion > Fporcentaje2 && Fporcentaje2 < 100) {
         EBombaR = 1;
+=======
+      if (valorMaxReposicion <= constrainedPorcentaje2 && EBombaR == 0 && convinacion != 0) {
+        error = 722;  // Error: nivel ya alcanzado
+      }
+
+      if (valorMaxReposicion > constrainedPorcentaje2 && constrainedPorcentaje2 < 100) {
+        EBombaR = 1;
+        EValvula1 = 0;
+        EValvula2 = 1;
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         digitalWrite(9, LOW);  // Encender bomba reposición
         digitalWrite(8, LOW);  // Encender electroválvula Bombo 2
       }
 
+<<<<<<< HEAD
       if (valorMaxReposicion <= Fporcentaje2 || Fporcentaje2 == 100) {
         EBombaR = 0;
         flagParadaR = 1;
@@ -503,11 +783,23 @@ void activacion() {
         digitalWrite(9, HIGH);  // Apagar bomba reposición
         digitalWrite(8, HIGH);  // Apagar electroválvula Bombo 2
         bomboSeleccionado = 0;
+=======
+      if (valorMaxReposicion <= constrainedPorcentaje2 || constrainedPorcentaje2 >= 100.0) {
+        EBombaR = 0;
+        EValvula2 = 0;
+        flagParadaR = 1;
+        valorMaxReposicion = 0;
+        convinacion = 0;
+        bomboSeleccionado = 0;
+        digitalWrite(9, HIGH);  // Apagar bomba reposición
+        digitalWrite(8, HIGH);  // Apagar electroválvula Bombo 2
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       }
     }
   }
 
   // ========== CÁLCULO DE TIEMPOS Y LÍQUIDOS ==========
+<<<<<<< HEAD
   TiempoHorUso = TiempoHor * 3600000;
   TiempoMinUso = TiempoMin * 60000;
   
@@ -532,34 +824,99 @@ void activacion() {
 
     // Finalización de transferencia de Bombo 1
     if (liquido1 < cantidad1) {
+=======
+  TiempoHorUso = (unsigned long)TiempoHor * 3600000UL;
+  TiempoMinUso = (unsigned long)TiempoMin * 60000UL;
+  
+  // Las cantidades de receta se interpretan en mililitros (ml) para prototipo a escala
+  if (Ingrediente1 >= 10000.0) {
+    liquido1 = (Ingrediente1 - 10000.0);
+  } else {
+    liquido1 = Ingrediente1;
+  }
+
+  if (Ingrediente2 >= 20000.0) {
+    liquido2 = (Ingrediente2 - 20000.0);
+  } else {
+    liquido2 = Ingrediente2;
+  }
+
+  // ========== CONTROL DE TRANSFERENCIA DE LÍQUIDOS ==========
+  if (continuar == 1) {
+    // Si la receta no requiere liquido 1 (liquido1 <= 0), marcarlo completado directamente
+    if (liquido1 <= 0) {
+      terminoLlenadoLiquido1 = 1;
+      arranque2 = 1;
+    } else if (cantidad1 < liquido1) {
+      digitalWrite(5, LOW);  // Encender bomba depósito 1
+      EBomba1 = 1;
+      EProceso = 1;
+    } else { // cantidad1 >= liquido1
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       terminoLlenadoLiquido1 = 1;
       digitalWrite(5, HIGH);  // Apagar bomba depósito 1
       EBomba1 = 0;
       arranque2 = 1;
     }
 
+<<<<<<< HEAD
     // Finalización de transferencia de Bombo 2
     if (liquido2 < cantidad2 && terminoLlenadoLiquido1 == 1) {
       terminoLlenadoLiquido2 = 1;
       digitalWrite(6, HIGH);  // Apagar bomba depósito 2
       EBomba2 = 0;
       arranque2 = 0;
+=======
+    // Si la receta no requiere liquido 2 (liquido2 <= 0), marcarlo completado cuando Bombo 1 haya finalizado
+    if (liquido2 <= 0) {
+      if (terminoLlenadoLiquido1 == 1) {
+        terminoLlenadoLiquido2 = 1;
+      }
+    } else if (arranque2 == 1 && terminoLlenadoLiquido1 == 1) {
+      if (cantidad2 < liquido2) {
+        digitalWrite(6, LOW);  // Encender bomba depósito 2
+        EBomba2 = 1;
+        EProceso = 1;
+      } else { // cantidad2 >= liquido2
+        terminoLlenadoLiquido2 = 1;
+        digitalWrite(6, HIGH);  // Apagar bomba depósito 2
+        EBomba2 = 0;
+        arranque2 = 0;
+      }
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     }
 
     // Activar mezcla cuando ambos líquidos están transferidos
     if (terminoLlenadoLiquido1 == 1 && terminoLlenadoLiquido2 == 1) {
       activarMezcla = 1;
+<<<<<<< HEAD
       terminoLlenadoLiquido1 = 0;
       terminoLlenadoLiquido2 = 0;
       liquido1 = 0;
       liquido2 = 0;
       TInicioMezclado = millis();
+=======
+      continuar = 0;           // CRÍTICO: Detener ciclo de dosificación
+      terminoLlenadoLiquido1 = 0;
+      terminoLlenadoLiquido2 = 0;
+      arranque2 = 0;
+      liquido1 = 0;
+      liquido2 = 0;
+      tiempoMezcladoAcumulado = 0;
+      TInicioMezclado = millis();
+      previousMillis = millis();
+      digitalWrite(7, LOW);    // Encender motor mezclador inmediatamente (activo bajo)
+      EMezclador = 1;
+      MotorOn = 1;
+      MotorOff = 0;
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     }
   }
 
   // ========== CONTROL DE MEZCLADO (ON/OFF INTERMITENTE) ==========
   if (activarMezcla == 1) {
     unsigned long currentMillis = millis();
+<<<<<<< HEAD
     EProceso = 1;
 
     // Encender el motor por TiempoMotorOn
@@ -582,14 +939,84 @@ void activacion() {
   // ========== DETENCIÓN DE PROCESO ==========
   if ((activarMezcla == 0 && continuar == 0) || detener == 1) {
     EProceso = 0;
+=======
+    unsigned long tiempoTranscurridoSesion = currentMillis - TInicioMezclado;
+    unsigned long tiempoTranscurridoTotal = tiempoMezcladoAcumulado + tiempoTranscurridoSesion;
+    unsigned long tiempoTotalMezclado = TiempoHorUso + TiempoMinUso;
+
+    // Verificar si el tiempo de mezcla ya finalizó
+    if (tiempoTotalMezclado > 0 && tiempoTranscurridoTotal >= tiempoTotalMezclado) {
+      activarMezcla = 0;
+      tiempoMezcladoAcumulado = 0;
+      digitalWrite(7, HIGH);  // Apagar motor mezclador
+      EMezclador = 0;
+      horaRest = 0;
+      minRest = 0;
+      EProceso = 2;           // Estado 2: Mezcla finalizada
+    } else {
+      EProceso = 1;
+
+      // Cálculo de tiempo restante en tiempo real
+      if (tiempoTotalMezclado > tiempoTranscurridoTotal) {
+        unsigned long tiempoRestanteMs = tiempoTotalMezclado - tiempoTranscurridoTotal;
+        horaRest = tiempoRestanteMs / 3600000UL;
+        minRest = (tiempoRestanteMs % 3600000UL) / 60000UL;
+      } else {
+        horaRest = 0;
+        minRest = 0;
+      }
+
+      // Encender el motor por TiempoMotorOn (3 segundos trabajando)
+      if ((currentMillis - previousMillis) >= TiempoMotorOn && MotorOn == 1) {
+        digitalWrite(7, HIGH);  // Apagar motor mezclador
+        EMezclador = 0;
+        previousMillis = currentMillis;
+        MotorOn = 0;
+        MotorOff = 1;
+      }
+
+      // Apagar el motor por TiempoMotorOff (5 segundos parado)
+      if ((currentMillis - previousMillis) >= TiempoMotorOff && MotorOff == 1) {
+        digitalWrite(7, LOW);   // Encender motor mezclador (activo bajo)
+        EMezclador = 1;
+        previousMillis = currentMillis;
+        MotorOn = 1;
+        MotorOff = 0;
+      }
+    }
+  }
+
+  // ========== DETENCIÓN / PAUSA DE PROCESO ==========
+  if ((activarMezcla == 0 && continuar == 0 && vaciar == 0 && desechar == 0) || detener == 1) {
+    if (detener == 1) {
+      // Si la mezcla estaba corriendo al pausar, acumular el tiempo transcurrido hasta ahora
+      if (activarMezcla == 1) {
+        tiempoMezcladoAcumulado += (millis() - TInicioMezclado);
+      }
+      EProceso = 0;
+      activarMezcla = 0;
+      continuar = 0;
+      vaciar = 0;
+      desechar = 0;
+      detener = 0;
+      convinacion = 0;
+      bomboSeleccionado = 0;
+      valorMaxReposicion = 0;
+    }
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     digitalWrite(7, HIGH);  // Apagar motor mezclador
     digitalWrite(5, HIGH);  // Apagar bomba Bombo 1
     digitalWrite(6, HIGH);  // Apagar bomba Bombo 2
     digitalWrite(4, HIGH);  // Apagar bomba mezcla
     EBomba1 = 0;
     EBomba2 = 0;
+<<<<<<< HEAD
     desechar = 0;
     detener = 0;
+=======
+    EBombaM = 0;
+    EMezclador = 0;
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   }
 
   // ========== DESECHAR PRODUCCIÓN ==========
@@ -600,10 +1027,29 @@ void activacion() {
     cantidad1 = 0;
     liquido2 = 0;
     cantidad2 = 0;
+<<<<<<< HEAD
+=======
+    waterFlow1 = 0;
+    waterFlow2 = 0;
+    tiempoMezcladoAcumulado = 0;
+    activarMezcla = 0;
+    continuar = 0;
+    digitalWrite(7, HIGH); // Apagar motor mezclador
+    EMezclador = 0;
+
+    // Corte automático por porcentaje de nivel
+    if (constrainedPorcentaje3 <= PORCENTAJE_CORTE_VACIADO) {
+      digitalWrite(4, HIGH); // Apagar bomba mezcla
+      EBombaM = 0;
+      desechar = 0;
+      EProceso = 0;
+    }
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   }
 
   // ========== VACIAR BOMBO DE MEZCLA ==========
   if (vaciar == 1) {
+<<<<<<< HEAD
     if (EProceso == 2) {
       digitalWrite(4, LOW);  // Encender bomba del bombo de mezcla
       EBombaM = 1;
@@ -620,6 +1066,28 @@ void activacion() {
       cantidad1 = 0;
       liquido2 = 0;
       cantidad2 = 0;
+=======
+    digitalWrite(4, LOW);  // Encender bomba del bombo de mezcla
+    EBombaM = 1;
+    liquido1 = 0;
+    cantidad1 = 0;
+    liquido2 = 0;
+    cantidad2 = 0;
+    waterFlow1 = 0;
+    waterFlow2 = 0;
+    tiempoMezcladoAcumulado = 0;
+    activarMezcla = 0;
+    continuar = 0;
+    digitalWrite(7, HIGH); // Apagar motor mezclador
+    EMezclador = 0;
+
+    // Corte automático por porcentaje de nivel
+    if (constrainedPorcentaje3 <= PORCENTAJE_CORTE_VACIADO) {
+      digitalWrite(4, HIGH); // Apagar bomba mezcla
+      EBombaM = 0;
+      vaciar = 0;
+      EProceso = 0;
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     }
   }
 }
@@ -633,6 +1101,7 @@ void activacion() {
 void enviarValores() {
   RASPBERRY_SERIAL.print(average1);
   RASPBERRY_SERIAL.print(",");
+<<<<<<< HEAD
   RASPBERRY_SERIAL.print(constrainedPorcentaje1);
   RASPBERRY_SERIAL.print(",");
   RASPBERRY_SERIAL.print(average2);
@@ -642,6 +1111,17 @@ void enviarValores() {
   RASPBERRY_SERIAL.print(average3);
   RASPBERRY_SERIAL.print(",");
   RASPBERRY_SERIAL.print(constrainedPorcentaje3);
+=======
+  RASPBERRY_SERIAL.print(constrainedPorcentaje1, 1);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(average2);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(constrainedPorcentaje2, 1);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(average3);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(constrainedPorcentaje3, 1);
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   RASPBERRY_SERIAL.print(",");
   RASPBERRY_SERIAL.print(cantidad1);
   RASPBERRY_SERIAL.print(",");
@@ -663,7 +1143,15 @@ void enviarValores() {
   RASPBERRY_SERIAL.print(",");
   RASPBERRY_SERIAL.print(minRest);
   RASPBERRY_SERIAL.print(",");
+<<<<<<< HEAD
   RASPBERRY_SERIAL.println(EProceso);
+=======
+  RASPBERRY_SERIAL.print(EProceso);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.print(EValvula1);
+  RASPBERRY_SERIAL.print(",");
+  RASPBERRY_SERIAL.println(EValvula2);
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 }
 
 
@@ -711,10 +1199,44 @@ void lectura() {
       obtencionEntero();
     }
 
+<<<<<<< HEAD
     if (valor == 'V') {
       g = 7;
       vaciar = 1;
       obtencionEntero();
+=======
+    if (valor == 'L' || valor == 'l') {
+      // Admite comandos "L1..." o "L2..." o "L..."
+      delay(2);
+      char sub = RASPBERRY_SERIAL.peek();
+      if (sub == '1') {
+        RASPBERRY_SERIAL.read(); // consumir '1'
+        g = 5;
+        obtencionEntero();
+        continuar = 1;
+      } else if (sub == '2') {
+        RASPBERRY_SERIAL.read(); // consumir '2'
+        g = 6;
+        obtencionEntero();
+      } else {
+        g = 5;
+        obtencionEntero();
+        continuar = 1;
+      }
+    }
+
+    if (valor == 'V') {
+      g = 7;
+      vaciar = 1;
+      activarMezcla = 0;
+      continuar = 0;
+      terminoLlenadoLiquido1 = 0;
+      terminoLlenadoLiquido2 = 0;
+      arranque2 = 0;
+      liquido1 = 0;
+      liquido2 = 0;
+      // No llama obtencionEntero() para evitar bloqueo
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     }
 
     if (valor == 'D') {
@@ -727,6 +1249,21 @@ void lectura() {
     if (valor == 'A') {
       g = 10;
       continuar = 1;
+<<<<<<< HEAD
+=======
+      // Si la carga de líquidos ya finalizó (o no se requiere), reanudar la marcha del mezclador desde donde quedó
+      if ((terminoLlenadoLiquido1 == 1 && terminoLlenadoLiquido2 == 1) || (liquido1 <= 0 && liquido2 <= 0)) {
+        if ((TiempoHorUso + TiempoMinUso) > 0 && activarMezcla == 0) {
+          activarMezcla = 1;
+          TInicioMezclado = millis();
+          previousMillis = millis();
+          digitalWrite(7, LOW);   // Reanudar motor mezclador inmediatamente (activo bajo)
+          EMezclador = 1;
+          MotorOn = 1;
+          MotorOff = 0;
+        }
+      }
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     }
 
     if (valor == 'T') {
@@ -738,13 +1275,27 @@ void lectura() {
       obtencionEntero();
     }
 
+<<<<<<< HEAD
     if (valor == 'h') {
+=======
+    if (valor == 'h' || valor == 'M' || valor == 'm') {
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
       g = 12;
       obtencionEntero();
     }
 
     if (valor == 'X') {
       desechar = 1;
+<<<<<<< HEAD
+=======
+      activarMezcla = 0;
+      continuar = 0;
+      terminoLlenadoLiquido1 = 0;
+      terminoLlenadoLiquido2 = 0;
+      arranque2 = 0;
+      liquido1 = 0;
+      liquido2 = 0;
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     }
   }
 }
@@ -756,10 +1307,20 @@ void lectura() {
 // ============================================================
 
 void obtencionEntero() {
+<<<<<<< HEAD
   delay(30);
   while (RASPBERRY_SERIAL.available()) {
     char c = RASPBERRY_SERIAL.read();
     estado += c;
+=======
+  delay(15);
+  while (RASPBERRY_SERIAL.available()) {
+    char c = RASPBERRY_SERIAL.read();
+    if (c == '\r' || c == '\n') break;
+    if ((c >= '0' && c <= '9') || c == '.') {
+      estado += c;
+    }
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
   }
 
   if (estado.length() > 0) {
@@ -770,10 +1331,17 @@ void obtencionEntero() {
       bomboSeleccionado = estado.toInt();
     }
     if (g == 5) {
+<<<<<<< HEAD
       Ingrediente1 = estado.toInt();
     }
     if (g == 6) {
       Ingrediente2 = estado.toInt();
+=======
+      Ingrediente1 = estado.toDouble();
+    }
+    if (g == 6) {
+      Ingrediente2 = estado.toDouble();
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     }
     if (g == 11) {
       TiempoHor = estado.toInt();

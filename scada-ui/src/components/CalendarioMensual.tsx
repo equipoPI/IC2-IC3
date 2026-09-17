@@ -22,7 +22,11 @@ export interface CalendarEvent {
   sistema?: string;
   maquina?: string;
   tipo: "produccion" | "mantenimiento";
+<<<<<<< HEAD
   estado?: "pendiente" | "en_proceso" | "completada";
+=======
+  estado?: "pendiente" | "en_proceso" | "completada" | "cancelada";
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 }
 
 interface CalendarioMensualProps {
@@ -82,8 +86,20 @@ const CalendarioMensual = ({ eventos, onEventClick }: CalendarioMensualProps) =>
     return dias;
   }, [mesActual]);
 
+<<<<<<< HEAD
   const getEventosPorDia = (fecha: Date) => {
     const fechaStr = fecha.toISOString().split("T")[0];
+=======
+  const getLocalDateString = (fecha: Date) => {
+    const year = fecha.getFullYear();
+    const month = String(fecha.getMonth() + 1).padStart(2, "0");
+    const day = String(fecha.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const getEventosPorDia = (fecha: Date) => {
+    const fechaStr = getLocalDateString(fecha);
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     return eventos.filter((evento) => {
       const inicio = evento.fechaInicio;
       const fin = evento.fechaFin || evento.fechaInicio;

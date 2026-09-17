@@ -8,9 +8,20 @@ Type=simple
 User=pi
 Group=pi
 WorkingDirectory=/opt/scada_gateway
+<<<<<<< HEAD
 ExecStart=/opt/scada_gateway/venv/bin/python /opt/scada_gateway/src/gateway_main.py
 Restart=always
 RestartSec=10
+=======
+Environment="PYTHONPATH=/opt/scada_gateway"
+Environment="DISPLAY="
+ExecStart=/opt/scada_gateway/venv/bin/python /opt/scada_gateway/src/gateway_main.py
+Restart=always
+RestartSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=10
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 # Configuración de recursos
 LimitNOFILE=65536

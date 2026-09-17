@@ -3,6 +3,10 @@ Gateway principal - Orquestador del sistema Raspberry Pi
 Integra Arduino Serial, MQTT, almacenamiento local y diagnósticos
 """
 
+<<<<<<< HEAD
+=======
+import os
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 import sys
 import signal
 import time
@@ -139,6 +143,17 @@ class SCADAGateway:
             logger.info("Inicializando cliente MQTT...")
             self.mqtt = MQTTClient(config_path=self.config_path, data_lock=self._data_lock)
             self.mqtt.register_command_callback('reposicion', self._on_command_reposicion)
+<<<<<<< HEAD
+=======
+            self.mqtt.register_command_callback('freno_reposicion', self._on_command_control)
+            self.mqtt.register_command_callback('frenar', self._on_command_control)
+            self.mqtt.register_command_callback('detener', self._on_command_control)
+            self.mqtt.register_command_callback('reanudar', self._on_command_control)
+            self.mqtt.register_command_callback('continuar', self._on_command_control)
+            self.mqtt.register_command_callback('vaciar', self._on_command_control)
+            self.mqtt.register_command_callback('desechar', self._on_command_control)
+            self.mqtt.register_command_callback('descartar', self._on_command_control)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             self.mqtt.register_command_callback('mezcla', self._on_command_mezcla)
             self.mqtt.register_command_callback('control', self._on_command_control)
             self.mqtt.register_command_callback('configuracion', self._on_command_config)
@@ -212,7 +227,14 @@ class SCADAGateway:
             return False
 
     def _start_gui_if_possible(self):
+<<<<<<< HEAD
         """Inicia la UI Tkinter solo si hay un entorno gráfico disponible."""
+=======
+        """
+        Inicia la UI Tkinter como thread NON-DAEMON.
+        Tkinter necesita un thread completo para procesar eventos correctamente.
+        """
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         try:
             import os
             import threading
@@ -225,9 +247,16 @@ class SCADAGateway:
                 logger.warning("No hay DISPLAY configurado; se omite la GUI Tkinter")
                 return False
 
+<<<<<<< HEAD
             self._gui_thread = threading.Thread(target=start_gui, args=(self,), daemon=True)
             self._gui_thread.start()
             logger.info("GUI iniciada (Tkinter)")
+=======
+            # IMPORTANTE: daemon=False para que Tkinter procese eventos correctamente
+            self._gui_thread = threading.Thread(target=start_gui, args=(self,), daemon=False, name="TkinterGUI")
+            self._gui_thread.start()
+            logger.info("GUI iniciada (Tkinter - thread no-daemon)")
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             return True
         except Exception as e:
             logger.warning(f"No se pudo iniciar GUI: {e}")
@@ -248,6 +277,58 @@ class SCADAGateway:
         if self.diagnostics:
             self.diagnostics.set_mqtt_status(self.mqtt.connected)
         return connected
+<<<<<<< HEAD
+=======
+
+    def save_config(self, new_config: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Persiste la configuración en config.yaml y en la base de datos local SQLite.
+        Garantiza que cualquier cambio realizado en la GUI o recibido por comando no se pierda al reiniciar.
+        
+        Args:
+            new_config: Diccionario opcional con configuraciones a actualizar
+            
+        Returns:
+            True si se guardó correctamente en disco
+        """
+        try:
+            if new_config:
+                for sec, vals in new_config.items():
+                    if isinstance(vals, dict) and isinstance(self.config.get(sec), dict):
+                        self.config[sec].update(vals)
+                    else:
+                        self.config[sec] = vals
+
+            # 1. Guardar atómicamente en config.yaml usando un archivo temporal
+            temp_config_path = f"{self.config_path}.tmp"
+            with open(temp_config_path, 'w', encoding='utf-8') as f:
+                yaml.dump(self.config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            
+            os.replace(temp_config_path, self.config_path)
+            logger.success(f"Configuración guardada en archivo: {self.config_path}")
+
+            # 2. Respaldar configuración en base de datos local SQLite
+            if self.storage:
+                for seccion in ['mqtt', 'serial', 'planta', 'database']:
+                    if seccion in self.config:
+                        self.storage.save_system_config(seccion, self.config[seccion])
+                self.storage.save_event('config', 'Configuración guardada en config.yaml y base de datos local', {'archivo': self.config_path}, 'sistema')
+
+            # 3. Si cambiaron tenant, sector o sistema, actualizar dinámicamente topics en cliente MQTT en caliente
+            if self.mqtt and 'mqtt' in self.config:
+                mqtt_cfg = self.config['mqtt']
+                self.mqtt.update_topic_context(
+                    tenant=mqtt_cfg.get('tenant'),
+                    sector=mqtt_cfg.get('default_sector'),
+                    system=mqtt_cfg.get('default_system'),
+                )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error guardando configuración en disco: {e}")
+            return False
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     
     def stop(self):
         """
@@ -365,6 +446,7 @@ class SCADAGateway:
             if getattr(self, 'processing_paused', False):
                 logger.info("Gateway en pausa: ignorando comando de reposición recibido por MQTT")
                 return
+<<<<<<< HEAD
             bombo = data.get('bombo', 1)
             valor = data.get('valor', 50)
             
@@ -379,6 +461,55 @@ class SCADAGateway:
                 # Guardar en base de datos
                 self.storage.save_command(f"R{comando_valor}", data, 'mqtt')
                 self.storage.save_event('comando', f'Reposición bombo {bombo} al {valor}%', data, 'mqtt')
+=======
+
+            accion_req = str(data.get('accion', '')).upper()
+            is_freno = data.get('freno', False) is True or accion_req in ['FRENO', 'FRENO_REPOSICION', 'PARAR', 'DETENER', 'EMERGENCIA']
+
+            if is_freno:
+                logger.warning("🚨 FRENO DE EMERGENCIA RECIBIDO: Enviando orden de detención F al Arduino")
+                if self.arduino.send_command('frenar'):
+                    logger.success("Freno de emergencia (Comando F) enviado al Arduino correctamente")
+                    self.storage.save_command("F", data, 'mqtt')
+                    self.storage.save_event('comando', 'FRENO DE EMERGENCIA REPOSICIÓN', data, 'mqtt')
+                    self.stats['commands_sent'] += 1
+                    self._publish_command_response(
+                        data,
+                        topic,
+                        status="executed",
+                        code=0,
+                        result={"accion": "frenar", "freno": True},
+                    )
+                else:
+                    logger.error("Error enviando comando F de freno de emergencia")
+                    self._publish_command_response(
+                        data,
+                        topic,
+                        status="failed",
+                        code=3,
+                        result={},
+                        error="No se pudo enviar comando F de freno al Arduino",
+                    )
+                return
+
+            bombo = int(data.get('bombo', 1))
+
+            # Aceptar el formato viejo (valor directo) y el nuevo (limite_porcentaje/limite)
+            valor_bruto = data.get('valor', data.get('limite_porcentaje', data.get('limite', 50)))
+            limite = int(valor_bruto)
+
+            # El Arduino espera una combinación de 4 dígitos:
+            # 1000 + limite para bombo 1, 2000 + limite para bombo 2.
+            convinacion = (1000 + limite) if bombo == 1 else (2000 + limite)
+            
+            # Enviar comando al Arduino
+            if self.arduino.send_command('reposicion', valor=convinacion):
+                logger.info(f"Comando reposición enviado: Bombo {bombo}, límite {limite}% (combo {convinacion})")
+                
+                # Guardar en base de datos
+                self.storage.save_command(f"R{convinacion}", data, 'mqtt')
+                self.storage.save_event('comando', f'Reposición bombo {bombo} al {limite}%', data, 'mqtt')
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                 
                 self.stats['commands_sent'] += 1
                 self._publish_command_response(
@@ -386,7 +517,11 @@ class SCADAGateway:
                     topic,
                     status="executed",
                     code=0,
+<<<<<<< HEAD
                     result={"bombo": bombo, "valor": valor},
+=======
+                    result={"bombo": bombo, "limite": limite, "convinacion": convinacion},
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                 )
             else:
                 logger.error("Error enviando comando de reposición")
@@ -422,11 +557,23 @@ class SCADAGateway:
             if getattr(self, 'processing_paused', False):
                 logger.info("Gateway en pausa: ignorando comando de mezcla recibido por MQTT")
                 return
+<<<<<<< HEAD
+=======
+            
+            logger.info("=" * 60)
+            logger.info("⚙️  PROCESANDO COMANDO MEZCLA")
+            logger.info("=" * 60)
+            
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             # Comandos de mezcla
             liquido_1 = data.get('liquido_1')
             liquido_2 = data.get('liquido_2')
             hora = data.get('hora')
             minuto = data.get('minuto')
+<<<<<<< HEAD
+=======
+            logger.debug(f"Parámetros recibidos: L1={liquido_1}, L2={liquido_2}, H={hora}, M={minuto}")
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             
             # Enviar configuración de líquidos
             if liquido_1 is not None:
@@ -485,12 +632,54 @@ class SCADAGateway:
             if getattr(self, 'processing_paused', False):
                 logger.info("Gateway en pausa: ignorando comando de control recibido por MQTT")
                 return
+<<<<<<< HEAD
             accion = data.get('accion', '').upper()
             
             command_map = {
                 'CONTINUAR': 'continuar',
                 'PARAR': 'frenar',
                 'DETENER': 'detener',
+=======
+            
+            # Resolver la acción: desde el payload, desde _topic_meta o desde el último segmento del topic
+            topic_meta = data.get('_topic_meta', {}) if isinstance(data, dict) else {}
+            topic_action = topic_meta.get('action') or (topic.split('/')[-1] if topic else '')
+            raw_accion = data.get('accion') if isinstance(data, dict) else None
+            accion = str(raw_accion or topic_action or '').strip().upper()
+
+            if accion == 'REPOSICION':
+                bombo = int(data.get('bombo', 1))
+                limite = int(data.get('limite_porcentaje', data.get('limite', 80)))
+                # Calcular combinacion esperada por Arduino (1000+limite o 2000+limite)
+                convinacion = (1000 + limite) if bombo == 1 else (2000 + limite)
+                if self.arduino.send_command('reposicion', valor=convinacion):
+                    logger.info(f"Comando REPOSICION enviado al Arduino: Bombo {bombo}, Limite {limite}% (Combo {convinacion})")
+                    self.storage.save_event('comando', f'Reposicion Bombo {bombo} ({limite}%)', data, 'mqtt')
+                    self.stats['commands_sent'] += 1
+                    self._publish_command_response(data, topic, status="executed", code=0, result={"accion": accion, "convinacion": convinacion})
+                else:
+                    self._publish_command_response(data, topic, status="failed", code=3, result={}, error="No se pudo enviar comando de reposicion al Arduino")
+                return
+
+            if accion in ('FRENO_REPOSICION', 'PARAR_REPOSICION'):
+                if self.arduino.send_command('frenar'):
+                    logger.info("Comando FRENO REPOSICION (F) enviado al Arduino")
+                    self.storage.save_event('comando', 'Freno Reposicion', data, 'mqtt')
+                    self.stats['commands_sent'] += 1
+                    self._publish_command_response(data, topic, status="executed", code=0, result={"accion": accion})
+                else:
+                    self._publish_command_response(data, topic, status="failed", code=3, result={}, error="No se pudo enviar freno de reposicion al Arduino")
+                return
+            
+            command_map = {
+                'CONTINUAR': 'continuar',
+                'REANUDAR': 'continuar',
+                'PARAR': 'frenar',
+                'PAUSAR': 'detener',
+                'DETENER': 'detener',
+                'DESECHAR': 'desechar',
+                'DESCARTAR': 'desechar',
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                 'VACIAR': 'vaciar'
             }
             
@@ -540,7 +729,11 @@ class SCADAGateway:
     
     def _on_command_config(self, data: Dict[str, Any], topic: str):
         """
+<<<<<<< HEAD
         Procesa cambios de configuración desde MQTT
+=======
+        Procesa cambios de configuración desde MQTT y los persiste en disco
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         
         Args:
             data: Datos de configuración
@@ -550,6 +743,7 @@ class SCADAGateway:
             logger.info("Gateway en pausa: ignorando configuración recibida por MQTT")
             return
 
+<<<<<<< HEAD
         logger.info(f"Configuración recibida: {data}")
         self.storage.save_event('config', 'Configuración actualizada', data, 'mqtt')
         self._publish_command_response(
@@ -558,6 +752,22 @@ class SCADAGateway:
             status="executed",
             code=0,
             result={"config_aplicada": True},
+=======
+        logger.info(f"Configuración recibida por MQTT: {data}")
+        # Si la carga útil incluye claves de configuración válidas, aplicarlas y persistirlas
+        config_guardada = self.save_config(data)
+        
+        if self.storage:
+            self.storage.save_event('config', 'Configuración actualizada por MQTT', data, 'mqtt')
+            
+        self._publish_command_response(
+            data,
+            topic,
+            status="executed" if config_guardada else "failed",
+            code=0 if config_guardada else 3,
+            result={"config_aplicada": config_guardada},
+            error=None if config_guardada else "Error al guardar configuración en disco"
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         )
     
     def _on_query_historico(self, data: Dict[str, Any], topic: str):
@@ -723,18 +933,96 @@ class SCADAGateway:
         arduino_status = '✓ Conectado' if stats['arduino'].get('connected') else '✗ Desconectado'
         mqtt_status = '✓ Conectado' if stats['mqtt'].get('connected') else '✗ Desconectado'
         print(f"Arduino: {arduino_status}")
+<<<<<<< HEAD
         print(f"MQTT: {mqtt_status}")
         print("=" * 60 + "\n")
+=======
+    def stop(self):
+        """
+        Detiene todos los componentes del gateway de forma limpia:
+        Desconecta MQTT (enviando status offline), cierra serial Arduino,
+        detiene diagnósticos y guarda eventos pendientes.
+        """
+        logger.info("Deteniendo componentes de SCADAGateway...")
+        self.running = False
+
+        if self.mqtt:
+            try:
+                # Publica explícitamente offline y desconecta socket
+                self.mqtt.disconnect()
+                logger.info("Cliente MQTT desconectado limpiamente con estado OFFLINE")
+            except Exception as e:
+                logger.warning(f"Error desconectando MQTT en stop(): {e}")
+
+        if self.arduino:
+            try:
+                self.arduino.disconnect()
+                logger.info("Conexión serial con Arduino cerrada")
+            except Exception as e:
+                logger.warning(f"Error cerrando Arduino en stop(): {e}")
+
+        if self.diagnostics:
+            try:
+                self.diagnostics.stop()
+            except Exception:
+                pass
+
+        if self.storage:
+            try:
+                self.storage.save_event('system', 'Gateway detenido de forma segura')
+            except Exception:
+                pass
+
+        logger.success("SCADAGateway detenido completamente")
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 
 def signal_handler(signum, frame):
     """
+<<<<<<< HEAD
     Manejador de señales para cierre graceful
     """
     global gateway
     logger.info(f"Señal {signum} recibida, cerrando gateway...")
     if gateway:
         gateway.stop()
+=======
+    Manejador de señales para cierre graceful.
+    Responde inmediatamente a SIGINT (Ctrl+C) y SIGTERM
+    """
+    global gateway
+    signal_name = "SIGINT (Ctrl+C)" if signum == signal.SIGINT else f"SIGTERM ({signum})"
+    logger.info(f"\n{signal_name} recibida, cerrando gateway de forma segura...")
+    
+    if gateway:
+        try:
+            # Detener el gateway
+            gateway.stop()
+            gateway.running = False  # Asegurar que el loop principal termine
+            
+            # Si hay una GUI thread activa, intentar cerrarla
+            if gateway._gui_thread and gateway._gui_thread.is_alive():
+                logger.info("Intentando cerrar GUI thread...")
+                try:
+                    import tkinter as tk
+                    # Buscar la ventana raíz de Tkinter si existe
+                    try:
+                        root = tk.Tk()
+                        root.quit()
+                        root.destroy()
+                    except:
+                        pass
+                except:
+                    pass
+                
+                # Esperar un poco a que se cierre
+                import time
+                time.sleep(1)
+        except Exception as e:
+            logger.error(f"Error en stop(): {e}")
+    
+    logger.success("Gateway cerrado")
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     sys.exit(0)
 
 
@@ -759,15 +1047,61 @@ def main():
         if gateway.start():
             logger.success("Gateway operativo")
             
+<<<<<<< HEAD
             # Loop principal
             while gateway.running:
                 time.sleep(10)
                 gateway._try_reconnect_mqtt()
                 gateway.print_status()
+=======
+            # Loop principal - Responde rápido a Ctrl+C
+            # El sleep de 1s es lo suficientemente corto para ser responsivo con signals
+            status_counter = 0
+            while gateway.running:
+                time.sleep(1)
+                status_counter += 1
+                
+                # Intentar reconectar MQTT cada 30 segundos
+                if status_counter % 30 == 0:
+                    gateway._try_reconnect_mqtt()
+                
+                # Mostrar estado cada 60 segundos
+                if status_counter % 60 == 0:
+                    gateway.print_status()
+            
+            # Si hay thread GUI, esperar a que termine (cuando usuario cierra ventana)
+            # IMPORTANTE: Con timeout para no quedar stuck si Tkinter no responde
+            if gateway._gui_thread and gateway._gui_thread.is_alive():
+                logger.info("Esperando a que se cierre la GUI (timeout=5s)...")
+                gateway._gui_thread.join(timeout=5)
+                
+                # Si sigue vivo después del timeout, forzar salida
+                if gateway._gui_thread.is_alive():
+                    logger.warning("GUI thread no respondió en tiempo, forzando salida...")
+                    sys.exit(0)
+        
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         else:
             logger.error("No se pudo iniciar el gateway")
             sys.exit(1)
     
+<<<<<<< HEAD
+=======
+    except KeyboardInterrupt:
+        # Por si acaso Ctrl+C llega directamente aquí
+        logger.info("\nCtrl+C recibido en main(), cerrando...")
+        if gateway:
+            try:
+                gateway.stop()
+                gateway.running = False
+                # Esperar al thread GUI si existe (timeout corto)
+                if gateway._gui_thread and gateway._gui_thread.is_alive():
+                    gateway._gui_thread.join(timeout=2)
+            except Exception as e:
+                logger.error(f"Error en stop(): {e}")
+        sys.exit(0)
+    
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     except Exception as e:
         logger.critical(f"Error fatal: {e}")
         if gateway:

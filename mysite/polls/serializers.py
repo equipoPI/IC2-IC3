@@ -9,9 +9,23 @@ from django.utils import timezone
 
 class CustomRegisterSerializer(DefaultRegisterSerializer):
     registration_key = serializers.CharField(write_only=True, required=True)
+<<<<<<< HEAD
     first_name = serializers.CharField(write_only=True, required=True)
     last_name = serializers.CharField(write_only=True, required=True)
 
+=======
+    documento = serializers.CharField(write_only=True, required=True)
+    first_name = serializers.CharField(write_only=True, required=True)
+    last_name = serializers.CharField(write_only=True, required=True)
+
+    def to_internal_value(self, data):
+        # Si se provee documento pero no username, asignarlo automáticamente
+        if data and 'documento' in data and 'username' not in data:
+            data = data.copy()
+            data['username'] = data['documento']
+        return super().to_internal_value(data)
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     def validate_registration_key(self, value):
         # Primero, intentar obtener la clave activa desde la base de datos (editable por admin)
         db_key = RegistrationConfig.get_current_key()
@@ -33,19 +47,125 @@ class CustomRegisterSerializer(DefaultRegisterSerializer):
             raise serializers.ValidationError('Correo ya existente.')
         return value
 
+<<<<<<< HEAD
     def get_cleaned_data(self):
         data = super().get_cleaned_data()
         # registration_key is only used for validation, not stored
+=======
+    def validate_documento(self, value):
+        if not value:
+            raise serializers.ValidationError('El documento es obligatorio.')
+        doc = str(value).strip()
+        if not doc.isdigit():
+            raise serializers.ValidationError('El documento debe contener solo números.')
+        
+        # Validar si ya existe en Empleado
+        from .models import Empleado
+        if Empleado.objects.filter(documento=doc).exists():
+            raise serializers.ValidationError('Este documento ya está registrado.')
+        
+        # Validar si ya existe en User
+        if User.objects.filter(username=doc).exists():
+            raise serializers.ValidationError('Este documento ya está registrado como usuario.')
+        return doc
+
+    def get_cleaned_data(self):
+        data = super().get_cleaned_data()
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         data.pop('registration_key', None)
         # Asegurar que se incluyan nombres y apellidos en los datos limpios
         data['first_name'] = self.validated_data.get('first_name', '')
         data['last_name'] = self.validated_data.get('last_name', '')
+<<<<<<< HEAD
         # Asegurar que exista `username` — usar la parte local del email si falta
         if not data.get('username'):
             email = data.get('email', '')
             username = email.split('@')[0] if email else f'user_{int(time.time())}'
             data['username'] = username
         return data
+=======
+        # Usar siempre el documento como username para normalizar
+        documento = self.validated_data.get('documento', '').strip()
+        data['username'] = documento
+        return data
+
+    def save(self, request):
+        user = super().save(request)
+        # La señal post_save ya creó el Empleado básico con documento = instance.username
+        # Ahora actualizamos los campos opcionales del Empleado desde initial_data
+        try:
+            documento = self.validated_data.get('documento', '').strip()
+            if documento:
+                from .models import Empleado, Fabrica, Seccion
+                from django.utils import timezone
+                import random, string
+
+                emp = Empleado.objects.filter(user=user).first()
+                is_new = False
+                if not emp:
+                    # En caso de que la señal no lo haya creado por falta de fábricas u otro error
+                    emp = Empleado(user=user, documento=documento)
+                    is_new = True
+
+                emp.nombre = user.first_name or self.validated_data.get('first_name', '')
+                emp.apellido = user.last_name or self.validated_data.get('last_name', '')
+                emp.email = user.email or ''
+
+                # Campos opcionales / Valores por defecto
+                direccion = self.initial_data.get('direccion')
+                if direccion:
+                    emp.direccion = direccion
+                elif is_new:
+                    emp.direccion = ''
+
+                fecha_contratacion = self.initial_data.get('fecha_contratacion')
+                if fecha_contratacion:
+                    emp.fecha_contratacion = fecha_contratacion
+                elif is_new or not emp.fecha_contratacion:
+                    emp.fecha_contratacion = timezone.now().date()
+
+                if is_new or not emp.rango:
+                    emp.rango = '6'  # Operador por defecto en registro público
+
+                # Generar clave única si es nuevo o no tiene
+                if not emp.clave:
+                    chars = string.ascii_uppercase + string.digits
+                    clave = ''.join(random.choices(chars, k=8))
+                    while Empleado.objects.filter(clave=clave).exists():
+                        clave = ''.join(random.choices(chars, k=8))
+                    emp.clave = clave
+
+                # Fábrica y Sección
+                fabrica_id = self.initial_data.get('fabrica')
+                if fabrica_id:
+                    try:
+                        emp.fabrica = Fabrica.objects.get(id=fabrica_id)
+                    except Fabrica.DoesNotExist:
+                        pass
+                elif is_new or not getattr(emp, 'fabrica', None):
+                    # Asignar la primera fábrica por defecto
+                    emp.fabrica = Fabrica.objects.first()
+
+                seccion_id = self.initial_data.get('seccion')
+                if seccion_id:
+                    try:
+                        emp.seccion = Seccion.objects.get(id=seccion_id)
+                    except Seccion.DoesNotExist:
+                        pass
+                elif is_new or not getattr(emp, 'seccion', None):
+                    # Asignar la primera sección de la fábrica por defecto
+                    if emp.fabrica:
+                        emp.seccion = Seccion.objects.filter(fabrica=emp.fabrica).first()
+
+                # Guardar el registro de empleado (solo si se pudieron resolver fábrica y sección requeridas)
+                if getattr(emp, 'fabrica', None) and getattr(emp, 'seccion', None):
+                    emp.save()
+        except Exception:
+            pass
+        return user
+
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 """
 Serializers para Django REST Framework - Sistema SCADA
 """
@@ -74,6 +194,10 @@ from .models import (
 )
 from .models import ConfiguracionMQTT, DispositivoSCADA, LecturaSensor
 from . import models
+<<<<<<< HEAD
+=======
+from allauth.account.models import EmailAddress
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 
 # =========================
@@ -83,12 +207,17 @@ from . import models
 
 class ProfileSerializer(serializers.ModelSerializer):
     user_username = serializers.CharField(source='user.username', read_only=True)
+<<<<<<< HEAD
+=======
+    role = serializers.SerializerMethodField(read_only=True)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
     class Meta:
         model = models.Profile
         fields = ['id', 'user', 'user_username', 'role', 'telefono', 'email_confirmed', 'last_seen', 'created_at']
         read_only_fields = ['created_at', 'last_seen']
 
+<<<<<<< HEAD
 
 class UserSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer(read_only=True)
@@ -101,6 +230,43 @@ class UserSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop('password')
+=======
+    def get_role(self, obj):
+        try:
+            return getattr(obj, 'role', 'operator')
+        except Exception:
+            return 'operator'
+
+
+class UserSerializer(serializers.ModelSerializer):
+    profile = ProfileSerializer(read_only=True)
+    empleado = serializers.SerializerMethodField(read_only=True)
+    password = serializers.CharField(write_only=True, required=False)
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'password', 'is_active', 'is_staff', 'is_superuser', 'profile', 'empleado']
+        extra_kwargs = {'is_active': {'read_only': True}}
+
+    def get_empleado(self, obj):
+        try:
+            emp = getattr(obj, 'empleado', None)
+            if emp:
+                doc = str(getattr(emp, 'documento', ''))
+                return {
+                    'id': doc,
+                    'documento': doc,
+                    'rango': str(getattr(emp, 'rango', '1')),
+                    'fabrica': emp.fabrica_id if getattr(emp, 'fabrica_id', None) else (emp.fabrica.id if getattr(emp, 'fabrica', None) else None),
+                    'seccion': emp.seccion_id if getattr(emp, 'seccion_id', None) else (emp.seccion.id if getattr(emp, 'seccion', None) else None),
+                }
+        except Exception:
+            pass
+        return None
+
+    def create(self, validated_data):
+        password = validated_data.pop('password', None)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         username = validated_data.get('username')
         email = validated_data.get('email')
         # Crear usuario inactivo por defecto; se activará tras confirmación por email
@@ -108,7 +274,12 @@ class UserSerializer(serializers.ModelSerializer):
         user.username = username
         user.email = email
         user.is_active = False
+<<<<<<< HEAD
         user.set_password(password)
+=======
+        if password:
+            user.set_password(password)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         user.save()
         return user
 
@@ -118,12 +289,98 @@ class UserSerializer(serializers.ModelSerializer):
 # Serializers Básicos
 # =============================================================================
 
+<<<<<<< HEAD
 class FabricaSerializer(serializers.ModelSerializer):
     """Serializer para Plantas/Fábricas con métricas SCADA"""
+=======
+class MetricaConfiguracionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.MetricaConfiguracion
+        fields = '__all__'
+
+
+class VariableVinculadaSerializer(serializers.ModelSerializer):
+    metrica_nombre = serializers.CharField(source='metrica_config.nombre', read_only=True)
+    metrica_unidad = serializers.CharField(source='metrica_config.unidad_medida', read_only=True)
+    metrica_icono = serializers.CharField(source='metrica_config.icono', read_only=True)
+    sensor_nombre = serializers.CharField(source='sensor.nombre', read_only=True)
+    valor_lectura = serializers.SerializerMethodField(read_only=True)
+    unidad_lectura = serializers.SerializerMethodField(read_only=True)
+    estado_alerta = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = models.VariableVinculada
+        fields = '__all__'
+
+    def get_valor_lectura(self, obj):
+        if obj.sensor:
+            lectura = obj.sensor.lecturas.first()
+            return lectura.valor if lectura else None
+        return None
+
+    def get_unidad_lectura(self, obj):
+        if obj.sensor:
+            lectura = obj.sensor.lecturas.first()
+            return lectura.unidad if lectura else "N/A"
+        return "N/A"
+
+    def get_estado_alerta(self, obj):
+        if not obj.sensor:
+            return "normal"
+        lectura = obj.sensor.lecturas.first()
+        if not lectura:
+            return "normal"
+        val = lectura.valor
+        
+        if obj.umbral_critico is not None and val >= obj.umbral_critico:
+            return "critico"
+        if obj.umbral_advertencia is not None and val >= obj.umbral_advertencia:
+            return "advertencia"
+        return "normal"
+
+
+class FabricaSerializer(serializers.ModelSerializer):
+    """Serializer para Plantas/Fábricas con métricas SCADA"""
+    from datetime import datetime as _datetime
+    fecha_creacion = serializers.SerializerMethodField(read_only=True)
+    variables_vinculadas = serializers.SerializerMethodField(read_only=True)
+    alarmas_activas = serializers.SerializerMethodField(read_only=True)
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     class Meta:
         model = Fabrica
         fields = '__all__'
 
+<<<<<<< HEAD
+=======
+    def get_alarmas_activas(self, obj):
+        try:
+            return obj.alarmas_sistema.filter(estado='abierta').count()
+        except Exception:
+            return 0
+
+    def get_variables_vinculadas(self, obj):
+        vins = obj.variables_vinculadas.filter(activo=True)
+        return VariableVinculadaSerializer(vins, many=True).data
+
+    def get_fecha_creacion(self, obj):
+        val = getattr(obj, 'fecha_creacion', None)
+        if val is None:
+            return None
+        # Aceptar date o datetime
+        try:
+            if isinstance(val, self._meta.model._meta.get_field('fecha_creacion').__class__):
+                # fallback
+                return str(val)
+        except Exception:
+            pass
+        # Si es datetime, devolver la parte date formateada
+        import datetime as _dt
+        if isinstance(val, _dt.datetime):
+            return val.date().isoformat()
+        return val.isoformat() if hasattr(val, 'isoformat') else str(val)
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 # class SeccionSerializer(serializers.ModelSerializer):
 #     """Serializer para Secciones"""
@@ -170,14 +427,38 @@ class FabricaSerializer(serializers.ModelSerializer):
 
 class DispositivoSCADASerializer(serializers.ModelSerializer):
     """Serializer para Dispositivos SCADA (sensores, actuadores, máquinas)"""
+<<<<<<< HEAD
     sistema_nombre = serializers.CharField(source='sistema.nombre', read_only=True)
     seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
     inventario_nombre = serializers.CharField(source='inventario.nombre', read_only=True)
+=======
+    id = serializers.CharField(source='numero_serie', read_only=True)
+    sistema_nombre = serializers.CharField(source='sistema.nombre', read_only=True)
+    seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
+    inventario_nombre = serializers.CharField(source='inventario.nombre', read_only=True)
+    valor_lectura = serializers.SerializerMethodField(read_only=True)
+    unidad_lectura = serializers.SerializerMethodField(read_only=True)
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
     class Meta:
         model = models.DispositivoSCADA
         fields = '__all__'
 
+<<<<<<< HEAD
+=======
+    def get_valor_lectura(self, obj):
+        return obj.valor_lectura
+
+    def get_unidad_lectura(self, obj):
+        return obj.unidad_lectura if obj.unidad_lectura else "N/A"
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        # El estado de conexión viene gestionado por el Gateway y el worker MQTT
+        ret['estado'] = instance.estado or "OFFLINE"
+        return ret
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 class DispositivoSCADAListSerializer(serializers.ModelSerializer):
     """Serializer reducido para listado de dispositivos"""
@@ -266,6 +547,7 @@ class OrdenProduccionSerializer(serializers.ModelSerializer):
     
      class Meta:
         model = OrdenProduccion
+<<<<<<< HEAD
         fields = ['id', 'codigo', 'producto', 'cantidad', 'estado', 'fecha_inicio']
 
 
@@ -277,6 +559,24 @@ class OrdenProduccionListSerializer(serializers.ModelSerializer):
          model = OrdenProduccion
          fields = ['codigo', 'producto', 'cantidad', 'unidad', 'estado', 'progreso',
                    'fecha_inicio', 'fecha_fin', 'fabrica_nombre']
+=======
+        fields = '__all__'
+
+
+class OrdenProduccionListSerializer(serializers.ModelSerializer):
+     """Serializer completo para listado de órdenes"""
+     fabrica_nombre = serializers.CharField(source='fabrica.nombre', read_only=True)
+     sistema_nombre = serializers.CharField(source='sistema.nombre', read_only=True)
+     dispositivo_nombre = serializers.CharField(source='dispositivo.nombre', read_only=True)
+     receta_nombre = serializers.CharField(source='receta.nombre', read_only=True)
+    
+     class Meta:
+         model = OrdenProduccion
+         fields = ['id', 'codigo', 'producto', 'cantidad', 'unidad', 'estado', 'progreso',
+                   'fecha_inicio', 'hora_inicio', 'fecha_fin', 'hora_fin',
+                   'fabrica', 'fabrica_nombre', 'sistema', 'sistema_nombre',
+                   'dispositivo', 'dispositivo_nombre', 'receta', 'receta_nombre']
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 
 # -----------------------------------------------------------------------------
@@ -308,6 +608,7 @@ class EmpleadoSerializer(serializers.ModelSerializer):
     seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
     fecha_contratacion = serializers.DateField(required=False, allow_null=True)
     email = serializers.EmailField(required=False, allow_null=True)
+<<<<<<< HEAD
 
     class Meta:
         model = models.Empleado
@@ -315,11 +616,34 @@ class EmpleadoSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'rango': {'required': False},
             'rol_actual': {'required': False},
+=======
+    # Controla si el email debe marcarse como verificado al crear el empleado
+    email_verified = serializers.BooleanField(write_only=True, required=False, default=False)
+
+    # Campos calculados expuestos por la API
+    ultimo_fichaje = serializers.SerializerMethodField(read_only=True)
+    ultimo_inicio_sesion = serializers.SerializerMethodField(read_only=True)
+    # Campo derivado: `rol` legible expuesto a la SPA (derivado desde `rango`; no escribir directamente)
+    rol = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = models.Empleado
+        # Excluir contacto del API: el sistema no debe depender del teléfono
+        fields = [
+            'documento', 'nombre', 'apellido', 'seccion', 'seccion_nombre', 'fabrica', 'fabrica_nombre',
+            'rango', 'rol', 'fecha_contratacion', 'direccion', 'email', 'estado',
+            'ultimo_fichaje', 'ultimo_inicio_sesion', 'email_verified'
+        ]
+        extra_kwargs = {
+            'documento': {'required': False},
+            'rango': {'required': False},
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
             'contacto': {'required': False},
             'direccion': {'required': False},
             'email': {'required': False},
         }
 
+<<<<<<< HEAD
     def create(self, validated_data):
         # Rellenar fecha de contratación por defecto si falta
         if not validated_data.get('fecha_contratacion'):
@@ -352,6 +676,8 @@ class EmpleadoSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
     
+=======
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     def validate_email(self, value):
         # Permitir email opcional, pero validar unicidad si se provee
         if value:
@@ -363,7 +689,11 @@ class EmpleadoSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+<<<<<<< HEAD
         # Documento puede ser opcional desde la SPA; generamos uno si falta
+=======
+        # Generar documento si falta
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         if not validated_data.get('documento'):
             import time
             validated_data['documento'] = f'AUTO-{int(time.time())}'
@@ -373,6 +703,7 @@ class EmpleadoSerializer(serializers.ModelSerializer):
         if not validated_data.get('fecha_contratacion'):
             validated_data['fecha_contratacion'] = now().date()
 
+<<<<<<< HEAD
         empleado = models.Empleado.objects.create(**validated_data)
         return empleado
 
@@ -385,28 +716,313 @@ class EmpleadoSerializer(serializers.ModelSerializer):
             'DIRECTOR': '1',
             'GERENTE': '2',
             'JEFE DE SECCIÓN': '3',
+=======
+        # Asignar fábrica/ sección por defecto si faltan
+        if not validated_data.get('fabrica'):
+            fab = models.Fabrica.objects.first()
+            if fab:
+                validated_data['fabrica'] = fab
+
+        if not validated_data.get('seccion') and validated_data.get('fabrica'):
+            sec = models.Seccion.objects.filter(fabrica=validated_data['fabrica']).first()
+            if sec:
+                validated_data['seccion'] = sec
+
+        # Asegurar clave única
+        if not validated_data.get('clave'):
+            import random, string
+            chars = string.ascii_uppercase + string.digits
+            clave = ''.join(random.choices(chars, k=8))
+            while models.Empleado.objects.filter(clave=clave).exists():
+                clave = ''.join(random.choices(chars, k=8))
+            validated_data['clave'] = clave
+
+        # Extraer flags auxiliares que no forman parte del modelo
+        email_verified = bool(validated_data.pop('email_verified', False))
+
+        # Validaciones mínimas y creación
+        if not validated_data.get('fabrica'):
+            raise serializers.ValidationError({'fabrica': 'No existe ninguna fábrica en el sistema. Crea una fábrica primero o proporciona el campo `fabrica`.'})
+        if not validated_data.get('seccion'):
+            raise serializers.ValidationError({'seccion': 'La sección es obligatoria. Proporciona `seccion` o crea al menos una sección en la fábrica seleccionada.'})
+
+        empleado = models.Empleado.objects.create(**validated_data)
+
+        # Intentar crear usuario y EmailAddress asociado sin bloquear el flujo
+        try:
+            email = (validated_data.get('email') or '').strip()
+            username = str(validated_data.get('documento'))
+
+            user = None
+            if username:
+                user = User.objects.filter(username=username).first()
+            if not user and email:
+                user = User.objects.filter(email__iexact=email).first()
+            if not user:
+                # Crear nuevo User preferiendo `documento` como username si está disponible.
+                preferred_username = username or ''
+                if not preferred_username and email:
+                    preferred_username = email.split('@')[0]
+                if not preferred_username:
+                    preferred_username = f'user_{int(time.time())}'
+                # No escribir en `profile.role`: el rol ahora se deriva desde Empleado.rango.
+
+                # Evitar colisiones: si existe otro usuario con el username preferido, generar alternativo
+                conflict = User.objects.filter(username=preferred_username).exclude(email__iexact=email).first()
+                if conflict:
+                    # preferimos usar el email-match user if exists, else append suffix
+                    preferred_username = f"{preferred_username}_{int(time.time()) % 10000}"
+
+                user = User.objects.create_user(username=preferred_username, email=email or '')
+                user.set_unusable_password()
+                user.is_active = True if email_verified else False
+                # Rellenar nombre y apellido desde el empleado si están vacíos
+                user.first_name = validated_data.get('nombre', '') or ''
+                user.last_name = validated_data.get('apellido', '') or ''
+                user.save()
+
+            # Asociar user al empleado y normalizar username/atributos si es necesario
+            try:
+                # Si el usuario actual no coincide con el username esperado (documento), y no hay colisión, renombrarlo
+                desired_username = str(validated_data.get('documento') or '')
+                if desired_username:
+                    existing_with_desired = User.objects.filter(username=desired_username).exclude(pk=user.pk).first()
+                    if not existing_with_desired and user.username != desired_username:
+                        user.username = desired_username
+                        user.save()
+
+                # Actualizar nombres si están vacíos
+                if (not user.first_name) and validated_data.get('nombre'):
+                    user.first_name = validated_data.get('nombre')
+                if (not user.last_name) and validated_data.get('apellido'):
+                    user.last_name = validated_data.get('apellido')
+                user.save()
+
+                if not getattr(empleado, 'user', None):
+                    empleado.user = user
+                    empleado.save()
+            except Exception:
+                pass
+
+            if email:
+                ea = EmailAddress.objects.filter(user=user, email__iexact=email).first()
+                if not ea:
+                    EmailAddress.objects.create(user=user, email=email, primary=True, verified=email_verified)
+                else:
+                    if ea.verified != email_verified:
+                        ea.verified = email_verified
+                        ea.primary = True
+                        ea.save()
+
+            try:
+                if email_verified and not user.is_active:
+                    user.is_active = True
+                    user.save()
+            except Exception:
+                pass
+
+            try:
+                profile = getattr(user, 'profile', None)
+                if profile and not getattr(profile, 'email_confirmed', False):
+                    profile.email_confirmed = True
+                    profile.save()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        return empleado
+
+    def get_rol(self, obj):
+        # Mapear código rango a etiqueta comprensible por la SPA
+        try:
+            code = str(obj.rango)
+            if code == '8':
+                return 'Administrador'
+            if code in ['1', '2', '3']:
+                return 'Jefe de Sector'
+            return 'Operador'
+        except Exception:
+            # Fallback: valor por defecto
+            return 'Operador'
+
+    def update(self, instance, validated_data):
+        # Comportamiento por defecto
+        instance = super().update(instance, validated_data)
+        # No sincronizamos ni escribimos en `Profile.role`; el rol se deriva.
+        return instance
+
+    def validate_rango(self, value):
+        MAP = {
+            'EMPLEADO': '6', 'JEFE': '3', 'ADMIN': '2', 'DIRECTOR': '1', 'GERENTE': '2',
+            'JEFE DE SECCIÓN': '3', 'ADMINISTRADOR': '2',
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         }
         if value is None:
             return value
         v = str(value).strip().upper()
         if v in MAP:
             return MAP[v]
+<<<<<<< HEAD
         # Si el cliente ya envió el código numérico válido, pásalo
         if v.isdigit() and v in {str(i) for i in range(1,9)}:
             return v
         # Fallback: intentar encontrar clave por palabra
+=======
+        if v.isdigit() and v in {str(i) for i in range(1,9)}:
+            return v
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
         for k in MAP:
             if k in v:
                 return MAP[k]
         raise serializers.ValidationError('Rango inválido')
 
     def update(self, instance, validated_data):
+<<<<<<< HEAD
         # Asignar campos y guardar
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
         return instance
 
+=======
+        # Aplicar cambios al empleado
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Sincronizar cambios relevantes con el User y EmailAddress asociados
+        try:
+            email = (getattr(instance, 'email', '') or '').strip()
+            documento = str(getattr(instance, 'documento', '') or '')
+
+            user = None
+            # Preferir relación directa
+            if getattr(instance, 'user', None):
+                user = instance.user
+
+            # Buscar por username=documento
+            if not user and documento:
+                user = User.objects.filter(username=documento).first()
+
+            # Buscar por email
+            if not user and email:
+                user = User.objects.filter(email__iexact=email).first()
+
+            # Si no existe un usuario asociado, crear uno mínimo
+            if not user:
+                preferred_username = documento or (email.split('@')[0] if email else f'user_{int(time.time())}')
+                conflict = User.objects.filter(username=preferred_username).first()
+                if conflict:
+                    preferred_username = f"{preferred_username}_{int(time.time()) % 10000}"
+                user = User.objects.create_user(username=preferred_username, email=email or '')
+                user.set_unusable_password()
+                user.save()
+                instance.user = user
+                instance.save()
+
+            # Actualizar nombre/apellido
+            changed = False
+            if instance.nombre and user.first_name != instance.nombre:
+                user.first_name = instance.nombre
+                changed = True
+            if instance.apellido and user.last_name != instance.apellido:
+                user.last_name = instance.apellido
+                changed = True
+
+            # Intentar normalizar username si documento cambió
+            if documento and user.username != documento:
+                existing = User.objects.filter(username=documento).exclude(pk=user.pk).first()
+                if not existing:
+                    user.username = documento
+                    changed = True
+
+            # Actualizar email si cambió
+            if email and user.email != email:
+                user.email = email
+                changed = True
+
+            if changed:
+                user.save()
+
+            # Asegurar EmailAddress sincronizada
+            if email:
+                ea = EmailAddress.objects.filter(user=user, email__iexact=email).first()
+                if not ea:
+                    EmailAddress.objects.create(user=user, email=email, primary=True, verified=False)
+                else:
+                    if not ea.primary:
+                        ea.primary = True
+                        ea.save()
+        except Exception:
+            # No bloquear la actualización del empleado por errores en sincronización
+            pass
+
+        return instance
+
+    def get_ultimo_fichaje(self, obj):
+        try:
+            last = None
+            try:
+                last = obj.fichajes.order_by('-fecha', '-id').first()
+            except Exception:
+                last = None
+            if last:
+                fecha = getattr(last, 'fecha', None)
+                hora = getattr(last, 'hora_entrada', None)
+                if fecha and hora:
+                    return f"{fecha.isoformat()} {hora.isoformat()}"
+                if fecha:
+                    return fecha.isoformat()
+            try:
+                inicio = self.get_ultimo_inicio_sesion(obj)
+                if inicio:
+                    return inicio
+            except Exception:
+                pass
+            return ''
+        except Exception:
+            return ''
+
+    def get_ultimo_inicio_sesion(self, obj):
+        try:
+            doc = getattr(obj, 'documento', None)
+            if not doc:
+                return ''
+            from django.contrib.auth.models import User
+            from django.db.models import Q
+            # Buscar usuario por username igual al documento o por email del empleado
+            user = None
+            try:
+                user = User.objects.filter(Q(username=doc)).first()
+            except Exception:
+                user = None
+            if not user:
+                emp_email = getattr(obj, 'email', None) or ''
+                if emp_email:
+                    try:
+                        user = User.objects.filter(Q(email__iexact=emp_email)).first()
+                    except Exception:
+                        user = None
+            # Si no hay user directo, intentar por EmailAddress que apunte al usuario
+            if not user:
+                try:
+                    ea = EmailAddress.objects.filter(email__iexact=(getattr(obj, 'email', '') or '')).first()
+                    if ea:
+                        user = getattr(ea, 'user', None)
+                except Exception:
+                    user = None
+            if user:
+                if getattr(user, 'last_login', None):
+                    return user.last_login.isoformat()
+                profile = getattr(user, 'profile', None)
+                if profile and getattr(profile, 'last_seen', None):
+                    return profile.last_seen.isoformat()
+            return ''
+        except Exception:
+            return ''
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 class InventarioSerializer(serializers.ModelSerializer):
     fabrica_nombre = serializers.CharField(source='fabrica.nombre', read_only=True)
@@ -460,6 +1076,36 @@ class RegistroMantenimientoSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+<<<<<<< HEAD
+=======
+class RegistroAuditoriaSerializer(serializers.ModelSerializer):
+    usuario_username = serializers.CharField(source='usuario.username', read_only=True)
+    topico = serializers.SerializerMethodField(read_only=True)
+    timestamp = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model = models.RegistroAuditoria
+        fields = ['id', 'usuario', 'usuario_username', 'accion', 'modulo', 'objeto', 'descripcion', 'datos', 'ip_origen', 'timestamp', 'topico']
+        read_only_fields = ['timestamp', 'usuario_username', 'topico']
+
+    def get_topico(self, obj):
+        if obj.datos and isinstance(obj.datos, dict):
+            if 'topico' in obj.datos:
+                return obj.datos['topico']
+            if 'topic' in obj.datos:
+                return obj.datos['topic']
+        if obj.descripcion:
+            import re
+            m = re.search(r'\(Topic:\s*([^\)]+)\)', obj.descripcion)
+            if m:
+                return m.group(1).strip()
+            m2 = re.search(r'topic\s+([^\s,]+)', obj.descripcion, re.IGNORECASE)
+            if m2:
+                return m2.group(1).strip()
+        return None
+
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 class SistemaSerializer(serializers.ModelSerializer):
     fabrica_nombre = serializers.CharField(source='fabrica.nombre', read_only=True)
 
@@ -487,6 +1133,12 @@ class MantenimientoProgramadoSerializer(serializers.ModelSerializer):
 
 
 class UnidadAlmacenamientoSerializer(serializers.ModelSerializer):
+<<<<<<< HEAD
+=======
+    seccion_nombre = serializers.CharField(source='seccion.nombre', read_only=True)
+    sistema_nombre = serializers.CharField(source='sistema.nombre', read_only=True)
+
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     class Meta:
         model = models.UnidadAlmacenamiento
         fields = '__all__'
@@ -595,3 +1247,33 @@ class TopicMQTTSerializer(serializers.ModelSerializer):
 #     alarmas_activas = serializers.IntegerField()
 #     ordenes_pendientes = serializers.IntegerField()
 #     ordenes_en_proceso = serializers.IntegerField()
+<<<<<<< HEAD
+=======
+
+
+class AlarmaSerializer(serializers.ModelSerializer):
+    planta_nombre = serializers.ReadOnlyField(source='planta.nombre')
+    seccion_nombre = serializers.ReadOnlyField(source='seccion.nombre')
+    fecha_hora = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+
+    class Meta:
+        model = models.Alarma
+        fields = '__all__'
+
+
+class MapeoAccionMQTTSerializer(serializers.ModelSerializer):
+    tipo_sistema_display = serializers.CharField(source='get_tipo_sistema_display', read_only=True)
+    sistema_nombre = serializers.CharField(source='sistema.nombre', read_only=True)
+
+    class Meta:
+        model = models.MapeoAccionMQTT
+        fields = '__all__'
+
+
+class RegistrationConfigSerializer(serializers.ModelSerializer):
+    actualizado_en = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S", read_only=True)
+
+    class Meta:
+        model = models.RegistrationConfig
+        fields = ['id', 'clave', 'activo', 'actualizado_en']
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385

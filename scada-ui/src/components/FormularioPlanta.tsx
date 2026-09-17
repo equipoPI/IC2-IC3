@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import { useState } from "react";
+=======
+import { useState, useEffect } from "react";
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 import {
   Dialog,
   DialogContent,
@@ -42,7 +46,16 @@ const paises = [
   "Francia",
 ];
 
+<<<<<<< HEAD
 const estados = ["Operativo", "En Mantenimiento", "Inactivo"];
+=======
+const estados = [
+  { value: "OPERATIVO", label: "Operativo" },
+  { value: "ADVERTENCIA", label: "Advertencia" },
+  { value: "CRITICO", label: "Crítico" },
+  { value: "OFFLINE", label: "Offline" },
+];
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 const FormularioPlanta = ({
   open,
@@ -50,6 +63,7 @@ const FormularioPlanta = ({
   onSubmit,
   initialData,
 }: FormularioPlantaProps) => {
+<<<<<<< HEAD
   const [formData, setFormData] = useState<PlantaFormData>(
     initialData || {
       nombre: "",
@@ -58,11 +72,38 @@ const FormularioPlanta = ({
       estado: "Operativo",
     }
   );
+=======
+  const [formData, setFormData] = useState<PlantaFormData>({
+    nombre: "",
+    ubicacion: "",
+    pais: "",
+    estado: "OPERATIVO",
+  });
+
+  useEffect(() => {
+    if (open) {
+      if (initialData) {
+        setFormData(initialData);
+      } else {
+        setFormData({
+          nombre: "",
+          ubicacion: "",
+          pais: "",
+          estado: "OPERATIVO",
+        });
+      }
+    }
+  }, [initialData, open]);
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit(formData);
+<<<<<<< HEAD
     setFormData({ nombre: "", ubicacion: "", pais: "", estado: "Operativo" });
+=======
+    setFormData({ nombre: "", ubicacion: "", pais: "", estado: "OPERATIVO" });
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
     onOpenChange(false);
   };
 
@@ -144,10 +185,17 @@ const FormularioPlanta = ({
                 <SelectTrigger className="bg-background border-border">
                   <SelectValue placeholder="Seleccionar estado" />
                 </SelectTrigger>
+<<<<<<< HEAD
                 <SelectContent>
                   {estados.map((estado) => (
                     <SelectItem key={estado} value={estado}>
                       {estado}
+=======
+                <SelectContent className="bg-popover border-border">
+                  {estados.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
                     </SelectItem>
                   ))}
                 </SelectContent>

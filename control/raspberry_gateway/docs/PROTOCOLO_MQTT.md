@@ -1,10 +1,25 @@
 # Protocolo MQTT - Sistema SCADA
 
+<<<<<<< HEAD
 Documentación detallada del protocolo de comunicación MQTT entre la Raspberry Pi Gateway y la aplicación web.
 
 ## 📡 Estructura de Topics
 
 Todos los topics siguen la estructura base: `scada/{planta_id}/...`
+=======
+> ⚠️ **NOTA DE ARQUITECTURA:**  
+> Este documento describe la estructura **legada/histórica** (`scada/planta1/...`).  
+> En el sistema de producción activo, la estructura es **dinámica y multinquilino**:  
+> $$\mathbf{\{tenant\} / \{gateway\_id\} / \{sector\} / \{sistema\} / \dots}$$  
+> *(Ejemplo por defecto: `rafaela_sa/d83add60dbb0/a1/linea_mezclado_1/...`)*.  
+> Para consultar la especificación completa y vigente, referirse a [`MQTT_TOPICS_SOPORTADOS.md`](../../MQTT_TOPICS_SOPORTADOS.md).
+
+Documentación detallada del protocolo de comunicación MQTT entre la Raspberry Pi Gateway y la aplicación web.
+
+## 📡 Estructura de Topics Legados
+
+Todos los topics legados siguen la estructura base: `scada/{planta_id}/...`
+>>>>>>> 47cfd00238b716167f1fba74d6ec7a5a96b2b385
 
 ### Base Topic
 ```
