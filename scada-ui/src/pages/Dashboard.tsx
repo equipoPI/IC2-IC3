@@ -4,6 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { useEffect, useState } from "react";
 import apiFetch from "@/lib/api";
+import { isProcessDevice } from "@/components/scada/scadaConstants";
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -63,7 +64,8 @@ const Dashboard = () => {
         let onlineSensorsStr = '-';
         if (dispResp.status === 'fulfilled' && dispResp.value.ok) {
           const jd = await dispResp.value.json();
-          const list = Array.isArray(jd) ? jd : jd.results || [];
+          const rawList = Array.isArray(jd) ? jd : jd.results || [];
+          const list = rawList.filter((d: any) => !isProcessDevice(d));
           let onlineCount = 0;
           list.forEach((d: any) => {
             const st = String(d.estado || '').toUpperCase();
