@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import apiFetch from '@/lib/api';
-import { Save, RotateCcw, BoxSelect, Cpu, Layers, AlertCircle, Lock, Unlock } from 'lucide-react';
+import { Save, RotateCcw, BoxSelect, Cpu, Layers, AlertCircle } from 'lucide-react';
 import { useScadaWebSocket } from '@/hooks/useScadaWebSocket';
 
 
@@ -49,6 +49,9 @@ interface ScadaFlowDiagramProps {
   secciones?: any[];
   sistemas?: any[];
   plantas?: any[];
+  procesoEstado?: number | null;
+  procesoHoras?: number | null;
+  procesoMinutos?: number | null;
 }
 
 const ScadaFlowDiagram = ({
@@ -57,14 +60,17 @@ const ScadaFlowDiagram = ({
   selectedSistema,
   secciones = [],
   sistemas = [],
-  plantas = []
+  plantas = [],
+  procesoEstado,
+  procesoHoras,
+  procesoMinutos
 }: ScadaFlowDiagramProps) => {
   const [dispositivos, setDispositivos] = useState<any[]>([]);
   const [unidadesAlmacenamiento, setUnidadesAlmacenamiento] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Layout storage key per system selection
-  const storageKey = `scada_layout_${selectedSistema || 'global'}_sec_${selectedSeccion || 'all'}_pl_${selectedPlanta || 'all'}`;
+  // Global layout storage key for canonical diagram positions
+  const storageKey = 'scada_diagram_layout';
 
   // Fetch real dispositivos (/sensores) and unidades de almacenamiento (/almacenamiento)
   const loadData = async () => {
@@ -89,22 +95,29 @@ const ScadaFlowDiagram = ({
     }
   };
 
+  const lastLoadTimeRef = useRef<number>(0);
+
   useScadaWebSocket({
-    onMessage: () => {
-      if (document.visibilityState === 'visible') {
-        loadData();
+    onMessage: (data) => {
+      if (!data) return;
+      const now = Date.now();
+      if (now - lastLoadTimeRef.current > 1000) {
+        lastLoadTimeRef.current = now;
+        if (document.visibilityState === 'visible') {
+          loadData();
+        }
       }
     }
   });
 
   useEffect(() => {
     loadData();
-    // Sondeo de alta frecuencia cada 1.5s sincronizado con el ciclo de telemetría de hardware
+    // Sondeo pasivo de respaldo cada 15s para sincronizar estado BD
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         loadData();
       }
-    }, 1500);
+    }, 15000);
     return () => clearInterval(interval);
   }, [selectedSistema, selectedPlanta, selectedSeccion]);
 
@@ -114,20 +127,32 @@ const ScadaFlowDiagram = ({
     let result = dispositivos;
 
     if (selectedSistema !== 'seleccionar' && selectedSistema !== 'todas') {
-      return result.filter(d => d.sistema && String(d.sistema) === selectedSistema);
+      const matchSys = (d: any) => {
+        const sysId = typeof d.sistema === 'object' ? String(d.sistema?.id || '') : String(d.sistema || '');
+        const sysName = typeof d.sistema === 'object' ? String(d.sistema?.nombre || '') : '';
+        return sysId === selectedSistema || sysName === selectedSistema;
+      };
+      const filtered = result.filter(matchSys);
+      return filtered.length > 0 ? filtered : result;
     }
 
     if (selectedSeccion !== 'seleccionar' && selectedSeccion !== 'todas') {
-      return result.filter(d => d.seccion && String(d.seccion) === selectedSeccion);
+      const matchSec = (d: any) => {
+        const secId = typeof d.seccion === 'object' ? String(d.seccion?.id || '') : String(d.seccion || '');
+        return secId === selectedSeccion;
+      };
+      const filtered = result.filter(matchSec);
+      return filtered.length > 0 ? filtered : result;
     }
 
     if (selectedPlanta !== 'seleccionar' && selectedPlanta !== 'todas') {
-      return result.filter(d => {
-        const seccionObj = secciones.find(s => String(s.id) === String(d.seccion));
+      const filtered = result.filter(d => {
+        const seccionObj = secciones.find(s => String(s.id) === String(typeof d.seccion === 'object' ? d.seccion?.id : d.seccion));
         if (seccionObj && String(seccionObj.fabrica) === selectedPlanta) return true;
-        const sistemaObj = sistemas.find(s => String(s.id) === String(d.sistema));
+        const sistemaObj = sistemas.find(s => String(s.id) === String(typeof d.sistema === 'object' ? d.sistema?.id : d.sistema));
         return sistemaObj ? String(sistemaObj.fabrica) === selectedPlanta : false;
       });
+      return filtered.length > 0 ? filtered : result;
     }
 
     return result;
@@ -138,26 +163,40 @@ const ScadaFlowDiagram = ({
     let result = unidadesAlmacenamiento;
 
     if (selectedSistema !== 'seleccionar' && selectedSistema !== 'todas') {
-      return result.filter(u => u.sistema && String(u.sistema) === selectedSistema);
+      const matchSys = (u: any) => {
+        const sysId = typeof u.sistema === 'object' ? String(u.sistema?.id || '') : String(u.sistema || '');
+        const sysName = typeof u.sistema === 'object' ? String(u.sistema?.nombre || '') : '';
+        return sysId === selectedSistema || sysName === selectedSistema;
+      };
+      const filtered = result.filter(matchSys);
+      return filtered.length > 0 ? filtered : result;
     }
 
     if (selectedSeccion !== 'seleccionar' && selectedSeccion !== 'todas') {
-      return result.filter(u => u.seccion && String(u.seccion) === selectedSeccion);
+      const matchSec = (u: any) => {
+        const secId = typeof u.seccion === 'object' ? String(u.seccion?.id || '') : String(u.seccion || '');
+        return secId === selectedSeccion;
+      };
+      const filtered = result.filter(matchSec);
+      return filtered.length > 0 ? filtered : result;
     }
 
     if (selectedPlanta !== 'seleccionar' && selectedPlanta !== 'todas') {
-      return result.filter(u => {
-        const sistemaObj = sistemas.find(s => String(s.id) === String(u.sistema));
+      const filtered = result.filter(u => {
+        const sistemaObj = sistemas.find(s => String(s.id) === String(typeof u.sistema === 'object' ? u.sistema?.id : u.sistema));
         if (sistemaObj && String(sistemaObj.fabrica) === selectedPlanta) return true;
-        const seccionObj = secciones.find(s => String(s.id) === String(u.seccion));
+        const seccionObj = secciones.find(s => String(s.id) === String(typeof u.seccion === 'object' ? u.seccion?.id : u.seccion));
         return seccionObj ? String(seccionObj.fabrica) === selectedPlanta : false;
       });
+      return filtered.length > 0 ? filtered : result;
     }
 
     return result;
   }, [unidadesAlmacenamiento, selectedPlanta, selectedSeccion, selectedSistema, sistemas, secciones]);
 
   const isSelectionIncomplete = selectedPlanta === 'seleccionar' || selectedSeccion === 'seleccionar' || selectedSistema === 'seleccionar';
+
+  const savedPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
 
   // Generate ReactFlow Nodes from registered devices and storage units with canonical P&ID topology (15 Componentes: 12 sistema + 3 tanques)
   const initialNodes = useMemo(() => {
@@ -190,6 +229,9 @@ const ScadaFlowDiagram = ({
     });
 
     const computeTankLevel = (info?: { value: number; unit?: string }, unitObj?: any, fallback = 50) => {
+      if (unitObj && unitObj.capacidad && unitObj.capacidad > 0 && unitObj.volumen_actual !== undefined && unitObj.volumen_actual !== null) {
+        return Math.round(Math.max(0, Math.min(100, ((unitObj.volumen_actual || 0) / unitObj.capacidad) * 100)));
+      }
       if (info !== undefined && !isNaN(info.value)) {
         const val = info.value;
         if (info.unit === '%' || (val > 35 && val <= 100)) {
@@ -201,9 +243,6 @@ const ScadaFlowDiagram = ({
         }
         if (val === 0) return 0;
         return Math.round(Math.max(0, Math.min(100, val)));
-      }
-      if (unitObj && unitObj.capacidad && unitObj.capacidad > 0) {
-        return Math.round(Math.max(0, Math.min(100, ((unitObj.volumen_actual || 0) / unitObj.capacidad) * 100)));
       }
       return fallback;
     };
@@ -444,7 +483,15 @@ const ScadaFlowDiagram = ({
     // 12. MEZCLADOR (mixer-1)
     const devMixer = findDevice('mixer-1');
     if (devMixer || showMockFallbacks) {
-      const isMixerActive = isDeviceActive(devMixer);
+      const isMixerActive = isDeviceActive(devMixer) || procesoEstado === 1;
+
+      let tiempoStr = '';
+      if (procesoHoras && procesoHoras > 0) {
+        tiempoStr = `${procesoHoras}h ${procesoMinutos || 0}m`;
+      } else if (procesoMinutos && procesoMinutos > 0) {
+        tiempoStr = `${procesoMinutos} min`;
+      }
+
       nodesList.push({
         id: 'mixer-1',
         type: 'mixer',
@@ -456,6 +503,8 @@ const ScadaFlowDiagram = ({
           speed: isMixerActive ? 120 : 0,
           temperature: 25,
           estado: devMixer?.estado || 'ONLINE',
+          procesoEstado: procesoEstado ?? undefined,
+          tiempoRestanteStr: tiempoStr || undefined,
         }
       });
     }
@@ -611,17 +660,21 @@ const ScadaFlowDiagram = ({
   }, [edges]);
 
   // Helper para resolver el ID numérico del sistema a partir de selectedSistema
-  const resolveSistemaId = (sysIdOrName: string): string => {
-    if (!sysIdOrName || sysIdOrName === 'todas' || sysIdOrName === 'seleccionar') return '';
-    if (/^\d+$/.test(sysIdOrName)) return sysIdOrName;
-    const found = sistemas.find(s => 
-      String(s.id) === sysIdOrName || 
-      s.nombre?.toLowerCase() === sysIdOrName.toLowerCase() ||
-      s.nombre?.toLowerCase().replace(/\s+/g, '_') === sysIdOrName.toLowerCase() ||
-      sysIdOrName.toLowerCase().includes(s.nombre?.toLowerCase())
-    );
-    if (found) return String(found.id);
-    return sysIdOrName;
+  const resolveSistemaId = (sysIdOrName?: string): string => {
+    if (sysIdOrName && /^\d+$/.test(sysIdOrName)) return sysIdOrName;
+    if (sistemas && sistemas.length > 0) {
+      if (sysIdOrName && sysIdOrName !== 'todas' && sysIdOrName !== 'seleccionar') {
+        const found = sistemas.find(s => 
+          String(s.id) === sysIdOrName || 
+          s.nombre?.toLowerCase() === sysIdOrName.toLowerCase() ||
+          s.nombre?.toLowerCase().replace(/\s+/g, '_') === sysIdOrName.toLowerCase() ||
+          sysIdOrName.toLowerCase().includes(s.nombre?.toLowerCase())
+        );
+        if (found) return String(found.id);
+      }
+      return String(sistemas[0].id);
+    }
+    return '1';
   };
 
   // Helper para cargar layout del backend PostgreSQL
@@ -678,9 +731,10 @@ const ScadaFlowDiagram = ({
       let cachedEdges: Edge[] = defaultInitialEdges;
       let loadedFromDb = false;
 
-      // 1. Intentar cargar desde backend PostgreSQL si hay sistema seleccionado
-      if (selectedSistema && selectedSistema !== 'todas' && selectedSistema !== 'seleccionar') {
-        const dbLayout = await loadBackendLayout(selectedSistema);
+      // 1. Intentar cargar desde backend PostgreSQL
+      const sysIdToLoad = resolveSistemaId(selectedSistema);
+      if (sysIdToLoad) {
+        const dbLayout = await loadBackendLayout(sysIdToLoad);
         if (dbLayout && typeof dbLayout === 'object') {
           if (dbLayout.positions && typeof dbLayout.positions === 'object') cachedPositions = dbLayout.positions;
           if (dbLayout.edges && Array.isArray(dbLayout.edges) && dbLayout.edges.length > 0) cachedEdges = dbLayout.edges;
@@ -709,10 +763,12 @@ const ScadaFlowDiagram = ({
 
       if (!isMounted) return;
 
+      savedPositionsRef.current = { ...savedPositionsRef.current, ...cachedPositions };
+
       const loadedNodes = initialNodes.map(node => {
-        const savedPos = cachedPositions[node.id] ||
-                         (node.data?.node_id && cachedPositions[node.data.node_id]) ||
-                         (node.data?.numero_serie && cachedPositions[node.data.numero_serie]) ||
+        const savedPos = savedPositionsRef.current[node.id] ||
+                         (node.data?.node_id && savedPositionsRef.current[node.data.node_id]) ||
+                         (node.data?.numero_serie && savedPositionsRef.current[node.data.numero_serie]) ||
                          node.position;
         return {
           ...node,
@@ -726,7 +782,7 @@ const ScadaFlowDiagram = ({
 
     initLayout();
     return () => { isMounted = false; };
-  }, [storageKey, selectedSistema]);
+  }, [selectedSistema, sistemas]);
 
   // Merge updated device telemetry into existing nodes WITHOUT resetting node positions or looping!
   useEffect(() => {
@@ -753,11 +809,14 @@ const ScadaFlowDiagram = ({
         const isDataEqual = Object.keys(freshData).every(k => freshData[k] === prevData[k]) &&
                             Object.keys(prevData).every(k => prevData[k] === freshData[k]);
 
-        if (isDataEqual) return prev;
+        const currentPos = savedPositionsRef.current[prev.id] || prev.position;
+
+        if (isDataEqual && prev.position.x === currentPos.x && prev.position.y === currentPos.y) return prev;
 
         hasAnyChange = true;
         return {
           ...prev,
+          position: currentPos,
           data: { ...fresh.data, _ts: Date.now() } // Keep position intact, update data and force ReactFlow node re-render
         };
       });
@@ -828,40 +887,39 @@ const ScadaFlowDiagram = ({
     });
   }, [nodes]);
 
-  // Handle drag stop to auto-persist node positions safely
+  // Handle drag stop to auto-persist node positions safely in PostgreSQL & localStorage
   const onNodeDragStop = useCallback((_: any, node: Node) => {
+    savedPositionsRef.current[node.id] = node.position;
+
     setNodes(prev => {
       const updated = prev.map(n => n.id === node.id ? { ...n, position: node.position } : n);
       nodesRef.current = updated;
+
+      try {
+        const positions: Record<string, { x: number; y: number }> = { ...savedPositionsRef.current };
+        updated.forEach(n => {
+          positions[n.id] = n.position;
+        });
+        savedPositionsRef.current = positions;
+
+        const dataToSave = {
+          positions,
+          edges: edgesRef.current,
+          saved_at: new Date().toISOString()
+        };
+
+        localStorage.setItem(storageKey, JSON.stringify(dataToSave));
+        const targetSysId = resolveSistemaId(selectedSistema);
+        if (targetSysId) {
+          saveBackendLayout(targetSysId, dataToSave);
+        }
+      } catch (e) {
+        console.warn("Error guardando posición de nodo en drag stop:", e);
+      }
+
       return updated;
     });
-
-    try {
-      const positions: Record<string, { x: number; y: number }> = {};
-      nodesRef.current.forEach(n => {
-        positions[n.id] = n.id === node.id ? node.position : n.position;
-      });
-
-      const cached = localStorage.getItem(storageKey);
-      let layout: any = {};
-      if (cached) {
-        try { layout = JSON.parse(cached); } catch {}
-      }
-      const dataToSave = {
-        ...layout,
-        positions,
-        edges: edgesRef.current,
-        saved_at: new Date().toISOString()
-      };
-
-      localStorage.setItem(storageKey, JSON.stringify(dataToSave));
-      if (selectedSistema && selectedSistema !== 'todas' && selectedSistema !== 'seleccionar') {
-        saveBackendLayout(selectedSistema, dataToSave);
-      }
-    } catch (e) {
-      console.warn("Error guardando posición de nodo:", e);
-    }
-  }, [storageKey, selectedSistema]);
+  }, [storageKey, selectedSistema, sistemas]);
 
   // Connect edges interactively by dragging connection lines
   const onConnect = useCallback(
@@ -991,28 +1049,7 @@ const ScadaFlowDiagram = ({
           {nodes.length} Componentes
         </Badge>
         
-        {/* Lock/Unlock diagram editing toggle button */}
-        <Button
-          size="sm"
-          variant={isLocked ? "outline" : "default"}
-          onClick={() => {
-            const nextLocked = !isLocked;
-            setIsLocked(nextLocked);
-            toast({
-              title: nextLocked ? "🔒 Edición del Diagrama Bloqueada" : "🔓 Edición del Diagrama Habilitada",
-              description: nextLocked ? "El candado está cerrado. Los componentes no se pueden desplazar." : "Podés arrastrar y cambiar la posición de los componentes.",
-            });
-          }}
-          className={`h-8 px-2.5 text-xs font-semibold gap-1.5 transition-all shadow-sm ${
-            isLocked
-              ? "border-emerald-500/60 bg-emerald-950/30 text-emerald-300 hover:bg-emerald-900/40"
-              : "bg-amber-600 hover:bg-amber-500 text-white animate-pulse"
-          }`}
-          title={isLocked ? "Candado cerrado: la edición del diagrama está desactivada. Haz clic para desbloquear." : "Candado abierto: la edición está activa. Haz clic para bloquear."}
-        >
-          {isLocked ? <Lock className="h-3.5 w-3.5 text-emerald-400" /> : <Unlock className="h-3.5 w-3.5 text-white" />}
-          <span>{isLocked ? "Bloqueado" : "Modo Edición"}</span>
-        </Button>
+
 
         <Button
           size="sm"
@@ -1067,9 +1104,9 @@ const ScadaFlowDiagram = ({
         onNodeDragStop={onNodeDragStop}
         onConnect={onConnect}
         onEdgeClick={onEdgeClick}
-        nodesDraggable={!isLocked}
-        nodesConnectable={!isLocked}
-        elementsSelectable={!isLocked}
+        nodesDraggable={true}
+        nodesConnectable={true}
+        elementsSelectable={true}
         deleteKeyCode={['Backspace', 'Delete']}
         nodeTypes={nodeTypes}
         fitView

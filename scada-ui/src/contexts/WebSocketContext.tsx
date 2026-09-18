@@ -79,13 +79,13 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         reconnectAttemptsRef.current = 0;
         console.log("[WebSocket SCADA Singleton] Conectado exitosamente a:", url);
 
-        // Iniciar Heartbeat Ping cada 25 segundos para mantener el túnel ngrok despierto
+        // Iniciar Heartbeat Ping cada 10 segundos para mantener el túnel ngrok despierto
         if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
         heartbeatIntervalRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "ping" }));
           }
-        }, 25000);
+        }, 10000);
       };
 
       ws.onmessage = (event) => {
@@ -116,8 +116,8 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setStatus("disconnected");
         if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
 
-        // Reconexión con retroceso exponencial (1s, 2s, 4s... máx 10s)
-        const delay = Math.min(1000 * Math.pow(1.5, reconnectAttemptsRef.current), 10000);
+        // Reconexión rápida con retroceso (500ms, 1s, máx 2s) para túneles ngrok
+        const delay = Math.min(500 * Math.pow(1.5, reconnectAttemptsRef.current), 2000);
         reconnectAttemptsRef.current += 1;
         console.log(`[WebSocket SCADA] Desconectado (${event.reason || "cierre"}). Reconectando en ${Math.round(delay)}ms...`);
 
