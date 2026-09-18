@@ -233,7 +233,7 @@ Estructura: `{tenant}/{gateway_id}/{sector}/{sistema}/proceso/{tipo}`
     "timestamp": 1725890000.0
   }
   ```
-  * `estado`: `0` = Inactivo/Detenido, `1` = En Proceso, `2` = Mezcla Finalizada.
+  * `estado`: `0` = Inactivo/Detenido, `1` = En Proceso, `2` = Mezcla Finalizada, `3` = Pausado.
 
 ### Tiempo Restante en Tiempo Real
 * **Topic:** `rafaela_sa/d83add60dbb0/a1/linea_mezclado_1/proceso/tiempo_restante`
