@@ -665,6 +665,10 @@ void activacion() {
 
   // ========== CONTROL DE TRANSFERENCIA DE LÍQUIDOS ==========
   if (continuar == 1) {
+    // Durante el cargado de líquidos, proyectar el tiempo de mezclado programado
+    horaRest = TiempoHor;
+    minRest = TiempoMin;
+
     // Si la receta no requiere liquido 1 (liquido1 <= 0), marcarlo completado directamente
     if (liquido1 <= 0) {
       terminoLlenadoLiquido1 = 1;
@@ -736,11 +740,11 @@ void activacion() {
     } else {
       EProceso = 1;
 
-      // Cálculo de tiempo restante en tiempo real
+      // Cálculo de tiempo restante en tiempo real con división redondeada hacia arriba (ceil)
       if (tiempoTotalMezclado > tiempoTranscurridoTotal) {
         unsigned long tiempoRestanteMs = tiempoTotalMezclado - tiempoTranscurridoTotal;
         horaRest = tiempoRestanteMs / 3600000UL;
-        minRest = (tiempoRestanteMs % 3600000UL) / 60000UL;
+        minRest = (tiempoRestanteMs % 3600000UL + 59999UL) / 60000UL;
       } else {
         horaRest = 0;
         minRest = 0;
@@ -773,7 +777,7 @@ void activacion() {
       if (activarMezcla == 1) {
         tiempoMezcladoAcumulado += (millis() - TInicioMezclado);
       }
-      EProceso = 0;
+      EProceso = 3; // Estado 3: Pausado
       activarMezcla = 0;
       continuar = 0;
       vaciar = 0;
@@ -795,6 +799,7 @@ void activacion() {
 
   // ========== DESECHAR PRODUCCIÓN ==========
   if (desechar == 1) {
+    EProceso = 0;          // Estado 0: Inactivo / Desechado
     digitalWrite(4, LOW);  // Encender bomba del bombo de mezcla
     EBombaM = 1;
     liquido1 = 0;

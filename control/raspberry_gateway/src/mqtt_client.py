@@ -353,6 +353,22 @@ class MQTTClient:
 
             # Suscribirse a todos los topics de comandos
             self._subscribe_to_topics()
+
+            # Publicar estado online de inmediato en reconexiones automáticas o iniciales
+            try:
+                self.publish_status(True)
+                if self.enable_legacy_topics:
+                    self.publish(
+                        "estado/gateway",
+                        {
+                            "online": True,
+                            "timestamp": time.time(),
+                            "client_id": self.client_id,
+                        },
+                        retain=True,
+                    )
+            except Exception as ex_st:
+                logger.warning(f"Error publicando estado online en _on_connect: {ex_st}")
         else:
             self.connected = False
             self.last_conn_rc = rc
@@ -473,6 +489,15 @@ class MQTTClient:
             True si la conexión fue exitosa
         """
         try:
+            # Si ya existía un cliente previo, detener su loop para evitar colisión de Client ID
+            if self.client:
+                try:
+                    self.client.loop_stop()
+                    self.client.disconnect()
+                except Exception:
+                    pass
+                self.client = None
+
             # Crear cliente MQTT
             self.client = mqtt.Client(client_id=self.client_id)
             
@@ -768,8 +793,15 @@ class MQTTClient:
             })
 
             # 4. Proceso (Estado y tiempo restante)
+            est_code = sensor_data.get("estado_proceso", 0)
+            est_map = {0: "Inactivo", 1: "En Ejecución", 2: "Finalizado", 3: "Pausado"}
+            est_nombre = est_map.get(est_code, "Inactivo")
+            est_texto = est_nombre.upper()
+
             self.publish_structured(sector, system, "proceso", "mezclado", {
-                "estado": sensor_data.get("estado_proceso", 0),
+                "estado": est_code,
+                "estado_nombre": est_nombre,
+                "estado_texto": est_texto,
                 "error": sensor_data.get("error", 0),
                 "timestamp": ts
             })
