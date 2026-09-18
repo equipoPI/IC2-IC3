@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import TablaGestion, { Column } from "@/components/TablaGestion";
 import FormularioSensor, { SensorFormData } from "@/components/FormularioSensor";
 import apiFetch from "@/lib/api";
+import { useScadaWebSocket } from "@/hooks/useScadaWebSocket";
 
 interface Sensor {
   numero_serie: string;
@@ -92,7 +93,9 @@ const GestionSensores = () => {
       if (resp.ok) {
         const data = await resp.json();
         const list = Array.isArray(data) ? data : data.results || [];
-        setSensores(list);
+        const processSeries = ['proceso_tiempo_restante', 'proceso_mezclado', 'tiempo_restante', 'mezclado', 'mezcla', 'proceso_mezcla'];
+        const filtered = list.filter((d: any) => !processSeries.includes(d.numero_serie));
+        setSensores(filtered);
       } else {
         setSensores([]);
       }
@@ -102,8 +105,22 @@ const GestionSensores = () => {
     }
   };
 
+  useScadaWebSocket({
+    onMessage: () => {
+      if (document.visibilityState === 'visible') {
+        loadSensores();
+      }
+    }
+  });
+
   useEffect(() => {
     loadSensores();
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadSensores();
+      }
+    }, 2500);
+    return () => clearInterval(timer);
   }, []);
 
   const columns: Column<Sensor>[] = [

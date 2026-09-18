@@ -27,9 +27,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { useScadaWebSocket } from "@/hooks/useScadaWebSocket";
 
+import { isProcessDevice } from "@/components/scada/scadaConstants";
+
 interface SidebarProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
@@ -47,7 +49,8 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       const resp = await apiFetch("/api/v1/dispositivos/");
       if (resp.ok) {
         const data = await resp.json();
-        const list = Array.isArray(data) ? data : data.results || [];
+        const rawList = Array.isArray(data) ? data : data.results || [];
+        const list = rawList.filter((d: any) => !isProcessDevice(d));
         const now = Date.now();
         let onlineCount = 0;
         let latestTimestamp = 0;
