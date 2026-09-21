@@ -27,9 +27,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useScadaWebSocket } from "@/hooks/useScadaWebSocket";
 import { getCanonicalNodeId } from "@/components/scada/scadaConstants";
+import { useAuth } from "@/contexts/AuthContext";
 
 
 const VisualizacionSCADA = () => {
+  const { usuario: currentUser } = useAuth();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isReposicionOpen, setIsReposicionOpen] = useState(false);
@@ -310,7 +312,7 @@ const VisualizacionSCADA = () => {
             const userDisplay = commandLog.usuario_username || 
                                 (typeof commandLog.usuario === 'string' ? commandLog.usuario : 
                                 (commandLog.usuario ? String(commandLog.usuario) : 
-                                (pData.input?.usuario || usuario?.legajo || usuario?.nombre || "Operador SCADA")));
+                                (pData.input?.usuario || currentUser?.legajo || currentUser?.nombre || "Operador SCADA")));
             const topicDisplay = commandLog.topico || pData.topico || pData.topic || commandLog.objeto || "N/A";
 
             setUltimaTransmision({
@@ -466,7 +468,7 @@ const VisualizacionSCADA = () => {
           const formattedParams = typeof payloadData === 'object'
             ? JSON.stringify(payloadData, null, 2)
             : String(payloadData || "{}");
-          const userDisp = usuario?.legajo || usuario?.nombre || "Operador SCADA";
+          const userDisp = currentUser?.legajo || currentUser?.nombre || "Operador SCADA";
 
           setUltimaTransmision({
             origen: data.origen || "Comando Manual",
