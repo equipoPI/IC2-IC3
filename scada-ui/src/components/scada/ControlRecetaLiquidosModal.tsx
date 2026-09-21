@@ -185,6 +185,9 @@ export function ControlRecetaLiquidosModal({
           title: "🧪 Receta de Líquidos Transmitida",
           description: `Ing. 1: ${liquido1}L | Ing. 2: ${liquido2}L | Tiempo: ${hora}h ${minuto}m (${result.source === "websocket" ? "⚡ WebSocket <15ms" : "HTTP REST"})`,
         });
+        window.dispatchEvent(new CustomEvent('scada_receta_transmitted', {
+          detail: { hora, minuto, liquido1, liquido2 }
+        }));
         onOpenChange(false);
       } else {
         toast({

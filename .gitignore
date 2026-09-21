@@ -41,6 +41,7 @@ node_modules/
 scada-ui/node_modules/
 scada-ui/dist/
 scada-ui/.cache/
+scada-ui/.vite/
 scada-ui/build.log
 scada-ui/nohup.out
 scada-ui/bun.lock
@@ -108,12 +109,9 @@ desktop.ini
 .classpath
 
 # ==============================================================================
-# 8. Archivos de Imágenes y Capturas
+# 8. Carpetas Ignoradas de Documentación
 # ==============================================================================
-*.png
-*.jpg
-*.jpeg
-*.webp
-*.gif
-*.svg
-!scada-ui/src/**/*.svg
+docs/descarte/
+docs/rev/
+docs/secrets/
+

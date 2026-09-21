@@ -1,16 +1,36 @@
 # 📡 Referencia Completa de Tópicos MQTT
 
-## 🏗️ Estructura Base
+## 🏗️ Estructuras Estándar de Tópicos
+
+### 1️⃣ Recepción de Acciones y Comandos (App Web → Gateway / Simulador)
+Estructura de 5 niveles para comandos de control directo:
 ```
 {tenant}/{gateway_id}/{seccion}/{sistema}/{variable}
-Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/reposicion
 ```
+*Ejemplo:* `Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/reposicion`
+
+---
+
+### 2️⃣ Transmisión de Telemetría y Estados (Gateway / Simulador → Broker / App Web)
+Estructura de 6 niveles para datos de sensores, actuadores y procesos:
+```
+{tenant}/{gateway_id}/{seccion}/{sistema}/{tipo}/{nombre}
+```
+Donde:
+- `{tipo}`: Categoría de componente (`sensores`, `actuadores`, `proceso`)
+- `{nombre}`: Identificador único de la variable o equipo (`bombo1`, `bombo2`, `mezcla`, `caudal`, `bombas`, `mezclador`, `electrovalvulas`, `tiempo_restante`, `mezclado`, `temperatura`, `presion`)
+
+*Ejemplos:*
+- `Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/bombo1`
+- `Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/actuadores/bombas`
+- `Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/proceso/mezclado`
+- `Rafaela_S.A/d83add60dbb0/status` (LWT global de gateway)
 
 ---
 
 ## 📊 Tabla Completa - Tópicos y Payloads
 
-### COMANDOS (App Web → Raspberry)
+### COMANDOS (App Web → Raspberry / Simulador)
 
 | # | Acción | Tópico | JSON Payload | Arduino Cmd | Descripción |
 |---|--------|--------|--------------|------------|-------------|
@@ -148,23 +168,22 @@ mosquitto_pub \
 
 ---
 
-## 📡 Telemetría (Raspberry → App Web)
+## 📡 Telemetría y Estados (Gateway / Simulador → App Web)
 
-Los tópicos de telemetría son **publicados automáticamente** por el gateway:
+Los tópicos de telemetría y estado utilizan estrictamente la estructura `{tenant}/{gateway_id}/{seccion}/{sistema}/{tipo}/{nombre}`:
 
 ```
-Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/nivel_bombo1
-Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/nivel_bombo2
-Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/nivel_mezcla
-Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/caudal_1
-Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/caudal_2
-Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/actuadores/bomba1
-Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/actuadores/bomba2
-Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/actuadores/bomba_mezcla
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/bombo1
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/bombo2
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/mezcla
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/caudal
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/temperatura
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/sensores/presion
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/actuadores/bombas
 Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/actuadores/mezclador
-Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/actuadores/bomba_repo
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/actuadores/electrovalvulas
+Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/proceso/mezclado
 Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/proceso/tiempo_restante
-Rafaela_S.A/d83add60dbb0/A1/linea_mezclado_1/alarmas
 Rafaela_S.A/d83add60dbb0/status
 ```
 

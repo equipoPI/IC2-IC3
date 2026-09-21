@@ -829,12 +829,23 @@ class RegistroAuditoriaViewSet(viewsets.ModelViewSet):
                 else:
                     queryset = queryset.filter(accion__icontains=accion)
 
-        if sistema_id and sistema_id != 'seleccionar':
+        if sistema_id and sistema_id not in ['seleccionar', 'todos', 'all']:
             try:
                 s_id = int(sistema_id)
-                queryset = queryset.filter(Q(datos__sistema_id=s_id) | Q(modulo__in=['SCADA', 'PRODUCCION', 'SCADA_WEBSOCKET']))
+                queryset = queryset.filter(
+                    Q(datos__sistema_id=s_id) |
+                    Q(datos__sistema=s_id) |
+                    Q(datos__input__sistema_id=s_id) |
+                    Q(objeto__icontains=f"sistema {s_id}") |
+                    Q(objeto__icontains=f"sistema_id={s_id}") |
+                    Q(descripcion__icontains=f"sistema {s_id}")
+                )
             except (ValueError, TypeError):
-                queryset = queryset.filter(modulo__in=['SCADA', 'PRODUCCION', 'SCADA_WEBSOCKET'])
+                queryset = queryset.filter(
+                    Q(datos__sistema_id=sistema_id) |
+                    Q(datos__sistema=sistema_id) |
+                    Q(objeto__icontains=str(sistema_id))
+                )
             
         return queryset
     

@@ -1,45 +1,39 @@
-Django>=4.0
-psycopg2-binary>=2.9
-django-cors-headers>=4.0
-# Django y utilidades core
+# ============================================================================
+# REQUERIMIENTOS BACKEND DJANGO - SCADA / IoT
+# ============================================================================
+
+# --- Django Framework & Core ---
 Django>=5.1.1
 python-decouple>=3.8
-
-# Django REST Framework
-djangorestframework>=3.14.0
-djangorestframework-simplejwt>=5.3.0
-gunicorn>=21.2.0
-
-# CORS headers para conectar con frontend
-django-cors-headers>=4.3.0
-
-# Filtros y paginación avanzada
-django-filter>=23.0
-
-# Base de datos y migraciones
-psycopg2-binary>=2.9.9  # Para PostgreSQL (opcional)
-
-# Manejo de imágenes
-Pillow>=10.0.0
-
-# MQTT para IoT/SCADA
-paho-mqtt>=1.6.1
-
-# Utilidades adicionales
-python-dateutil>=2.8.2
-pytz>=2023.3
-
-# Para desarrollo
 django-extensions>=3.2.3
 
-# APIs y documentación
-drf-spectacular>=0.26.0  # Para generar documentación OpenAPI/Swagger
+# --- Django REST Framework & Auth ---
+djangorestframework>=3.14.0
+djangorestframework-simplejwt>=5.3.0
+django-allauth>=0.58.0
+dj-rest-auth>=3.6.0
+django-cors-headers>=4.3.0
+django-filter>=23.0
+drf-spectacular>=0.26.0
 
-django-cors-headers
-django-allauth>=0.53.0
-dj-rest-auth>=3.1.0
-requests>=2.28.0
-
-# WebSockets / Django Channels
+# --- WebSockets & ASGI (Channels & Daphne) ---
+channels>=4.0.0
 daphne>=4.0.0
-channels>=4.0.0
+
+# --- Base de Datos PostgreSQL ---
+psycopg2-binary>=2.9.9
+
+# --- Comunicación MQTT IoT ---
+paho-mqtt>=1.6.1
+
+# --- Utilidades & Img ---
+Pillow>=10.0.0
+requests>=2.28.0
+python-dateutil>=2.8.2
+pytz>=2023.3
+pyyaml>=6.0.1
+loguru>=0.7.2
+psutil>=5.9.6
+
+# --- Servidor Producción WSGI / ASGI ---
+gunicorn>=21.2.0

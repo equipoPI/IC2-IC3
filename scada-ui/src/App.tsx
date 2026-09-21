@@ -97,9 +97,8 @@ const ProtectedRoutes = () => {
         <Route path="/almacenamiento" element={<ProtectedPage path="/almacenamiento" element={<AdministracionAlmacenamiento />} />} />
         <Route path="/guia-sistema" element={<ProtectedPage path="/guia-sistema" element={<GuiaSistema />} />} />
       </Route>
-      {/* Permitimos acceso a la verificación de email aun cuando el usuario
-          ya esté autenticado (el enlace de confirmación debe funcionar
-          independientemente del estado de sesión). */}
+      {/* Permitimos acceso a la verificación de email y registro aun cuando el usuario esté autenticado */}
+      <Route path="/register" element={<Register />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/password-reset-confirm" element={<PasswordResetConfirm />} />
       <Route path="/password-reset-confirm/" element={<PasswordResetConfirm />} />

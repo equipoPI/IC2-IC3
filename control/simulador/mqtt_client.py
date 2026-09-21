@@ -206,6 +206,22 @@ class MQTTClient:
 
             # Suscribirse a todos los topics de comandos
             self._subscribe_to_topics()
+
+            # Publicar estado online de inmediato en reconexiones automáticas o iniciales
+            try:
+                self.publish_status(True)
+                if self.enable_legacy_topics:
+                    self.publish(
+                        "estado/gateway",
+                        {
+                            "online": True,
+                            "timestamp": time.time(),
+                            "client_id": self.client_id,
+                        },
+                        retain=True,
+                    )
+            except Exception as ex_st:
+                logger.warning(f"Error publicando estado online en _on_connect: {ex_st}")
         else:
             self.connected = False
             self.last_conn_rc = rc
@@ -311,6 +327,15 @@ class MQTTClient:
             True si la conexión fue exitosa
         """
         try:
+            # Si ya existía un cliente previo, detener su loop para evitar colisión de Client ID
+            if self.client:
+                try:
+                    self.client.loop_stop()
+                    self.client.disconnect()
+                except Exception:
+                    pass
+                self.client = None
+
             # Crear cliente MQTT
             self.client = mqtt.Client(client_id=self.client_id)
             

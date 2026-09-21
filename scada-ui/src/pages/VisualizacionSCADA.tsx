@@ -1,4 +1,4 @@
-import { Activity, Settings, Play, Pause, RotateCcw, Maximize2, Filter, Layers, Check, RefreshCw, PackageCheck, Thermometer, Sliders, Cpu, FlaskConical, Droplet, AlertCircle, PlusCircle, Zap, Terminal, Edit } from "lucide-react";
+import { Activity, Settings, Play, Pause, RotateCcw, Maximize2, Filter, Layers, Check, RefreshCw, PackageCheck, Thermometer, Sliders, Cpu, FlaskConical, Droplet, AlertCircle, PlusCircle, Zap, Terminal, Edit, PauseCircle, CheckCircle2, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,9 +27,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useScadaWebSocket } from "@/hooks/useScadaWebSocket";
 import { getCanonicalNodeId } from "@/components/scada/scadaConstants";
+import { useAuth } from "@/contexts/AuthContext";
 
 
 const VisualizacionSCADA = () => {
+  const { usuario: currentUser } = useAuth();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isReposicionOpen, setIsReposicionOpen] = useState(false);
@@ -137,8 +139,29 @@ const VisualizacionSCADA = () => {
       const resp = await apiFetch("/api/v1/dispositivos/");
       if (resp.ok) {
         const data = await resp.json();
-        const list = Array.isArray(data) ? data : data.results || [];
+        const rawList = Array.isArray(data) ? data : data.results || [];
+        const processSeries = ['proceso_tiempo_restante', 'proceso_mezclado', 'tiempo_restante', 'mezclado', 'mezcla', 'proceso_mezcla'];
+        const list = rawList.filter((d: any) => !processSeries.includes(d.numero_serie));
         setDispositivos(list);
+
+        // Extraer estado de proceso guardado en la base de datos PostgreSQL
+        const procDev = rawList.find((d: any) => 
+          d.numero_serie === 'proceso_mezclado' || 
+          d.categoria === 'PROCESO' || 
+          (d.numero_serie && String(d.numero_serie).includes('proceso_mezclado'))
+        );
+        if (procDev && procDev.valor_lectura !== undefined && procDev.valor_lectura !== null) {
+          const stNum = Number(procDev.valor_lectura);
+          setProcesoEstado(stNum);
+          localStorage.setItem('scada_proceso_estado', String(stNum));
+          if (procDev.unidad_lectura) {
+            setProcesoTexto(String(procDev.unidad_lectura).toUpperCase());
+            setProcesoNombre(String(procDev.unidad_lectura));
+            localStorage.setItem('scada_proceso_texto', String(procDev.unidad_lectura).toUpperCase());
+          }
+          if (procDev.topic_mqtt) setProcesoTopico(String(procDev.topic_mqtt));
+          if (procDev.ultima_lectura) setProcesoTimestamp(new Date(procDev.ultima_lectura).getTime() / 1000);
+        }
       }
     } catch (e) {
       // silent
@@ -268,23 +291,63 @@ const VisualizacionSCADA = () => {
         const data = await res.json();
         const list = Array.isArray(data) ? data : data.results || [];
         if (list.length > 0) {
-          const item = list[0];
-          const rawParams = item.datos?.parametros || item.parametros || item.detalles || item.payload_json || item.datos;
-          const formattedParams = typeof rawParams === 'object'
-            ? JSON.stringify(rawParams, null, 2)
-            : String(rawParams || "{}");
-
-          const userDisplay = item.usuario_username || (typeof item.usuario === 'string' ? item.usuario : (item.usuario ? `Usuario #${item.usuario}` : "Operador SCADA"));
-          const topicDisplay = item.topico || item.datos?.topico || item.datos?.topic || "N/A";
-
-          setUltimaTransmision({
-            origen: item.origen || (item.accion?.includes("PLANTILLA") || item.accion?.includes("RECETA") ? "Receta Programada" : "Comando Manual"),
-            tipoOperacion: item.accion || item.comando || "Comando MQTT",
-            usuario: userDisplay,
-            topico: topicDisplay,
-            timestamp: item.timestamp ? new Date(item.timestamp).toLocaleString("es-AR") : new Date().toLocaleString("es-AR"),
-            descripcion: formattedParams,
+          // Buscar únicamente comandos/transmisiones manuales o de recetas (excluir telemetría automática de proceso/mezclado)
+          const commandLog = list.find((it: any) => {
+            const acc = String(it.accion || '').toUpperCase();
+            const mod = String(it.modulo || '').toUpperCase();
+            const top = String(it.topico || it.datos?.topico || it.objeto || '').toLowerCase();
+            return !top.includes('proceso/mezclado') && 
+                   !top.includes('proceso/mezcla') && 
+                   mod !== 'SCADA_PROCESO' && 
+                   acc !== 'CAMBIO_ESTADO_PROCESO';
           });
+
+          if (commandLog) {
+            const pData = commandLog.datos || {};
+            const rawParams = pData.payload || pData.parametros || commandLog.parametros || commandLog.detalles || commandLog.payload_json || commandLog.datos;
+            const formattedParams = typeof rawParams === 'object'
+              ? JSON.stringify(rawParams, null, 2)
+              : String(rawParams || "{}");
+
+            const userDisplay = commandLog.usuario_username || 
+                                (typeof commandLog.usuario === 'string' ? commandLog.usuario : 
+                                (commandLog.usuario ? String(commandLog.usuario) : 
+                                (pData.input?.usuario || currentUser?.legajo || currentUser?.nombre || "Operador SCADA")));
+            const topicDisplay = commandLog.topico || pData.topico || pData.topic || commandLog.objeto || "N/A";
+
+            setUltimaTransmision({
+              origen: commandLog.origen || pData.origen || (commandLog.accion?.includes("PLANTILLA") || commandLog.accion?.includes("RECETA") ? "Receta Programada" : "Comando Manual"),
+              tipoOperacion: commandLog.accion || commandLog.comando || "Comando MQTT",
+              usuario: userDisplay,
+              topico: topicDisplay,
+              timestamp: commandLog.timestamp ? new Date(commandLog.timestamp).toLocaleString("es-AR") : new Date().toLocaleString("es-AR"),
+              descripcion: formattedParams,
+            });
+          } else {
+            setUltimaTransmision(null);
+          }
+
+          // Buscar el último registro de estado de proceso en la auditoría para inicializar inmediatamente
+          const procLog = list.find((it: any) => {
+            const top = String(it.topico || it.datos?.topico || it.objeto || '');
+            return top.includes('proceso/mezclado') || top.includes('proceso/mezcla') || (it.datos && (it.datos.estado !== undefined || it.datos.estado_nombre !== undefined));
+          });
+          if (procLog) {
+            const pData = procLog.datos || {};
+            const st = procLog.estado ?? pData.estado;
+            if (st !== undefined && st !== null) {
+              const nSt = Number(st);
+              setProcesoEstado(nSt);
+              const nom = procLog.estado_nombre || pData.estado_nombre || pData.estado_texto;
+              if (nom) setProcesoNombre(String(nom));
+              const txt = procLog.estado_texto || pData.estado_texto || nom;
+              if (txt) setProcesoTexto(String(txt).toUpperCase());
+              const ts = procLog.timestamp ? new Date(procLog.timestamp).getTime() / 1000 : null;
+              if (ts) setProcesoTimestamp(ts);
+              const tp = procLog.topico || pData.topico || pData.topic;
+              if (tp) setProcesoTopico(String(tp));
+            }
+          }
         } else {
           setUltimaTransmision(null);
         }
@@ -325,15 +388,110 @@ const VisualizacionSCADA = () => {
     }
   };
 
+  const [procesoEstado, setProcesoEstado] = useState<number | null>(() => {
+    const saved = localStorage.getItem('scada_proceso_estado');
+    return saved !== null && !isNaN(Number(saved)) ? Number(saved) : null;
+  });
+  const [procesoNombre, setProcesoNombre] = useState<string>(() => localStorage.getItem('scada_proceso_nombre') || 'Inactivo');
+  const [procesoTexto, setProcesoTexto] = useState<string>(() => localStorage.getItem('scada_proceso_texto') || 'INACTIVO');
+  const [procesoError, setProcesoError] = useState<number>(0);
+  const [procesoTimestamp, setProcesoTimestamp] = useState<number | null>(null);
+  const [procesoTopico, setProcesoTopico] = useState<string>('');
+
+  const [procesoHoras, setProcesoHoras] = useState<number>(() => {
+    const saved = localStorage.getItem('scada_proceso_horas');
+    return saved !== null && !isNaN(Number(saved)) ? Number(saved) : 0;
+  });
+  const [procesoMinutos, setProcesoMinutos] = useState<number>(() => {
+    const saved = localStorage.getItem('scada_proceso_minutos');
+    return saved !== null && !isNaN(Number(saved)) ? Number(saved) : 0;
+  });
+
+  const lastDispLoadRef = useRef<number>(0);
+
   const { isConnected: isWsConnected, sendScadaCommand } = useScadaWebSocket({
     onMessage: (data) => {
       console.log("[VisualizacionSCADA] Evento WebSocket recibido:", data);
-      loadDispositivos();
-      if (selectedSistema !== 'seleccionar') {
-        loadUltimaTransmision();
-      }
+      if (!data) return;
+      const isProcessTopic = Boolean(
+          (data.type === 'process_status' || data.event === 'process_status') &&
+          !String(data.topic || '').includes('/actuadores/') &&
+          data.device_id !== 'mixer-1'
+        ) || Boolean(
+          data.topic && (String(data.topic).endsWith('proceso/mezclado') || String(data.topic).endsWith('proceso/mezcla'))
+        );
+
+        if (isProcessTopic) {
+          const payloadData = data.data || data;
+          const st = data.estado !== undefined ? data.estado : (payloadData.estado !== undefined ? payloadData.estado : null);
+          if (st !== null && st !== undefined) {
+            const numSt = Number(st);
+            setProcesoEstado(numSt);
+            localStorage.setItem('scada_proceso_estado', String(numSt));
+          }
+          const nom = data.estado_nombre || payloadData.estado_nombre || payloadData.estado_texto || data.estado_texto;
+          if (nom) {
+            setProcesoNombre(String(nom));
+            localStorage.setItem('scada_proceso_nombre', String(nom));
+          }
+          const txt = data.estado_texto || payloadData.estado_texto || data.estado_nombre || payloadData.estado_nombre;
+          if (txt) {
+            setProcesoTexto(String(txt).toUpperCase());
+            localStorage.setItem('scada_proceso_texto', String(txt).toUpperCase());
+          }
+          const err = data.error ?? payloadData.error ?? 0;
+          setProcesoError(Number(err));
+
+          const ts = data.timestamp ?? payloadData.timestamp ?? null;
+          if (ts) setProcesoTimestamp(Number(ts));
+
+          if (data.topic) setProcesoTopico(String(data.topic));
+        }
+        if (
+          data.device_id === 'tiempo_restante' || 
+          data.tiempo_restante_min !== undefined || 
+          data.minutos !== undefined || 
+          (data.topic && String(data.topic).includes('proceso/tiempo_restante')) || 
+          (data.data && (data.data.horas !== undefined || data.data.minutos !== undefined))
+        ) {
+          const payloadData = data.data || data;
+          const h = Number(data.horas ?? payloadData.horas ?? 0);
+          const m = Number(data.minutos ?? data.tiempo_restante_min ?? payloadData.minutos ?? 0);
+          setProcesoHoras(h);
+          setProcesoMinutos(m);
+          localStorage.setItem('scada_proceso_horas', String(h));
+          localStorage.setItem('scada_proceso_minutos', String(m));
+        }
+
+        if (data.type === 'command_executed' || data.event === 'command_executed') {
+          const payloadData = data.payload || data.data || data;
+          const formattedParams = typeof payloadData === 'object'
+            ? JSON.stringify(payloadData, null, 2)
+            : String(payloadData || "{}");
+          const userDisp = currentUser?.legajo || currentUser?.nombre || "Operador SCADA";
+
+          setUltimaTransmision({
+            origen: data.origen || "Comando Manual",
+            tipoOperacion: `WS_${String(data.action || 'TRANSMITIR').toUpperCase()}`,
+            usuario: userDisp,
+            topico: data.topico || data.topic || "N/A",
+            timestamp: new Date().toLocaleString("es-AR"),
+            descripcion: formattedParams,
+          });
+        }
+
+        // Refrescar dispositivos de forma limpia con un estrangulamiento de 1 segundo
+        const now = Date.now();
+        if (now - lastDispLoadRef.current > 1000) {
+          lastDispLoadRef.current = now;
+          if (document.visibilityState === 'visible') {
+            loadDispositivos();
+          }
+        }
     }
   });
+
+
 
   useEffect(() => {
     loadDispositivos();
@@ -355,7 +513,7 @@ const VisualizacionSCADA = () => {
           loadUltimaTransmision();
         }
       }
-    }, 1500);
+    }, 15000);
     return () => clearInterval(timer);
   }, [selectedSistema]);
 
@@ -488,6 +646,14 @@ const VisualizacionSCADA = () => {
   const selectedPlantaObj = useMemo(() => plantas.find(p => String(p.id) === selectedPlanta), [plantas, selectedPlanta]);
   const selectedSeccionObj = useMemo(() => secciones.find(s => String(s.id) === selectedSeccion), [secciones, selectedSeccion]);
   const selectedSistemaObj = useMemo(() => sistemas.find(s => String(s.id) === selectedSistema), [sistemas, selectedSistema]);
+  const currentGatewayId = useMemo(() => {
+    if (selectedSistemaObj && (selectedSistemaObj as any).gateway_id) return (selectedSistemaObj as any).gateway_id;
+    if (selectedSistema !== 'seleccionar' && selectedSistema !== 'todas') {
+      const sysDev = dispositivos.find(d => String(d.sistema) === selectedSistema && d.gateway_id);
+      if (sysDev && sysDev.gateway_id) return sysDev.gateway_id;
+    }
+    return 'd83add60dbb0';
+  }, [selectedSistemaObj, dispositivos, selectedSistema]);
   const isSelectionIncomplete = selectedPlanta === 'seleccionar' || selectedSeccion === 'seleccionar' || selectedSistema === 'seleccionar';
 
   // Filtros dinámicos basados en la selección de Planta
@@ -574,7 +740,7 @@ const VisualizacionSCADA = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary-foreground bg-clip-text text-transparent">
+          <h1 className="text-3xl font-bold tracking-tight text-cyan-400">
             Visualización SCADA
           </h1>
           <p className="text-muted-foreground text-sm">
@@ -607,6 +773,28 @@ const VisualizacionSCADA = () => {
                   <span className={cn("w-2 h-2 rounded-full ml-0.5", isWsConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400 animate-ping")} title={isWsConnected ? "WS Push Activo (<20ms)" : "WS Reconectando"}></span>
                 </Badge>
 
+                {/* Badges de Proceso y Tiempo Restante (Siempre visibles cuando hay actividad) */}
+                {procesoEstado === 3 && (
+                  <Badge variant="outline" className="text-xs font-mono bg-amber-950/70 text-amber-300 border-amber-600/90 gap-1.5 animate-pulse">
+                    <PauseCircle className="h-3.5 w-3.5 text-amber-400" />
+                    PAUSADO: <span className="font-bold">{procesoHoras && procesoHoras > 0 ? `${procesoHoras}h ${procesoMinutos || 0}m` : `${procesoMinutos || 0} min`}</span>
+                  </Badge>
+                )}
+
+                {procesoEstado === 1 && (
+                  <Badge variant="outline" className="text-xs font-mono bg-blue-950/70 text-blue-300 border-blue-600/90 gap-1.5 animate-pulse">
+                    <Clock className="h-3.5 w-3.5 text-blue-400" />
+                    EN EJECUCIÓN: <span className="font-bold">{procesoHoras && procesoHoras > 0 ? `${procesoHoras}h ${procesoMinutos || 0}m` : `${procesoMinutos || 0} min`}</span>
+                  </Badge>
+                )}
+
+                {procesoEstado === 2 && (
+                  <Badge variant="outline" className="text-xs font-mono bg-emerald-950/70 text-emerald-300 border-emerald-600/90 gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                    MEZCLA FINALIZADA
+                  </Badge>
+                )}
+
                 {selectedSistema !== 'seleccionar' && selectedSistema !== 'todas' && selectedSistemaObj && (
                   <>
                     <Badge variant="outline" className={cn(
@@ -627,7 +815,7 @@ const VisualizacionSCADA = () => {
 
                     <Badge variant="outline" className="text-xs font-mono bg-cyan-950/40 text-cyan-300 border-cyan-800/80 gap-1.5">
                       <Cpu className="h-3 w-3 text-cyan-400" />
-                      Gateway: <span className="font-bold text-cyan-200">{selectedSistemaObj.gateway_id || 'd83add60dbb0'}</span>
+                      Gateway: <span className="font-bold text-cyan-200">{currentGatewayId}</span>
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" title="Gateway Online"></span>
                     </Badge>
                   </>
@@ -746,6 +934,9 @@ const VisualizacionSCADA = () => {
               secciones={secciones}
               sistemas={sistemas}
               plantas={plantas}
+              procesoEstado={procesoEstado}
+              procesoHoras={procesoHoras}
+              procesoMinutos={procesoMinutos}
             />
             
             {/* Legend */}
@@ -769,6 +960,58 @@ const VisualizacionSCADA = () => {
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-muted-foreground" />
                 <span>Sensores</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Dedicated Live Process State Card (proceso/mezclado) */}
+        <Card className="bg-card border-border shadow-md overflow-hidden mb-6">
+          <CardHeader className="pb-3 bg-muted/20 border-b border-border/50">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <CardTitle className="text-base font-semibold flex items-center gap-2 text-foreground">
+                <Activity className="h-5 w-5 text-cyan-400 animate-pulse" />
+                ⚙️ Estado del Proceso del Sistema en Tiempo Real (proceso/mezclado)
+              </CardTitle>
+              <Badge variant="outline" className={cn(
+                "px-3 py-1 font-bold text-xs gap-1.5 uppercase font-mono",
+                procesoEstado === 3 ? "bg-amber-950/80 text-amber-300 border-amber-600 animate-pulse" :
+                procesoEstado === 1 ? "bg-blue-950/80 text-blue-300 border-blue-600 animate-pulse" :
+                procesoEstado === 2 ? "bg-emerald-950/80 text-emerald-300 border-emerald-600" :
+                "bg-slate-900/80 text-slate-400 border-slate-700"
+              )}>
+                {procesoEstado === 3 ? <PauseCircle className="h-4 w-4 text-amber-400" /> :
+                 procesoEstado === 1 ? <Clock className="h-4 w-4 text-blue-400 animate-spin" /> :
+                 procesoEstado === 2 ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> :
+                 <AlertCircle className="h-4 w-4 text-slate-400" />}
+                {procesoEstado === 3 ? "PAUSADO" : procesoEstado === 1 ? "TRABAJANDO" : procesoEstado === 2 ? "FINALIZADO" : (procesoTexto && procesoTexto !== 'INACTIVO' ? procesoTexto : procesoNombre || "INACTIVO")}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="p-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 bg-slate-950/60 p-4 rounded-xl border border-cyan-900/30 shadow-inner">
+              <div className="space-y-1">
+                <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Estado Numérico</span>
+                <div className="text-2xl font-mono font-bold text-cyan-300">{procesoEstado !== null ? procesoEstado : 0}</div>
+                <p className="text-xs text-muted-foreground">
+                  {procesoEstado === 3 ? "3: Pausado" : procesoEstado === 1 ? "1: En Ejecución" : procesoEstado === 2 ? "2: Finalizado" : "0: Inactivo"}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Estado del Proceso</span>
+                <div className="text-xl font-mono font-bold text-amber-300 uppercase">{procesoEstado === 3 ? "PAUSADO" : procesoEstado === 1 ? "TRABAJANDO" : procesoEstado === 2 ? "FINALIZADO" : (procesoTexto && procesoTexto !== 'INACTIVO' ? procesoTexto : procesoNombre || "INACTIVO")}</div>
+                <p className="text-xs text-muted-foreground">Telemetría en vivo del sistema</p>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Tópico y Hardware</span>
+                <div className="text-xs font-mono font-semibold text-slate-300 truncate" title={procesoTopico || `rafaela_sa/d83add60dbb0/a1/linea_mezclado_1/proceso/mezclado`}>
+                  {procesoTopico ? procesoTopico.replace(/.*?(?=proceso\/mezclado)/, '.../') : "proceso/mezclado"}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {procesoTimestamp ? `Recibido: ${new Date(procesoTimestamp * 1000).toLocaleTimeString()}` : "Conectado al Gateway"}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -864,9 +1107,9 @@ const VisualizacionSCADA = () => {
                           <Droplet className="h-3.5 w-3.5" />
                           Parámetros Transmitidos al Broker
                         </h5>
-                        <div className="p-3 rounded bg-muted/40 border border-border/50 text-xs font-mono text-foreground leading-relaxed break-words">
+                        <pre className="p-3 rounded bg-slate-950 border border-cyan-800/50 text-xs font-mono text-cyan-300 leading-relaxed whitespace-pre-wrap break-all select-all max-h-56 overflow-y-auto">
                           {ultimaTransmision.descripcion}
-                        </div>
+                        </pre>
                       </div>
                     </div>
                   ) : (

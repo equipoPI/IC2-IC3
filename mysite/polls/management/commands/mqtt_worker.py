@@ -77,6 +77,16 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self.stdout.write(self.style.SUCCESS("Iniciando MQTT Worker de Django..."))
 
+        # Limpiar dispositivos fantasmas de proceso previamente creados por error
+        try:
+            ghosts_del, _ = DispositivoSCADA.objects.filter(
+                numero_serie__in=['proceso_tiempo_restante', 'proceso_mezclado', 'tiempo_restante', 'mezclado', 'mezcla']
+            ).delete()
+            if ghosts_del > 0:
+                self.stdout.write(self.style.SUCCESS(f"Se eliminaron {ghosts_del} dispositivos SCADA fantasmas de proceso de la DB."))
+        except Exception as ex_ghost:
+            logger.warning(f"No se pudieron limpiar dispositivos fantasmas de proceso: {ex_ghost}")
+
         # Cargar configuración desde la base de datos o usar valores de fallback robustos
         config = ConfiguracionMQTT.objects.filter(activo=True).first()
         if config:
@@ -137,21 +147,26 @@ class Command(BaseCommand):
     def _start_offline_watcher(self):
         def watch_offline():
             while True:
-                time.sleep(3)
+                time.sleep(5)
                 try:
                     close_old_connections()
-                    # Si han pasado más de 12 segundos sin ninguna actividad global del gateway, marcar offline
-                    last_seen = getattr(self, '_last_gateway_message_time', None)
-                    if last_seen and (time.time() - last_seen > 12):
-                        offline_count = DispositivoSCADA.objects.filter(estado='ONLINE').update(estado='OFFLINE')
-                        if offline_count > 0:
-                            self.stdout.write(self.style.WARNING(f"[Gateway Watcher] Gateway inactivo (>12s sin telemetría). {offline_count} dispositivos marcados como OFFLINE."))
-                            broadcast_ws_update({
-                                'type': 'system_status',
-                                'event': 'gateway_status',
-                                'status': 'offline',
-                                'online_count': 0
-                            })
+                    cutoff = timezone.now() - datetime.timedelta(seconds=35)
+                    # Marcar OFFLINE cualquier dispositivo cuyo timestamp de última lectura supere los 35 segundos
+                    stale_devs = DispositivoSCADA.objects.filter(
+                        estado='ONLINE'
+                    ).filter(
+                        Q(ultima_lectura__lt=cutoff) | Q(ultima_lectura__isnull=True)
+                    )
+                    count = stale_devs.count()
+                    if count > 0:
+                        stale_devs.update(estado='OFFLINE')
+                        self.stdout.write(self.style.WARNING(f"[Device Watcher] {count} dispositivo(s) inactivo(s) (>35s sin telemetría) marcados como OFFLINE."))
+                        broadcast_ws_update({
+                            'type': 'system_status',
+                            'event': 'device_status',
+                            'status': 'offline',
+                            'offline_count': count
+                        })
                 except Exception as ex:
                     logger.debug(f"Offline watcher error: {ex}")
 
@@ -171,6 +186,7 @@ class Command(BaseCommand):
                 status_val = payload_str.lower()
                 gw_id = telemetria_parts[1] if len(telemetria_parts) > 1 else 'd83add60dbb0'
                 if 'offline' in status_val:
+                    self._last_gateway_message_time = None
                     DispositivoSCADA.objects.filter(
                         Q(gateway_id=gw_id) | Q(gateway_id='') | Q(gateway_id__isnull=True)
                     ).update(estado='OFFLINE')
@@ -464,6 +480,8 @@ class Command(BaseCommand):
                             n_val = float(nivel)
                             if payload_dict.get('unidad') == '%' or (0 <= n_val <= 100 and ('porcentaje' in topic or 'porc' in topic)):
                                 porcentaje = n_val
+                            elif 0.0 <= n_val <= 35.0:
+                                porcentaje = round(max(0.0, min(100.0, ((28.0 - n_val) * 100.0) / 24.0)), 2)
                         except (ValueError, TypeError):
                             pass
 
@@ -516,10 +534,17 @@ class Command(BaseCommand):
                         except Exception as ex:
                             logger.error(f"Error actualizando UnidadAlmacenamiento {scoped_node_id}: {ex}")
 
+                    val_to_store = 0.0
+                    unidad_to_store = 'cm'
                     if nivel is not None or porcentaje is not None:
                         try:
-                            val_to_store = float(nivel if nivel is not None else porcentaje)
-                            unidad_to_store = 'cm' if (nivel is not None and payload_dict.get('unidad') != '%') else '%'
+                            if nivel is not None:
+                                val_to_store = round(float(nivel), 2)
+                                unidad_to_store = 'cm' if payload_dict.get('unidad') != '%' else '%'
+                            else:
+                                val_to_store = round(float(porcentaje), 2)
+                                unidad_to_store = '%'
+
                             sensor_dev = get_or_create_device(scoped_sensor_serie, disp_sensor_nombre, 'SENSOR_NIVEL')
                             sensor_dev.valor_lectura = val_to_store
                             sensor_dev.unidad_lectura = unidad_to_store
@@ -541,7 +566,7 @@ class Command(BaseCommand):
                     # Salida formateada y coloreada en consola
                     vol_txt = f"{getattr(tank, 'volumen_actual', 0)} L" if tank else ""
                     self.stdout.write(self.style.SUCCESS(
-                        f"[Nivel SCADA] {tenant}/{gateway_id} | {disp_tank_nombre} [{scoped_node_id}] -> {porcentaje}% {vol_txt} | Tópico: '{topic}'"
+                        f"[Nivel SCADA] {tenant}/{gateway_id} | {disp_tank_nombre} [{scoped_node_id}] -> {porcentaje}% ({vol_txt}) | Sensor [{scoped_sensor_serie}] -> {val_to_store} {unidad_to_store} | Tópico: '{topic}'"
                     ))
                     broadcast_ws_update({
                         'type': 'telemetry_update',
@@ -550,7 +575,10 @@ class Command(BaseCommand):
                         'tenant': tenant,
                         'sistema_id': sistema.id,
                         'node_id': scoped_node_id,
-                        'porcentaje': porcentaje
+                        'porcentaje': porcentaje,
+                        'nivel': float(nivel) if nivel is not None else val_to_store,
+                        'unidad': unidad_to_store,
+                        'sensor_serie': scoped_sensor_serie
                     })
                     return
 
@@ -700,7 +728,7 @@ class Command(BaseCommand):
                     broadcast_ws_update({'type': 'telemetry_update', 'topic': topic, 'device_id': device_id, 'tenant': tenant, 'sistema_id': sistema.id})
                     return
 
-                if device_id in ['mezclador', 'mixer-1', 'mixer', 'mezclado'] or topic.endswith('/proceso/mezclado'):
+                if (device_id in ['mixer-1', 'mixer'] or (category == 'actuadores' and 'mezclador' in device_id)) and not topic.endswith('/proceso/mezclado'):
                     estado = payload_dict.get('estado')
                     if estado is None:
                         estado = payload_dict.get('mezclador', payload_dict.get('value', payload_dict.get('valor', 0)))
@@ -727,7 +755,7 @@ class Command(BaseCommand):
                     })
                     return
 
-                if device_id == 'tiempo_restante' or topic.endswith('/proceso/tiempo_restante'):
+                if device_id in ['tiempo_restante', 'proceso_tiempo_restante'] or topic.endswith('/proceso/tiempo_restante'):
                     horas = payload_dict.get('horas', 0)
                     minutos = payload_dict.get('minutos', 0)
                     try:
@@ -743,15 +771,81 @@ class Command(BaseCommand):
                             active_orden.save(update_fields=['progreso_porcentaje'])
                         except Exception:
                             pass
-                    broadcast_ws_update({'topic': topic, 'device_id': 'tiempo_restante', 'tiempo_restante_min': total_minutos, 'tenant': tenant, 'sistema_id': sistema.id})
+
+                    # No se crea DispositivoSCADA en DB para tiempo_restante, se transmite solo por WebSocket
+                    broadcast_ws_update({
+                        'type': 'process_status',
+                        'topic': topic,
+                        'device_id': 'tiempo_restante',
+                        'tiempo_restante_min': total_minutos,
+                        'horas': horas,
+                        'minutos': minutos,
+                        'data': payload_dict,
+                        'tenant': tenant,
+                        'sistema_id': sistema.id
+                    })
                     return
 
-                if '/proceso' in topic or category == 'proceso':
-                    broadcast_ws_update({'type': 'process_status', 'topic': topic, 'data': payload_dict, 'tenant': tenant, 'sistema_id': sistema.id})
+                if device_id in ['mezclado', 'mezcla', 'proceso_mezclado', 'proceso_mezcla'] or topic.endswith('/proceso/mezclado') or topic.endswith('/proceso/mezcla'):
+                    est_val = payload_dict.get('estado', 0)
+                    est_map = {0: "INACTIVO", 1: "TRABAJANDO", 2: "FINALIZADO", 3: "PAUSADO"}
+                    try:
+                        num_code = int(est_val) if str(est_val).isdigit() else 0
+                    except (ValueError, TypeError):
+                        num_code = 0
+                    est_nombre = payload_dict.get('estado_texto') or payload_dict.get('estado_nombre') or est_map.get(num_code, "INACTIVO")
+
+                    self.stdout.write(self.style.SUCCESS(
+                        f"[Proceso SCADA] {tenant}/{gateway_id} | {topic} -> Estado: {num_code} ({est_nombre})"
+                    ))
+
+                    # 💾 Persistir estado de proceso en DB (DispositivoSCADA y RegistroAuditoria)
+                    try:
+                        scoped_proc_serie = get_scoped_id('proceso_mezclado', tenant, system)
+                        disp_proc_nombre = f"Estado de Mezclado ({system})" if tenant.lower() not in ['rafaela_sa', 'rafaela'] else 'Estado de Mezclado'
+                        proc_dev = get_or_create_device(scoped_proc_serie, disp_proc_nombre, 'PROCESO')
+                        old_proc_code = proc_dev.valor_lectura
+                        proc_dev.valor_lectura = float(num_code)
+                        proc_dev.unidad_lectura = str(est_nombre).upper()
+                        proc_dev.ultima_lectura = timezone.now()
+                        proc_dev.estado = 'ONLINE'
+                        proc_dev.save(update_fields=['valor_lectura', 'unidad_lectura', 'ultima_lectura', 'estado'])
+
+                        if old_proc_code is None or old_proc_code != float(num_code):
+                            from polls.models import RegistroAuditoria
+                            RegistroAuditoria.objects.create(
+                                accion="CAMBIO_ESTADO_PROCESO",
+                                modulo="SCADA_PROCESO",
+                                objeto=topic,
+                                descripcion=f"Estado del proceso cambiado a {num_code} ({est_nombre})",
+                                datos={
+                                    'estado': num_code,
+                                    'estado_nombre': est_nombre,
+                                    'estado_texto': str(est_nombre).upper(),
+                                    'topico': topic,
+                                    'sistema_id': sistema.id
+                                }
+                            )
+                    except Exception as ex_db:
+                        logger.warning(f"Error persisitiendo estado de proceso en DB: {ex_db}")
+
+                    # Broadcast evento completo de estado de proceso por WebSocket
+                    broadcast_ws_update({
+                        'type': 'process_status',
+                        'topic': topic,
+                        'estado': num_code,
+                        'estado_nombre': est_nombre,
+                        'estado_texto': str(est_nombre).upper(),
+                        'error': payload_dict.get('error', 0),
+                        'timestamp': payload_dict.get('timestamp', time.time()),
+                        'data': payload_dict,
+                        'tenant': tenant,
+                        'sistema_id': sistema.id
+                    })
                     return
 
-                # Ignorar comandos de control para no crear dispositivos SCADA fantasmas
-                if device_id in ['desechar', 'descartar', 'reanudar', 'detener', 'frenar', 'vaciar', 'proceso', 'control', 'alertas']:
+                # Ignorar comandos de control y tópicos de proceso para no crear dispositivos SCADA fantasmas
+                if device_id in ['desechar', 'descartar', 'reanudar', 'detener', 'frenar', 'vaciar', 'proceso', 'control', 'alertas', 'tiempo_restante', 'proceso_tiempo_restante', 'mezclado', 'mezcla', 'proceso_mezclado']:
                     return
 
                 # -------------------------------------------------------------

@@ -33,3 +33,11 @@ export const getCanonicalNodeId = (item: any): string => {
   return item.node_id || item.numero_serie || `dev_${item.id}`;
 };
 
+export const isProcessDevice = (d: any): boolean => {
+  if (!d) return false;
+  const cat = String(d.categoria || '').toUpperCase();
+  const serie = String(d.numero_serie || d.id || '').toLowerCase();
+  const processSeries = ['proceso_tiempo_restante', 'proceso_mezclado', 'tiempo_restante', 'mezclado', 'mezcla', 'proceso_mezcla'];
+  return cat === 'PROCESO' || processSeries.includes(serie);
+};
+
